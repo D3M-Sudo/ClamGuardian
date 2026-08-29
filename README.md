@@ -37,6 +37,7 @@ QuarantineVault ---> AES-256-GCM encrypted records
 ## Features
 
 - **Hybrid ClamAV execution:** prefers `/run/clamd.ctl`, then falls back to `clamscan`/`freshclam` through `asyncio.subprocess`.
+- **Scan profiles (M2):** immutable, validated `ScanProfile` presets (`quick`, `home`, `full`, `custom`) shared by every front-end; the UI never touches ClamAV CLI flags (see `docs/design/scan-profiles.md`).
 - **Flatpak-aware execution:** optionally routes host commands through `flatpak-spawn --host`.
 - **Reactive event API:** `ShieldTaskController` emits `scan-started`, `scan-finished`, `threat-detected`, and `scan-cancelled` as native GObject signals.
 - **Encrypted quarantine:** AES-256-GCM authenticated encryption, owner-only vault permissions, atomic writes, and integrity-protected metadata.

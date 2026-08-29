@@ -11,6 +11,7 @@ gi.require_version("GObject", "2.0")  # noqa: E402 - required before gi.reposito
 from gi.repository import GObject  # noqa: E402 - gi version must be set first
 
 from ..core.base import ScanResult  # noqa: E402 - follows the gi bootstrap above
+from ..core.profiles import ScanProfile  # noqa: E402 - follows the gi bootstrap above
 from ..core.runner import ScanTaskRunner  # noqa: E402 - follows the gi bootstrap above
 from ..engines.clamav import ClamAVEngine  # noqa: E402 - follows the gi bootstrap above
 
@@ -29,8 +30,18 @@ class ShieldTaskController(GObject.Object):
         super().__init__()
         self._runner = ScanTaskRunner(engine or ClamAVEngine(), max_concurrency=max_concurrency)
 
-    async def scan(self, target: Path, *, recursive: bool = True) -> ScanResult:
+    async def scan(
+        self,
+        target: Path,
+        *,
+        recursive: bool = True,
+        profile: ScanProfile | None = None,
+    ) -> ScanResult:
         """Emit lifecycle signals around one asynchronous scan.
+
+        ``profile`` is an optional :class:`~clamguardian.core.profiles.ScanProfile`
+        forwarded untouched to the runner/engine; the controller never builds
+        engine-specific arguments.
 
         Signal semantics:
 
@@ -59,7 +70,9 @@ class ShieldTaskController(GObject.Object):
                 self.emit("scan-started", target_label)
 
         try:
-            result = await self._runner.submit(target, recursive=recursive, on_start=_notify_start)
+            result = await self._runner.submit(
+                target, recursive=recursive, profile=profile, on_start=_notify_start
+            )
         except asyncio.CancelledError:
             self.emit("scan-cancelled", target_label)
             raise

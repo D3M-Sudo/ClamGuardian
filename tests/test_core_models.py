@@ -80,7 +80,9 @@ class FakeEngine(BaseAVEngine):
         self.finished = 0
         self.cancelled = 0
 
-    async def scan(self, target: Path, *, recursive: bool = True) -> ScanResult:
+    async def scan(
+        self, target: Path, *, recursive: bool = True, profile: object = None
+    ) -> ScanResult:
         self.started += 1
         try:
             await asyncio.sleep(self.delay)
@@ -197,7 +199,9 @@ class StubEngine(FakeEngine):
         super().__init__(delay=0.01, fail=fail)
         self.threats = threats
 
-    async def scan(self, target: Path, *, recursive: bool = True) -> ScanResult:
+    async def scan(
+        self, target: Path, *, recursive: bool = True, profile: object = None
+    ) -> ScanResult:
         self.started += 1
         try:
             await asyncio.sleep(self.delay)

@@ -7,6 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .base import BaseAVEngine, ScanResult
+from .profiles import ScanProfile
 
 
 class ScanTaskRunner:
@@ -31,10 +32,13 @@ class ScanTaskRunner:
         target: Path,
         *,
         recursive: bool = True,
+        profile: ScanProfile | None = None,
         on_start: Callable[[], None] | None = None,
     ) -> ScanResult:
         """Run one scan while respecting the configured concurrency limit.
 
+        ``profile`` is forwarded to the engine untouched: the runner never
+        inspects or translates it (no UI → engine coupling).
         ``on_start`` is invoked exactly once, right after the concurrency
         slot has been acquired — i.e. when the scan actually starts running
         and not while it is still queued.
@@ -46,7 +50,7 @@ class ScanTaskRunner:
             try:
                 if on_start is not None:
                     on_start()
-                return await self.engine.scan(Path(target), recursive=recursive)
+                return await self.engine.scan(Path(target), recursive=recursive, profile=profile)
             finally:
                 if task is not None:
                     self._tasks.discard(task)
@@ -56,10 +60,13 @@ class ScanTaskRunner:
         target: Path,
         *,
         recursive: bool = True,
+        profile: ScanProfile | None = None,
         on_start: Callable[[], None] | None = None,
     ) -> asyncio.Task[ScanResult]:
         """Schedule a scan without awaiting it."""
-        task = asyncio.create_task(self.submit(target, recursive=recursive, on_start=on_start))
+        task = asyncio.create_task(
+            self.submit(target, recursive=recursive, profile=profile, on_start=on_start)
+        )
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return task

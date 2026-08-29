@@ -1,5 +1,13 @@
 # Architecture Freeze v1 (post M0.5 — Core Hardening)
 
+> **M2 addendum (Scan Profiles):** `BaseAVEngine.scan`, `ScanTaskRunner.submit/create_task`
+> e `ShieldTaskController.scan` accettano ora un parametro opzionale
+> `profile: ScanProfile | None`. Il default `None` preserva esattamente il
+> comportamento pre-M2 (backward compatible). Il profilo vive in
+> `clamguardian/core/profiles.py`, è immutabile e validato
+> (`ProfileError`), e la sua traduzione verso clamd/clamscan avviene
+> esclusivamente nel layer engine. Dettagli: `docs/design/scan-profiles.md`.
+
 Questo documento descrive le API del core **così come esistono dopo M0.5**.
 È il contratto di riferimento per tutti i front-end futuri (GTK, CLI, headless).
 Le interfacce qui definite sono congelate: modifiche breaking richiedono una

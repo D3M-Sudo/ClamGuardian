@@ -11,6 +11,7 @@ from pathlib import Path
 
 from ..core.base import BaseAVEngine, ScanResult, ScanStatus
 from ..core.errors import EngineError
+from ..core.profiles import DEFAULT_PROFILE, ScanProfile
 
 #: Grace period given to a subprocess after ``SIGTERM`` before ``SIGKILL``.
 TERMINATE_GRACE_SECONDS = 5.0
@@ -39,23 +40,46 @@ class ClamAVEngine(BaseAVEngine):
         self.flatpak_host = flatpak_host
         self.command_timeout = command_timeout
 
-    async def scan(self, target: Path, *, recursive: bool = True) -> ScanResult:
-        """Scan *target*, preferring clamd and falling back to clamscan."""
+    async def scan(
+        self,
+        target: Path,
+        *,
+        recursive: bool = True,
+        profile: ScanProfile | None = None,
+    ) -> ScanResult:
+        """Scan *target*, preferring clamd and falling back to clamscan.
+
+        ``profile=None`` preserves the pre-M2 behaviour: the engine default
+        profile is applied (recursion driven by ``recursive``).
+        """
         target = Path(target).expanduser().resolve(strict=True)
+        if profile is None:
+            profile = DEFAULT_PROFILE.with_overrides(recursive=recursive)
+        else:
+            profile.validate()
         started = datetime.now(UTC)
         if self.socket_path.exists():
             try:
-                output, exit_code = await asyncio.wait_for(
-                    self._scan_socket(target), self.command_timeout
+                output, exit_code, unsupported = await asyncio.wait_for(
+                    self._scan_socket(target, profile), self.command_timeout
                 )
-                return self._result(target, started, output, exit_code, "clamd")
+                result = self._result(target, started, output, exit_code, "clamd")
+                # Explicit policy for options clamd cannot honour per
+                # connection (they are clamd.conf server-side settings):
+                # never silently ignored, always reported in metadata.
+                if unsupported:
+                    result.metadata["profile_unsupported_clamd"] = ",".join(unsupported)
+                result.metadata["profile_id"] = profile.id
+                return result
             except (TimeoutError, OSError, ValueError):
                 pass
         try:
-            output, exit_code = await self._run_cli_scan(target, recursive=recursive)
+            output, exit_code = await self._run_cli_scan(target, profile=profile)
         except TimeoutError:
             return ScanResult.timed_out(str(target), started)
-        return self._result(target, started, output, exit_code, "clamscan")
+        result = self._result(target, started, output, exit_code, "clamscan")
+        result.metadata["profile_id"] = profile.id
+        return result
 
     async def update_signatures(self) -> str:
         """Run freshclam using the host when Flatpak integration is enabled."""
@@ -64,10 +88,18 @@ class ClamAVEngine(BaseAVEngine):
             raise EngineError(f"freshclam failed with exit code {code}: {output.strip()}")
         return output.strip()
 
-    async def _scan_socket(self, target: Path) -> tuple[str, int]:
+    async def _scan_socket(
+        self, target: Path, profile: ScanProfile
+    ) -> tuple[str, int, tuple[str, ...]]:
+        """Run a clamd scan; return (output, code, unsupported-profile-options)."""
+        unsupported = self._clamd_unsupported_options(profile)
         reader, writer = await asyncio.open_unix_connection(str(self.socket_path))
         try:
-            writer.write(b"SCAN " + os.fsencode(str(target)) + b"\n")
+            # clamd has no per-connection option channel: recursion is the
+            # only profile aspect expressible, via CONTSCAN (recursive scan
+            # of a directory) vs SCAN (single file / non-recursive).
+            command = b"CONTSCAN" if profile.recursive and target.is_dir() else b"SCAN"
+            writer.write(command + b" " + os.fsencode(str(target)) + b"\n")
             await writer.drain()
             chunks: list[bytes] = []
             while True:
@@ -83,16 +115,74 @@ class ClamAVEngine(BaseAVEngine):
                 if any(" ERROR" in line or line.endswith("ERROR") for line in output.splitlines())
                 else 0
             )
-            return output, code
+            return output, code, unsupported
         finally:
             writer.close()
             await writer.wait_closed()
 
-    async def _run_cli_scan(self, target: Path, *, recursive: bool) -> tuple[str, int]:
-        args = [self.clamscan_binary, "--no-summary"]
-        if recursive and target.is_dir():
+    @staticmethod
+    def _clamd_unsupported_options(profile: ScanProfile) -> tuple[str, ...]:
+        """Profile options clamd cannot honour per connection.
+
+        These are *not* dropped silently: the caller records them in
+        ``ScanResult.metadata["profile_unsupported_clamd"]`` so front-ends can
+        inform the user that the daemon's clamd.conf governs them.
+        """
+        unsupported: list[str] = []
+        if not profile.scan_archives:
+            unsupported.append("scan_archives")
+        if not profile.scan_mail:
+            unsupported.append("scan_mail")
+        if profile.detect_pua:
+            unsupported.append("detect_pua")
+        if profile.max_filesize_mib is not None:
+            unsupported.append("max_filesize_mib")
+        if profile.max_scansize_mib is not None:
+            unsupported.append("max_scansize_mib")
+        if profile.max_recursion is not None:
+            unsupported.append("max_recursion")
+        if profile.max_files is not None:
+            unsupported.append("max_files")
+        if profile.follow_symlinks is not None:
+            unsupported.append("follow_symlinks")
+        return tuple(unsupported)
+
+    @staticmethod
+    def _clamscan_args(profile: ScanProfile) -> list[str]:
+        """Translate a :class:`ScanProfile` into clamscan CLI arguments.
+
+        This is the single place where semantic profile options become
+        engine-specific strings; front-ends never see these.
+        """
+        args: list[str] = []
+        if profile.recursive:
             args.append("--recursive")
-        args.append(str(target))
+        if profile.scan_archives:
+            args.append("--scan-archive=yes")
+        else:
+            args.append("--scan-archive=no")
+        if profile.scan_mail:
+            args.append("--scan-mail=yes")
+        else:
+            args.append("--scan-mail=no")
+        if profile.detect_pua:
+            args.append("--pua")
+        if profile.max_filesize_mib is not None:
+            args.append(f"--max-filesize={profile.max_filesize_mib}M")
+        if profile.max_scansize_mib is not None:
+            args.append(f"--max-scansize={profile.max_scansize_mib}M")
+        if profile.max_recursion is not None:
+            args.append(f"--max-recursion={profile.max_recursion}")
+        if profile.max_files is not None:
+            args.append(f"--max-files={profile.max_files}")
+        if profile.follow_symlinks is True:
+            args.append("--follow-symlinks")
+        elif profile.follow_symlinks is False:
+            args.append("--nofollow-symlinks")
+        return args
+
+    async def _run_cli_scan(self, target: Path, *, profile: ScanProfile) -> tuple[str, int]:
+        args = [self.clamscan_binary, "--no-summary", *self._clamscan_args(profile), str(target)]
         return await self._run_command(args)
 
     async def _run_command(self, args: Sequence[str]) -> tuple[str, int]:

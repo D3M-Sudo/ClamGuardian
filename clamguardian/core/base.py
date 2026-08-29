@@ -7,7 +7,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .profiles import ScanProfile
 
 
 class ScanStatus(Enum):
@@ -110,8 +113,21 @@ class BaseAVEngine(ABC):
     name: str
 
     @abstractmethod
-    async def scan(self, target: Path, *, recursive: bool = True) -> ScanResult:
-        """Scan a file or directory and return a normalized result."""
+    async def scan(
+        self,
+        target: Path,
+        *,
+        recursive: bool = True,
+        profile: ScanProfile | None = None,
+    ) -> ScanResult:
+        """Scan a file or directory and return a normalized result.
+
+        ``profile`` is an optional :class:`~clamguardian.core.profiles.ScanProfile`;
+        when ``None`` the engine applies its default profile (backward
+        compatible with the pre-M2 API, where only ``recursive`` existed).
+        Engines translate the profile into engine-specific configuration;
+        front-ends never build engine arguments themselves.
+        """
         raise NotImplementedError
 
     @abstractmethod

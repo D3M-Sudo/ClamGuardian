@@ -20,3 +20,11 @@ class EngineError(ClamGuardianError):
     former propagates as :class:`asyncio.CancelledError`, the latter is
     reported through :attr:`~clamguardian.core.base.ScanStatus.TIMEOUT`.
     """
+
+
+class ProfileError(ClamGuardianError):
+    """Raised when a :class:`~clamguardian.core.profiles.ScanProfile` is
+    invalid (failed validation) or an unknown profile id is requested from a
+    registry. Kept separate from :class:`EngineError` because profile
+    validation happens *before* any engine is involved.
+    """

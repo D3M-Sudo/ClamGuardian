@@ -16,7 +16,14 @@ async def test_cli_fallback_scans_and_normalizes(
     engine = ClamAVEngine(socket_path=tmp_path / "missing.sock")
 
     async def fake_command(args):
-        assert args == ["clamscan", "--no-summary", str(target)]
+        assert args == [
+            "clamscan",
+            "--no-summary",
+            "--recursive",
+            "--scan-archive=yes",
+            "--scan-mail=yes",
+            str(target),
+        ]
         return f"{target}: OK\n", 0
 
     monkeypatch.setattr(engine, "_run_command", fake_command)
