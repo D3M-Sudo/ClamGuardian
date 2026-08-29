@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import os
+import signal
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ..core.base import BaseAVEngine, ScanResult
+from ..core.base import BaseAVEngine, ScanResult, ScanStatus
+from ..core.errors import EngineError
+
+#: Grace period given to a subprocess after ``SIGTERM`` before ``SIGKILL``.
+TERMINATE_GRACE_SECONDS = 5.0
 
 
 class ClamAVEngine(BaseAVEngine):
@@ -46,14 +51,17 @@ class ClamAVEngine(BaseAVEngine):
                 return self._result(target, started, output, exit_code, "clamd")
             except (TimeoutError, OSError, ValueError):
                 pass
-        output, exit_code = await self._run_cli_scan(target, recursive=recursive)
+        try:
+            output, exit_code = await self._run_cli_scan(target, recursive=recursive)
+        except TimeoutError:
+            return ScanResult.timed_out(str(target), started)
         return self._result(target, started, output, exit_code, "clamscan")
 
     async def update_signatures(self) -> str:
         """Run freshclam using the host when Flatpak integration is enabled."""
         output, code = await self._run_command([self.freshclam_binary])
         if code != 0:
-            raise RuntimeError(f"freshclam failed with exit code {code}: {output.strip()}")
+            raise EngineError(f"freshclam failed with exit code {code}: {output.strip()}")
         return output.strip()
 
     async def _scan_socket(self, target: Path) -> tuple[str, int]:
@@ -89,20 +97,58 @@ class ClamAVEngine(BaseAVEngine):
 
     async def _run_command(self, args: Sequence[str]) -> tuple[str, int]:
         command = ["flatpak-spawn", "--host", *args] if self.flatpak_host else list(args)
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            start_new_session=True,
-        )
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            raise EngineError(f"failed to start {command[0]!r}: {exc}") from exc
         try:
             stdout, _ = await asyncio.wait_for(process.communicate(), self.command_timeout)
         except TimeoutError:
-            process.kill()
-            await process.wait()
+            await self._terminate_process(process)
+            raise
+        except asyncio.CancelledError:
+            # Cancellation must reach the subprocess: terminate the whole
+            # process group started with ``start_new_session=True``, wait for
+            # it to die, then re-raise so the caller still observes the
+            # CancelledError (never a generic failure).
+            await self._terminate_process(process)
             raise
         return stdout.decode("utf-8", errors="replace"), int(process.returncode or 0)
+
+    @staticmethod
+    async def _terminate_process(
+        process: asyncio.subprocess.Process, grace: float = TERMINATE_GRACE_SECONDS
+    ) -> None:
+        """Deterministically reap *process*: terminate, kill, then wait.
+
+        Safe to call on an already-exited process and never kills twice.
+        Because subprocesses run in their own session (``start_new_session``),
+        the signal targets the whole process group so ClamAV helper children
+        cannot survive as orphans.
+        """
+        if process.returncode is not None:
+            return  # already exited: nothing to reap
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            try:
+                process.terminate()
+            except ProcessLookupError:
+                return
+        try:
+            await asyncio.wait_for(process.wait(), grace)
+        except TimeoutError:
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                process.kill()
+            await process.wait()
 
     @staticmethod
     def _result(
@@ -113,13 +159,21 @@ class ClamAVEngine(BaseAVEngine):
             for line in output.splitlines()
             if line.strip().endswith("FOUND") or ": " in line and " FOUND" in line
         )
-        clean = exit_code == 0 and not threats
+        if exit_code == 0 and not threats:
+            status = ScanStatus.CLEAN
+        elif threats:
+            status = ScanStatus.INFECTED
+        else:
+            status = ScanStatus.ERROR
         error = (
-            None if clean or threats else output.strip() or f"{engine} exited with code {exit_code}"
+            None
+            if status in (ScanStatus.CLEAN, ScanStatus.INFECTED)
+            else output.strip() or f"{engine} exited with code {exit_code}"
         )
         return ScanResult(
             target=str(target),
-            clean=clean,
+            clean=status is ScanStatus.CLEAN,
+            status=status,
             threats=threats,
             engine=engine,
             error=error,

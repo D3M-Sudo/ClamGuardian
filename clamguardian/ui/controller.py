@@ -30,18 +30,42 @@ class ShieldTaskController(GObject.Object):
         self._runner = ScanTaskRunner(engine or ClamAVEngine(), max_concurrency=max_concurrency)
 
     async def scan(self, target: Path, *, recursive: bool = True) -> ScanResult:
-        """Emit lifecycle signals around one asynchronous scan."""
+        """Emit lifecycle signals around one asynchronous scan.
+
+        Signal semantics:
+
+        * ``scan-started`` — emitted exactly once, when the scan actually
+          starts running (concurrency slot acquired), never while queued.
+        * ``threat-detected`` — emitted once per threat found; it does *not*
+          imply the scan is over and is emitted before ``scan-finished``.
+        * ``scan-finished`` — emitted only when the scan concluded with a
+          result (clean, infected, error or timeout).
+        * ``scan-cancelled`` — emitted instead of ``scan-finished`` when the
+          caller cancels the scan; always followed by re-raising
+          :class:`asyncio.CancelledError`.
+
+        Engine exceptions (:class:`~clamguardian.core.errors.EngineError`)
+        propagate to the caller untouched: core never converts them into
+        signals or generic errors.
+        """
         target = Path(target)
         target_label = str(target)
-        self.emit("scan-started", target_label)
+        started_emitted = False
+
+        def _notify_start() -> None:
+            nonlocal started_emitted
+            if not started_emitted:
+                started_emitted = True
+                self.emit("scan-started", target_label)
+
         try:
-            result = await self._runner.submit(target, recursive=recursive)
+            result = await self._runner.submit(target, recursive=recursive, on_start=_notify_start)
         except asyncio.CancelledError:
             self.emit("scan-cancelled", target_label)
             raise
-        self.emit("scan-finished", result)
         for threat in result.threats:
             self.emit("threat-detected", target_label, threat)
+        self.emit("scan-finished", result)
         return result
 
     def cancel_all(self) -> asyncio.Task[None]:
