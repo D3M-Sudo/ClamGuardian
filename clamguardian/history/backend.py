@@ -120,9 +120,27 @@ def _parse_metadata(text: str | None) -> dict[str, str]:
     return {str(k): str(v) for k, v in parsed.items()}
 
 
-def _row_to_record(row: sqlite3.Row) -> HistoryRecord:
-    """Rebuild a HistoryRecord from a ``scan_history`` row (threats empty)."""
-    zeroed_float = float(row["duration_seconds"] or 0.0)
+def _iter_schema_statements(script: str) -> list[str]:
+    """Split a static DDL script into individual executable statements."""
+    return [s.strip() for s in script.split(";") if s.strip()]
+
+
+def _row_to_record(row: sqlite3.Row) -> HistoryRecord | None:
+    """Rebuild a HistoryRecord from a ``scan_history`` row (threats empty).
+
+    Defensive parsing policy: a row that cannot be converted into a *valid*
+    record (malformed timestamps, unknown status, non-scalar corruption) is
+    reported as ``None`` and skipped by callers instead of crashing the whole
+    query. Valid data is never silently altered.
+    """
+    if not is_valid_status(str(row["status"])):
+        return None
+    try:
+        started_at = decode_timestamp(str(row["started_at"]))
+        finished_at = decode_timestamp(str(row["finished_at"]))
+        created_at = decode_timestamp(str(row["created_at"]))
+    except (ValueError, TypeError):
+        return None
     return HistoryRecord(
         id=str(row["id"]),
         target=str(row["target"]),
@@ -134,10 +152,10 @@ def _row_to_record(row: sqlite3.Row) -> HistoryRecord:
         profile_id=row["profile_id"],
         profile_snapshot=_parse_snapshot(row["profile_snapshot"]),
         metadata=_parse_metadata(row["metadata_json"]),
-        started_at=decode_timestamp(str(row["started_at"])),
-        finished_at=decode_timestamp(str(row["finished_at"])),
-        created_at=decode_timestamp(str(row["created_at"])),
-        duration_seconds=zeroed_float,
+        started_at=started_at,
+        finished_at=finished_at,
+        created_at=created_at,
+        duration_seconds=float(row["duration_seconds"] or 0.0),
     )
 
 
@@ -182,7 +200,10 @@ class SqliteHistoryStore:
 
         existed = self.path.exists()
         try:
-            conn = sqlite3.connect(self.path, timeout=5.0)
+            # check_same_thread=False: the single connection may be reached
+            # from worker threads (e.g. asyncio.to_thread consumers). This is
+            # safe because *every* access is serialized by ``self._lock``.
+            conn = sqlite3.connect(self.path, timeout=5.0, check_same_thread=False)
         except sqlite3.Error as exc:
             raise HistoryError(f"cannot open history database: {exc}") from exc
 
@@ -197,10 +218,28 @@ class SqliteHistoryStore:
 
         try:
             self._migrate(conn)
-        except sqlite3.Error as exc:
+        except (sqlite3.Error, HistoryError) as exc:
             conn.close()
             raise HistoryError(f"history schema init failed: {exc}") from exc
         self._conn = conn
+        self._harden_aux_files()
+
+    def _harden_aux_files(self) -> None:
+        """Best-effort ``0600`` on the WAL/SHM sidecar files.
+
+        SQLite creates ``<db>-wal`` and ``<db>-shm`` with mode ``0644 & ~umask``,
+        which may be group/world readable. They hold the same sensitive data as
+        the database (targets, threats, metadata), so tighten them whenever they
+        exist. Files may be (re)created lazily by SQLite; callers re-invoke this
+        after write transactions. Failure is non-fatal (see ``_initialize``).
+        """
+        for suffix in ("-wal", "-shm"):
+            try:
+                sidecar = self.path.with_name(self.path.name + suffix)
+                if sidecar.exists():
+                    os.chmod(sidecar, _DB_MODE)
+            except OSError:
+                pass
 
     @staticmethod
     def _configure(conn: sqlite3.Connection) -> None:
@@ -221,15 +260,30 @@ class SqliteHistoryStore:
     @staticmethod
     def _run_migrations(conn: sqlite3.Connection, target: int) -> None:
         current = SqliteHistoryStore._current_version(conn)
+        if current > target:
+            # A database written by a newer ClamGuardian must never be opened
+            # with older (incompatible) schema expectations: fail loudly.
+            raise HistoryError(
+                f"history database schema version {current} is newer than "
+                f"the supported version {target}"
+            )
         version = current
         while version < target:
             if version == 0:
-                # executescript runs the DDL and implicitly commits; the
-                # ``user_version`` bump is folded into the same script so an
-                # interruption cannot leave a half-migrated database flagged
-                # as current.
-                connection_target = f"user_version = {version + 1}"
-                conn.executescript(_SCHEMA_V1 + f"\nPRAGMA {connection_target};")
+                # Explicit transaction: the whole DDL set AND the user_version
+                # bump commit atomically or not at all. ``executescript`` does
+                # NOT provide this guarantee under isolation_level=None (each
+                # statement would autocommit), so the statements are run
+                # individually inside BEGIN IMMEDIATE / COMMIT.
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    for statement in _iter_schema_statements(_SCHEMA_V1):
+                        conn.execute(statement)
+                    conn.execute(f"PRAGMA user_version = {version + 1}")
+                    conn.execute("COMMIT")
+                except BaseException:
+                    conn.execute("ROLLBACK")
+                    raise
                 version += 1
             else:
                 # Future incremental migrations (1 -> 2, 2 -> 3, ...) are
@@ -284,14 +338,16 @@ class SqliteHistoryStore:
                             record.profile_id,
                             (
                                 json.dumps(
-                                    record.profile_snapshot,
+                                    dict(record.profile_snapshot),
                                     sort_keys=True,
                                     separators=(",", ":"),
                                 )
                                 if record.profile_snapshot is not None
                                 else None
                             ),
-                            json.dumps(record.metadata, sort_keys=True, separators=(",", ":")),
+                            json.dumps(
+                                dict(record.metadata), sort_keys=True, separators=(",", ":")
+                            ),
                             encode_timestamp(record.started_at),
                             encode_timestamp(record.finished_at),
                             encode_timestamp(record.created_at),
@@ -303,6 +359,8 @@ class SqliteHistoryStore:
                 except BaseException:
                     conn.execute("ROLLBACK")
                     raise
+                # WAL/SHM sidecars may have been (re)created by this write.
+                self._harden_aux_files()
             except sqlite3.Error as exc:
                 raise HistoryError(f"failed to record scan: {exc}") from exc
         return record
@@ -317,6 +375,9 @@ class SqliteHistoryStore:
             if row is None:
                 return None
             record = _row_to_record(row)
+            if record is None:
+                # Malformed row: treated as missing per the defensive policy.
+                return None
             threats = _attach_threats(conn, record.id)
         return replace(record, threats=threats)
 
@@ -368,7 +429,12 @@ class SqliteHistoryStore:
         conn = self._require_conn()
         with self._lock:
             rows = conn.execute(sql, params).fetchall()
-        return [_row_to_record(row) for row in rows]
+        records: list[HistoryRecord] = []
+        for row in rows:
+            record = _row_to_record(row)
+            if record is not None:  # skip malformed rows defensively
+                records.append(record)
+        return records
 
     async def delete_scan(self, scan_id: str) -> bool:
         """Delete one scan, cascading its threats; ``False`` if it did not exist."""

@@ -458,11 +458,33 @@ async def test_clear_cascades_threats(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_concurrent_record_writes_no_loss_no_duplicates(tmp_path: Path) -> None:
+    """Real OS-thread concurrency via ``asyncio.to_thread``.
+
+    ``record_scan`` contains no ``await``, so a plain ``asyncio.gather`` would
+    run everything sequentially on one event loop (a false positive). Each
+    write here runs on a distinct worker thread against the *same* store, so
+    the backend's ``threading.RLock`` + single-connection model is what is
+    actually exercised. What is proven: no lost records, no duplicate ids, no
+    partial master/threat transactions under cross-thread contention. What is
+    NOT proven (and not part of the design): multi-process write scaling;
+    SQLite calls remain synchronous and serialized by the lock.
+    """
     store = make_store(tmp_path)
 
     async def write(i: int) -> str:
-        rec = await store.record_scan(
-            make_result(target=f"/target-{i}", status=ScanStatus.INFECTED, threats=("E" + str(i),))
+        # asyncio.to_thread only moves the *call* to a thread, so the coroutine
+        # is driven to completion there with asyncio.run (it contains no
+        # awaits, so this does not change its semantics -- it only places the
+        # synchronous SQLite work on a real OS thread).
+        rec = await asyncio.to_thread(
+            asyncio.run,
+            store.record_scan(
+                make_result(
+                    target=f"/target-{i}",
+                    status=ScanStatus.INFECTED,
+                    threats=("E" + str(i),),
+                )
+            ),
         )
         return rec.id
 
@@ -596,6 +618,156 @@ def test_default_path_falls_back_to_local_share(
 
 # ---------------------------------------------------------------------------
 # Store contract & error semantics
+
+# ---------------------------------------------------------------------------
+# P1 fix regression tests (deep immutability, migration, WAL perms, rows)
+# ---------------------------------------------------------------------------
+
+
+def test_record_metadata_is_deeply_immutable() -> None:
+    rec = history_record_from_scan(make_result(metadata={"a": "1"}))
+    with pytest.raises(TypeError):
+        rec.metadata["x"] = "y"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        del rec.metadata["a"]  # type: ignore[attr-defined]
+
+
+def test_record_profile_snapshot_is_deeply_immutable() -> None:
+    rec = history_record_from_scan(make_result(), profile=ScanProfile.custom())
+    assert rec.profile_snapshot is not None
+    with pytest.raises(TypeError):
+        rec.profile_snapshot["x"] = "y"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        del rec.profile_snapshot["id"]  # type: ignore[attr-defined]
+
+
+def test_record_deep_freeze_covers_input_isolation() -> None:
+    metadata = {"k": "v"}
+    profile = ScanProfile.custom()
+    rec = history_record_from_scan(make_result(metadata=metadata), profile=profile)
+    metadata["k"] = "changed"
+    profile.with_overrides(name="Renamed")
+    assert rec.metadata == {"k": "v"}
+    assert rec.profile_snapshot is not None
+    assert rec.profile_snapshot["name"] == "Custom Scan"
+
+
+def test_migration_failure_leaves_no_partial_schema(tmp_path: Path) -> None:
+    """A failure mid-migration must roll back the entire transaction.
+
+    A pre-existing conflicting ``scan_threats`` table forces the migration to
+    fail deterministically *after* ``scan_history`` has been created, so the
+    rollback (or lack thereof) is observable.
+    """
+    db_path = tmp_path / "history.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE scan_threats (id INTEGER PRIMARY KEY)")
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(HistoryError):
+        SqliteHistoryStore(db_path)
+
+    conn = sqlite3.connect(db_path)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 0
+    tables = {
+        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
+    assert "scan_history" not in tables  # rolled back, no partial schema
+    conn.close()
+
+    # Removing the conflict must allow a clean, complete re-initialization.
+    conn = sqlite3.connect(db_path)
+    conn.execute("DROP TABLE scan_threats")
+    conn.commit()
+    conn.close()
+    store = SqliteHistoryStore(db_path)
+    conn = sqlite3.connect(store.path)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    assert {"scan_history", "scan_threats"} <= {
+        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
+    conn.close()
+
+
+def test_future_schema_version_rejected(tmp_path: Path) -> None:
+    db_path = tmp_path / "history.db"
+    SqliteHistoryStore(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION + 1}")
+    conn.close()
+    with pytest.raises(HistoryError):
+        SqliteHistoryStore(db_path)
+
+
+@pytest.mark.asyncio
+async def test_wal_shm_sidecar_permissions(tmp_path: Path) -> None:
+    """When present, -wal/-shm sidecars must be 0600 (best-effort, Unix)."""
+    store = make_store(tmp_path)
+    rec = await store.record_scan(
+        make_result(status=ScanStatus.INFECTED, threats=("X",), metadata={"k": "v"})
+    )
+    # WAL/SHM are created lazily by SQLite; if the filesystem does not expose
+    # them, skipping is motivated, not a silent pass.
+    wal = Path(str(store.path) + "-wal")
+    shm = Path(str(store.path) + "-shm")
+    if not wal.exists() and not shm.exists():
+        pytest.skip("filesystem/SQLite build does not expose WAL sidecar files")
+    for sidecar in (wal, shm):
+        if sidecar.exists():
+            assert sidecar.stat().st_mode & 0o777 == 0o600, sidecar
+    # chmod must not break normal SQLite operation.
+    rec2 = await store.record_scan(make_result(target="/after-chmod"))
+    assert (await store.get_scan(rec2.id)) is not None
+    assert (await store.get_scan(rec.id)) is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "column,value",
+    [
+        ("started_at", "not-a-date"),
+        ("finished_at", "not-a-date"),
+        ("created_at", "not-a-date"),
+        ("status", "INVALID"),
+    ],
+)
+async def test_malformed_rows_are_skipped_not_crashing(
+    tmp_path: Path, column: str, value: str
+) -> None:
+    store = make_store(tmp_path)
+    good = await store.record_scan(make_result(target="/good"))
+    bad = await store.record_scan(make_result(target="/bad"))
+    conn = sqlite3.connect(store.path)
+    # The CHECK constraint would reject an invalid status at write time; the
+    # injection simulates a row corrupted out-of-band (e.g. older tooling).
+    conn.execute("PRAGMA ignore_check_constraints = ON")
+    # column comes from the fixed whitelist above, not from user input.
+    conn.execute(f"UPDATE scan_history SET {column} = ? WHERE id = ?", (value, bad.id))
+    conn.commit()
+    conn.close()
+    # Corrupt row: treated as missing / skipped, valid rows unaffected.
+    assert await store.get_scan(bad.id) is None
+    assert await store.get_scan(good.id) is not None
+    assert [r.target for r in await store.list_scans()] == ["/good"]
+
+
+@pytest.mark.asyncio
+async def test_malformed_json_columns_are_defensive(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    rec = await store.record_scan(make_result(metadata={"k": "v"}))
+    conn = sqlite3.connect(store.path)
+    conn.execute(
+        "UPDATE scan_history SET metadata_json = '{broken', profile_snapshot = '[not-a-dict' "
+        "WHERE id = ?",
+        (rec.id,),
+    )
+    conn.commit()
+    conn.close()
+    got = await store.get_scan(rec.id)
+    assert got is not None
+    assert got.metadata == {}
+    assert got.profile_snapshot is None
 # ---------------------------------------------------------------------------
 
 

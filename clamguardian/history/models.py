@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from datetime import UTC, datetime
+from types import MappingProxyType
 from typing import Any
 
 from ..core.base import ScanResult
@@ -115,6 +117,20 @@ def valid_statuses() -> tuple[str, ...]:
     return ("clean", "infected", "error", "timeout", "cancelled")
 
 
+def _freeze_deep(value: Any) -> Any:
+    """Recursively convert mutable containers into immutable equivalents.
+
+    ``dict`` becomes :class:`types.MappingProxyType`, ``list`` becomes
+    ``tuple``; scalars are returned as-is. This guarantees that a frozen
+    :class:`HistoryRecord` is *deeply* immutable, not merely shallow-frozen.
+    """
+    if isinstance(value, dict):
+        return MappingProxyType({k: _freeze_deep(v) for k, v in value.items()})
+    if isinstance(value, list):
+        return tuple(_freeze_deep(v) for v in value)
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class HistoryRecord:
     """Immutable snapshot of a completed scan, safe for persistence.
@@ -133,12 +149,20 @@ class HistoryRecord:
     threats: tuple[str, ...]
     error: str | None
     profile_id: str | None
-    profile_snapshot: dict[str, object] | None
-    metadata: dict[str, str]
+    profile_snapshot: Mapping[str, object] | None
+    metadata: Mapping[str, str]
     started_at: datetime
     finished_at: datetime
     created_at: datetime
     duration_seconds: float
+
+    def __post_init__(self) -> None:
+        # frozen=True only blocks attribute *reassignment*; the mapping values
+        # would still be mutable. Deep-freeze them into immutable proxies so a
+        # HistoryRecord can never be modified through its dict-shaped fields
+        # (and nested structures are frozen too, not just the top level).
+        object.__setattr__(self, "metadata", _freeze_deep(self.metadata))
+        object.__setattr__(self, "profile_snapshot", _freeze_deep(self.profile_snapshot))
 
 
 def history_record_from_scan(
