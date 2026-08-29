@@ -15,6 +15,9 @@ dependencies = [
   "aiohttp>=3.10",
 ]
 
+[project.scripts]
+clamguardian = "clamguardian.cli.main:main"
+
 [project.optional-dependencies]
 gtk = [
   "PyGObject>=3.46",
