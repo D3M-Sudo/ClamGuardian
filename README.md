@@ -3,6 +3,7 @@
 [![CI](https://github.com/D3M-Sudo/ClamGuardian/actions/workflows/ci.yml/badge.svg)](https://github.com/D3M-Sudo/ClamGuardian/actions/workflows/ci.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
+[![Code style: ruff](https://img.shields.io/badge/lint-ruff-261230.svg)](https://github.com/astral-sh/ruff)
 
 ClamGuardian is a Linux-first security framework built around ClamAV. It provides an asynchronous AV abstraction, encrypted quarantine, native GObject event signalling, and a dynamic threat-intelligence provider layer suitable for GTK4/Libadwaita applications and headless integrations.
 
@@ -45,20 +46,28 @@ QuarantineVault ---> AES-256-GCM encrypted records
 
 ## Installation
 
-ClamGuardian targets Linux systems with Python 3.11 or newer. PyGObject requires the corresponding system GObject/GTK development packages.
+Core dependencies are intentionally minimal (`cryptography`, `aiohttp`): PyGObject lives in the optional `[gtk]` extra, so headless machines can install and test the framework without building GTK bindings. A `uv.lock` is provided for reproducible environments.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install '.[test]'
+python -m pip install '.[test]'        # headless (core framework + tests)
+python -m pip install '.[test,gtk]'    # full desktop (adds PyGObject >= 3.53)
 ```
 
-On Debian/Ubuntu systems, install PyGObject prerequisites if pip needs to build it:
+With [uv](https://docs.astral.sh/uv/) the locked environments are:
+
+```bash
+uvx --with '.[test]' pytest            # headless CI path
+uvx --with '.[test,gtk]' pytest        # full GTK path
+```
+
+On Debian/Ubuntu systems, install PyGObject build prerequisites if pip needs to compile it. The `gtk` extra pins PyGObject >= 3.53, which requires the girepository-2.0 bindings (`libgirepository-2.0-dev`):
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y libgirepository1.0-dev gir1.2-gtk-4.0 gir1.2-adw-1 libcairo2-dev pkg-config
+sudo apt-get install -y libgirepository-2.0-dev gir1.2-gtk-4.0 gir1.2-adw-1 libcairo2-dev pkg-config python3-dev meson ninja-build
 ```
 
 A working ClamAV installation is required for real scans. The framework itself does not install or configure the antivirus daemon.
@@ -172,13 +181,27 @@ Run the local test suite with:
 pytest
 ```
 
-Lint with:
+Lint and type-check with:
 
 ```bash
 ruff check .
+mypy clamguardian
 ```
 
-GitHub Actions tests Python 3.11, 3.12, and 3.13 and installs the GTK/PyGObject system dependencies required by the package.
+GitHub Actions (`.github/workflows/ci.yml`) runs `ruff` and `pytest` on Python 3.11, 3.12, and 3.13, installs the GTK/PyGObject system dependencies required by the package, and triggers on every pull request plus pushes to `main`.
+
+## Branching model
+
+Development follows the flow `feature → testing → development → main`:
+
+| Branch | Role | Protection |
+|---|---|---|
+| `feature` | Active development of new functionality | open |
+| `testing` | Integration and QA of features | PR-only, no force push/delete |
+| `development` | Stable pre-release integration | PR-only, no force push/delete |
+| `main` | Production; releases are cut from here | PR-only, 1 approving review, stale-review dismissal, conversations must be resolved |
+
+`main` and `development` (and `testing`) are protected: changes land exclusively through pull requests targeting the next branch in the chain.
 
 ## Scope
 
