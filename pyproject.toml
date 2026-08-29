@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "clamguardian"
+version = "0.1.0"
+description = "Security framework for ClamAV scanning, quarantine, and threat intelligence on Linux"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "ClamGuardian contributors" }]
+dependencies = [
+  "cryptography>=43.0",
+  "aiohttp>=3.10",
+  "PyGObject>=3.46",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+]
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["clamguardian"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
