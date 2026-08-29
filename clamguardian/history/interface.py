@@ -32,13 +32,18 @@ class HistoryStore(Protocol):
     * ``get_scan(nonexistent)`` -> ``None``
     * ``delete_scan(nonexistent)`` -> ``False``
     * ``clear_history()`` -> number of deleted scan rows
+    * ``purge()`` with no criteria -> :class:`ValueError`
+    * ``purge(before)`` -> number of deleted scan rows older than *before*
+    * ``purge(status)`` -> number of deleted scan rows matching *status*
     * invalid API arguments (e.g. an unknown ``status``, ``limit <= 0``) ->
       :class:`ValueError`
     * storage/backend failure -> :class:`HistoryError`
 
     History is append-oriented; there is deliberately no ``update``, ``watch``,
     ``subscribe`` or ``get_statistics``. ``list_scans`` does not load threat
-    details; use :meth:`get_scan` for the full record.
+    details; use :meth:`get_scan` for the full record. ``purge`` is the sole
+    destructive management operation: it requires at least one selection
+    criterion so it can never silently clear the whole history.
     """
 
     async def record_scan(self, result: ScanResult) -> HistoryRecord: ...
@@ -60,6 +65,13 @@ class HistoryStore(Protocol):
     async def delete_scan(self, scan_id: str) -> bool: ...
 
     async def clear_history(self) -> int: ...
+
+    async def purge(
+        self,
+        *,
+        before: datetime | None = None,
+        status: str | None = None,
+    ) -> int: ...
 
     async def count_scans(self, *, status: str | None = None) -> int: ...
 

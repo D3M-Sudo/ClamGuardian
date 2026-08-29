@@ -326,8 +326,170 @@ async def test_count_scans_filter(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Ordering / filters
+# Purge: retention-oriented deletion (M4-B7)
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_purge_before_removes_only_older_records(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    cutoff = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
+    await store.record_scan(make_result(target="/old", started_at=cutoff - timedelta(hours=1)))
+    await store.record_scan(make_result(target="/exact", started_at=cutoff))
+    await store.record_scan(make_result(target="/new", started_at=cutoff + timedelta(hours=1)))
+    deleted = await store.purge(before=cutoff)
+    assert deleted == 1
+    remaining = await store.list_scans()
+    assert [r.target for r in remaining] == ["/new", "/exact"]
+
+
+@pytest.mark.asyncio
+async def test_purge_status_removes_only_matching(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    await store.record_scan(make_result(target="/clean", status=ScanStatus.CLEAN))
+    await store.record_scan(
+        make_result(target="/infected", status=ScanStatus.INFECTED, threats=("X",))
+    )
+    deleted = await store.purge(status="clean", before=datetime(9999, 1, 1, tzinfo=UTC))
+    assert deleted == 1
+    remaining = await store.list_scans()
+    assert [r.target for r in remaining] == ["/infected"]
+
+
+@pytest.mark.asyncio
+async def test_purge_before_and_status_combined(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    cutoff = datetime(2026, 6, 1, tzinfo=UTC)
+    await store.record_scan(
+        make_result(target="/old-clean", started_at=cutoff - timedelta(hours=1))
+    )
+    await store.record_scan(
+        make_result(
+            target="/old-infected",
+            status=ScanStatus.INFECTED,
+            threats=("X",),
+            started_at=cutoff - timedelta(hours=1),
+        )
+    )
+    await store.record_scan(
+        make_result(target="/new-clean", started_at=cutoff + timedelta(hours=1))
+    )
+    deleted = await store.purge(before=cutoff, status="clean")
+    assert deleted == 1
+    remaining = await store.list_scans()
+    assert [r.target for r in remaining] == ["/new-clean", "/old-infected"]
+
+
+@pytest.mark.asyncio
+async def test_purge_no_criteria_raises(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    with pytest.raises(ValueError, match="at least one"):
+        await store.purge()
+
+
+@pytest.mark.asyncio
+async def test_purge_unknown_status_raises(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    with pytest.raises(ValueError, match="unknown status"):
+        await store.purge(status="bogus", before=datetime(9999, 1, 1, tzinfo=UTC))
+
+
+@pytest.mark.asyncio
+async def test_purge_empty_store_returns_zero(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    assert await store.purge(before=datetime(9999, 1, 1, tzinfo=UTC)) == 0
+
+
+@pytest.mark.asyncio
+async def test_purge_no_matching_records_returns_zero(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    await store.record_scan(
+        make_result(target="/new", started_at=datetime(2026, 6, 1, tzinfo=UTC))
+    )
+    assert await store.purge(before=datetime(2000, 1, 1, tzinfo=UTC)) == 0
+    assert await store.count_scans() == 1
+
+
+@pytest.mark.asyncio
+async def test_purge_all_matching_records(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    cutoff = datetime(2026, 6, 1, tzinfo=UTC)
+    for i in range(3):
+        await store.record_scan(
+            make_result(target=f"/old-{i}", started_at=cutoff - timedelta(days=i + 1))
+        )
+    deleted = await store.purge(before=cutoff)
+    assert deleted == 3
+    assert await store.count_scans() == 0
+
+
+@pytest.mark.asyncio
+async def test_purge_is_idempotent(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    cutoff = datetime(2026, 6, 1, tzinfo=UTC)
+    await store.record_scan(
+        make_result(target="/old", started_at=cutoff - timedelta(hours=1))
+    )
+    first = await store.purge(before=cutoff)
+    second = await store.purge(before=cutoff)
+    assert first == 1
+    assert second == 0
+
+
+@pytest.mark.asyncio
+async def test_purge_cascades_threats(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    old = await store.record_scan(
+        make_result(
+            target="/old-threat",
+            status=ScanStatus.INFECTED,
+            threats=("Eicar FOUND",),
+            started_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+    )
+    new = await store.record_scan(
+        make_result(
+            target="/new-threat",
+            status=ScanStatus.INFECTED,
+            threats=("Bogus FOUND",),
+            started_at=datetime(2026, 6, 1, tzinfo=UTC),
+        )
+    )
+    deleted = await store.purge(before=datetime(2026, 3, 1, tzinfo=UTC))
+    assert deleted == 1
+    assert await store.get_scan(old.id) is None
+    got = await store.get_scan(new.id)
+    assert got is not None
+    assert got.threats == ("Bogus FOUND",)
+    conn = sqlite3.connect(store.path)
+    orphan = conn.execute("SELECT COUNT(*) FROM scan_threats").fetchone()[0]
+    conn.close()
+    assert orphan == 1
+
+
+@pytest.mark.asyncio
+async def test_purge_accepts_naive_datetime(tmp_path: Path) -> None:
+    """Naive datetimes are normalized to UTC by encode_timestamp."""
+    store = make_store(tmp_path)
+    cutoff = datetime(2026, 6, 1, 12, 0, 0)  # naive
+    await store.record_scan(
+        make_result(target="/old", started_at=datetime(2025, 1, 1, tzinfo=UTC))
+    )
+    deleted = await store.purge(before=cutoff)
+    assert deleted == 1
+
+
+@pytest.mark.asyncio
+async def test_purge_backend_failure_raises_history_error(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    await store.record_scan(make_result(target="/x"))
+    await store.close()
+    with pytest.raises(HistoryError):
+        await store.purge(before=datetime(9999, 1, 1, tzinfo=UTC))
+
+
+# ---------------------------------------------------------------------------
+# Ordering / filters
 
 
 @pytest.mark.asyncio

@@ -20,6 +20,7 @@ __all__ = [
     "format_history_record",
     "format_human",
     "format_profiles",
+    "format_purge_result",
     "history_record_to_payload",
     "result_to_payload",
 ]
@@ -91,6 +92,11 @@ def format_human(result: ScanResult) -> str:
     for key, value in sorted(result.metadata.items()):
         lines.append(f"{key}: {value}")
     return "\n".join(lines)
+
+
+def format_purge_result(deleted: int) -> str:
+    """Render a purge operation result as human-readable text."""
+    return f"Purged {deleted} record(s) from history."
 
 
 def format_history_list(records: list[HistoryRecord]) -> str:

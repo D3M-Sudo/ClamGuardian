@@ -450,6 +450,39 @@ class SqliteHistoryStore:
             cur = conn.execute("DELETE FROM scan_history")
             return cur.rowcount
 
+    async def purge(
+        self,
+        *,
+        before: datetime | None = None,
+        status: str | None = None,
+    ) -> int:
+        """Delete scans matching the criteria and return the row count.
+
+        ``before`` selects records whose ``started_at`` is strictly older
+        (exclusive boundary). ``status`` restricts the operation to one state.
+        At least one criterion is required: ``purge()`` with neither is a
+        :class:`ValueError` so it can never silently clear the whole history.
+        """
+        if before is None and status is None:
+            raise ValueError("purge requires at least one of: before, status")
+        if status is not None and not is_valid_status(status):
+            raise ValueError(f"unknown status: {status!r}")
+
+        clauses: list[str] = []
+        params: list[object] = []
+        if before is not None:
+            clauses.append("started_at < ?")
+            params.append(encode_timestamp(before))
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+
+        where = f"WHERE {' AND '.join(clauses)}"
+        conn = self._require_conn()
+        with self._lock:
+            cur = conn.execute(f"DELETE FROM scan_history {where}", params)
+            return cur.rowcount
+
     async def count_scans(self, *, status: str | None = None) -> int:
         """Return the number of stored scans, optionally filtered by *status*."""
         conn = self._require_conn()

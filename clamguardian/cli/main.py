@@ -25,6 +25,7 @@ import asyncio
 import contextlib
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import IO, TYPE_CHECKING
 
@@ -34,7 +35,13 @@ from ..core.errors import ClamGuardianError, ProfileError
 from ..core.profiles import DEFAULT_PROFILE, DEFAULT_REGISTRY, ScanProfile
 from ..core.runner import ScanTaskRunner
 from ..engines.clamav import ClamAVEngine
-from ..history import HistoryError, HistoryRecord, HistoryStore, SqliteHistoryStore
+from ..history import (
+    HistoryError,
+    HistoryRecord,
+    HistoryStore,
+    SqliteHistoryStore,
+    decode_timestamp,
+)
 from .exit_codes import (
     EXIT_CANCELLED,
     EXIT_ENGINE_ERROR,
@@ -49,6 +56,7 @@ from .output import (
     format_history_record,
     format_human,
     format_profiles,
+    format_purge_result,
     history_record_to_payload,
     result_to_payload,
 )
@@ -189,6 +197,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     history_show.set_defaults(func=_cmd_history_show)
 
+    history_purge = history_sub.add_parser(
+        "purge",
+        help="delete history records by retention criteria",
+        description=(
+            "Delete scan history records matching the given criteria. "
+            "At least one of --before / --status is required."
+        ),
+    )
+    history_purge.add_argument(
+        "--before",
+        default=None,
+        metavar="TIMESTAMP",
+        help="delete records started before this ISO-8601 timestamp (exclusive)",
+    )
+    history_purge.add_argument(
+        "--status",
+        default=None,
+        metavar="STATUS",
+        help="only delete records with this status (clean, infected, error, timeout, cancelled)",
+    )
+    history_purge.add_argument(
+        "--json",
+        action="store_true",
+        help="emit the purge result as JSON on stdout",
+    )
+    history_purge.set_defaults(func=_cmd_history_purge)
+
     return parser
 
 
@@ -269,6 +304,54 @@ def _cmd_history_show(args: argparse.Namespace, streams: _Streams) -> int:
     else:
         print(format_history_record(record), file=streams.out)
     return EXIT_OK
+
+
+async def _history_purge(
+    store: HistoryStore,
+    before: datetime | None,
+    status: str | None,
+) -> int:
+    """Purge history records matching the criteria; return the deleted count."""
+    return await store.purge(before=before, status=status)
+
+
+def _cmd_history_purge(args: argparse.Namespace, streams: _Streams) -> int:
+    before = _parse_history_timestamp(args.before, streams)
+    if args.before is not None and before is None:
+        return EXIT_USAGE
+    if before is None and args.status is None:
+        print(
+            "error: purge requires at least one of --before / --status",
+            file=streams.err,
+        )
+        return EXIT_USAGE
+    store = _open_history_store(streams)
+    if store is None:
+        return EXIT_ENGINE_ERROR
+    try:
+        deleted = asyncio.run(_history_purge(store, before, args.status))
+    except HistoryError as exc:
+        print(f"error: cannot purge history: {exc}", file=streams.err)
+        return EXIT_ENGINE_ERROR
+    finally:
+        with contextlib.suppress(Exception):
+            asyncio.run(store.close())
+    if args.json:
+        print(json.dumps({"deleted": deleted}, indent=2), file=streams.out)
+    else:
+        print(format_purge_result(deleted), file=streams.out)
+    return EXIT_OK
+
+
+def _parse_history_timestamp(raw: str | None, streams: _Streams) -> datetime | None:
+    """Parse an ISO-8601 timestamp for history commands; ``None`` if *raw* is ``None``."""
+    if raw is None:
+        return None
+    try:
+        return decode_timestamp(raw)
+    except ValueError:
+        print(f"error: invalid timestamp: {raw!r}", file=streams.err)
+        return None
 
 
 def _cmd_profiles(args: argparse.Namespace, streams: _Streams) -> int:

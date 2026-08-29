@@ -130,6 +130,25 @@ class FakeRecorder:
         self._stored.clear()
         return count
 
+    async def purge(
+        self,
+        *,
+        before: datetime | None = None,
+        status: str | None = None,
+    ) -> int:
+        if before is None and status is None:
+            raise ValueError("purge requires at least one of: before, status")
+        to_delete: list[str] = []
+        for rid, record in self._stored.items():
+            if before is not None and record.started_at >= before:
+                continue
+            if status is not None and record.status != status:
+                continue
+            to_delete.append(rid)
+        for rid in to_delete:
+            del self._stored[rid]
+        return len(to_delete)
+
     async def count_scans(self, *, status: str | None = None) -> int:
         return len(
             [r for r in self._stored.values() if status is None or r.status == status]
@@ -739,3 +758,132 @@ def test_history_listing_preserves_scan_result(cli):
     assert record is not None
     assert record.status == "infected"
     assert record.threats == ("Eicar FOUND",)
+
+
+# ---------------------------------------------------------------------------
+# history purge
+# ---------------------------------------------------------------------------
+
+
+def test_history_purge_removes_all_with_future_before(cli) -> None:
+    """``history purge --before <future>`` deletes every record."""
+    recorder = FakeRecorder()
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.CLEAN, target="/tmp/old-1")))
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.INFECTED, target="/tmp/old-2")))
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "purge", "--before", "9999-12-31T23:59:59+00:00") == 0
+    text = harness.out.getvalue()
+    assert "2 record" in text
+    assert len(recorder._stored) == 0
+
+
+def test_history_purge_no_match_with_past_before(cli) -> None:
+    """``history purge --before <past>`` deletes nothing and reports zero."""
+    recorder = FakeRecorder()
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.CLEAN, target="/tmp/recent")))
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "purge", "--before", "2000-01-01T00:00:00+00:00") == 0
+    text = harness.out.getvalue()
+    assert "0 record" in text
+    assert len(recorder._stored) == 1
+
+
+def test_history_purge_status_filter(cli) -> None:
+    """``--status`` restricts deletion to matching records only."""
+    recorder = FakeRecorder()
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.CLEAN, target="/tmp/clean-1")))
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.INFECTED, target="/tmp/infected-1")))
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.CLEAN, target="/tmp/clean-2")))
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness(
+        "history", "purge", "--before", "9999-12-31T23:59:59+00:00", "--status", "clean"
+    ) == 0
+    text = harness.out.getvalue()
+    assert "2 record" in text
+    targets = sorted(r.target for r in recorder._stored.values())
+    assert targets == ["/tmp/infected-1"]
+
+
+def test_history_purge_requires_criteria(cli) -> None:
+    """Without --before or --status the command refuses with a usage error."""
+    recorder = FakeRecorder()
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.CLEAN, target="/tmp/x")))
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "purge") == 2
+    assert "at least one of --before / --status" in harness.err.getvalue()
+    assert len(recorder._stored) == 1  # nothing deleted
+
+
+def test_history_purge_invalid_timestamp(cli) -> None:
+    """An unparseable timestamp is a usage error, exit code 2."""
+    recorder = FakeRecorder()
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "purge", "--before", "not-a-date") == 2
+    assert "invalid timestamp" in harness.err.getvalue()
+
+
+def test_history_purge_json_output(cli) -> None:
+    """``--json`` emits a deterministic ``{"deleted": N}`` payload."""
+    recorder = FakeRecorder()
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.CLEAN, target="/tmp/old")))
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness(
+        "history", "purge", "--before", "9999-12-31T23:59:59+00:00", "--json"
+    ) == 0
+    payload = json.loads(harness.out.getvalue())
+    assert payload == {"deleted": 1}
+
+
+def test_history_purge_store_open_failure(cli, monkeypatch) -> None:
+    """A store that cannot be opened surfaces as a runtime error, exit 3."""
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")))
+
+    def broken_store() -> HistoryStore:
+        raise HistoryError("cannot open history database")
+
+    monkeypatch.setattr(cli_main, "_default_history_store", broken_store)
+    assert harness("history", "purge", "--before", "9999-12-31T23:59:59+00:00") == 3
+    assert "cannot open history store" in harness.err.getvalue()
+
+
+def test_history_purge_store_read_failure(cli, monkeypatch) -> None:
+    """A failure while purging surfaces as a runtime error, exit 3."""
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")))
+
+    class FailingStore(FakeRecorder):
+        async def purge(
+            self,
+            *,
+            before: datetime | None = None,
+            status: str | None = None,
+        ) -> int:
+            raise HistoryError("disk write failure")
+
+    monkeypatch.setattr(cli_main, "_default_history_store", FailingStore)
+    assert harness("history", "purge", "--before", "9999-12-31T23:59:59+00:00") == 3
+    assert "cannot purge history" in harness.err.getvalue()
+
+
+def test_history_purge_closes_store(cli) -> None:
+    """The command releases the store connection before returning."""
+    recorder = FakeRecorder()
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.CLEAN, target="/tmp/x")))
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "purge", "--before", "9999-12-31T23:59:59+00:00") == 0
+    assert recorder.closed is True
+
+
+def test_history_purge_does_not_affect_list_show(cli) -> None:
+    """``history list`` and ``history show`` remain read-only after purge."""
+    recorder = FakeRecorder()
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.CLEAN, target="/tmp/keep")))
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.INFECTED, target="/tmp/drop")))
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    # Purge only infected records older than the future cutoff.
+    assert harness(
+        "history", "purge", "--before", "9999-12-31T23:59:59+00:00", "--status", "infected"
+    ) == 0
+    # history list shows only the preserved clean record.
+    assert harness("history", "list") == 0
+    assert "/tmp/keep" in harness.out.getvalue()
+    assert "/tmp/drop" not in harness.out.getvalue()
