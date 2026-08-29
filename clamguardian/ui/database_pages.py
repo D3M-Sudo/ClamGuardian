@@ -17,7 +17,7 @@ import threading
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from ..databases.manager import DatabaseManager, DatabaseUpdateError
+from ..databases.manager import DatabaseManager
 from ..databases.models import DatabaseArtifact, DatabaseSource, DatabaseStatus, InstalledDatabase
 
 try:  # pragma: no cover - exercised only on systems with PyGObject
@@ -78,10 +78,6 @@ def run_async(coro, on_done: AsyncDoneCallback | None = None) -> None:
         loop.create_task(_chain())
         return
 
-    # Marshal through GLib only when the calling thread owns the GTK main
-    # context (i.e. a GTK main loop is running); otherwise deliver directly.
-    use_glib = GTK_AVAILABLE and GLib.MainContext.default().is_owner()
-
     def _worker() -> None:
         result, error = None, None
         try:
@@ -89,7 +85,7 @@ def run_async(coro, on_done: AsyncDoneCallback | None = None) -> None:
         except Exception as exc:  # noqa: BLE001 - surfaced to the caller
             error = exc
         if on_done is not None:
-            if use_glib:
+            if GTK_AVAILABLE:
                 GLib.idle_add(_invoke_idle, on_done, result, error)
             else:
                 on_done(result, error)
@@ -100,21 +96,6 @@ def run_async(coro, on_done: AsyncDoneCallback | None = None) -> None:
 class _GtkNotAvailable:
     """Import-safety shim applied to UI classes on headless systems."""
 
-    def __init__(self, *args, **kwargs) -> None:
-        raise RuntimeError("PyGObject/GTK4/Libadwaita is not available on this system")
-
-
-__all__ = [
-    "GTK_AVAILABLE",
-    "STATUS_LABELS",
-    "AntivirusDatabasesPage",
-    "AddDatabaseDialog",
-    "ThirdPartyDatabaseRow",
-    "ThirdPartyDatabasesPage",
-    "build_database_navigation",
-    "run_async",
-]
-
 if not GTK_AVAILABLE:  # pragma: no cover - headless environments
     AntivirusDatabasesPage = _GtkNotAvailable
     AddDatabaseDialog = _GtkNotAvailable
@@ -122,10 +103,9 @@ if not GTK_AVAILABLE:  # pragma: no cover - headless environments
     ThirdPartyDatabasesPage = _GtkNotAvailable
 
     def build_database_navigation(manager: DatabaseManager) -> object:
-        """Unavailable on headless systems."""
         raise RuntimeError("PyGObject/GTK4/Libadwaita is not available on this system")
 
-else:  # pragma: no cover - GTK widget construction requires a toolkit runtime
+else:
 
     class AddDatabaseDialog(Adw.Dialog):
         """Libadwaita dialog that registers a new source through the manager."""
@@ -139,24 +119,16 @@ else:  # pragma: no cover - GTK widget construction requires a toolkit runtime
             ("sha256", "SHA-256 (optional)", "64 hexadecimal characters"),
         )
 
-        def __init__(
-            self, manager: DatabaseManager, on_added: Callable[[DatabaseSource], None]
-        ) -> None:
-            super().__init__(
-                title="Add third-party database", content_width=420, content_height=560
-            )
+        def __init__(self, manager: DatabaseManager,
+                     on_added: Callable[[DatabaseSource], None]) -> None:
+            super().__init__(title="Add third-party database",
+                             content_width=420, content_height=560)
             self._manager = manager
             self._on_added = on_added
             self._entries: dict[str, Gtk.Entry] = {}
 
-            content = Gtk.Box(
-                orientation=Gtk.Orientation.VERTICAL,
-                spacing=12,
-                margin_top=12,
-                margin_bottom=12,
-                margin_start=12,
-                margin_end=12,
-            )
+            content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
+                              margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
 
             for key, label, placeholder in self.FIELDS:
                 caption = Gtk.Label(label=label, xalign=0)
@@ -178,19 +150,15 @@ else:  # pragma: no cover - GTK widget construction requires a toolkit runtime
             add_button.add_css_class("suggested-action")
             add_button.connect("clicked", self._on_add_clicked)
 
-            footer = Gtk.Box(
-                orientation=Gtk.Orientation.HORIZONTAL,
-                spacing=6,
-                margin_top=6,
-                margin_bottom=6,
-                margin_end=12,
-            )
+            footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6,
+                             margin_top=6, margin_bottom=6, margin_end=12)
             footer.append(Gtk.Box(hexpand=True))
             footer.append(cancel)
             footer.append(add_button)
 
             view = Adw.ToolbarView(top_bar=Adw.HeaderBar(), content=scrolled, bottom_bar=footer)
             self.set_child(view)
+
 
         def _show_error(self, message: str) -> None:
             self._error_label.set_text(message)
@@ -216,16 +184,11 @@ else:  # pragma: no cover - GTK widget construction requires a toolkit runtime
                 self._show_error(f"Database source already exists: {values['source_id']}")
                 return
 
-            artifact = DatabaseArtifact(
-                filename=values["filename"], url=values["url"], sha256=values["sha256"] or None
-            )
+            artifact = DatabaseArtifact(filename=values["filename"], url=values["url"],
+                                        sha256=values["sha256"] or None)
             try:
-                source = DatabaseSource(
-                    id=values["source_id"],
-                    name=values["name"],
-                    description=values["description"],
-                    artifacts=(artifact,),
-                )
+                source = DatabaseSource(id=values["source_id"], name=values["name"],
+                                        description=values["description"], artifacts=(artifact,))
                 self._manager.add_source(source)
             except ValueError as exc:
                 self._show_error(f"Database operation failed: {exc}")
@@ -236,9 +199,8 @@ else:  # pragma: no cover - GTK widget construction requires a toolkit runtime
     class ThirdPartyDatabaseRow(Adw.ActionRow):
         """One configured third-party database source."""
 
-        def __init__(
-            self, manager: DatabaseManager, source: DatabaseSource, page: ThirdPartyDatabasesPage
-        ) -> None:
+        def __init__(self, manager: DatabaseManager, source: DatabaseSource,
+                     page: ThirdPartyDatabasesPage) -> None:
             super().__init__(title=source.name, subtitle=source.description)
             self._manager = manager
             self._source = source
@@ -268,20 +230,17 @@ else:  # pragma: no cover - GTK widget construction requires a toolkit runtime
             auto_box.append(self._auto_switch)
             auto_box.append(auto_caption)
 
-            controls = Gtk.Box(
-                orientation=Gtk.Orientation.HORIZONTAL, spacing=12, valign=Gtk.Align.CENTER
-            )
+            controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12,
+                               valign=Gtk.Align.CENTER)
             controls.append(self._status_label)
             controls.append(enabled_box)
             controls.append(auto_box)
 
-            update_button = Gtk.Button(
-                icon_name="view-refresh-symbolic", valign=Gtk.Align.CENTER, tooltip_text="Update"
-            )
+            update_button = Gtk.Button(icon_name="view-refresh-symbolic",
+                                       valign=Gtk.Align.CENTER, tooltip_text="Update")
             update_button.connect("clicked", self._on_update_clicked)
-            remove_button = Gtk.Button(
-                icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER, tooltip_text="Remove"
-            )
+            remove_button = Gtk.Button(icon_name="user-trash-symbolic",
+                                       valign=Gtk.Align.CENTER, tooltip_text="Remove")
             remove_button.add_css_class("destructive-action")
             remove_button.connect("clicked", self._on_remove_clicked)
 
@@ -321,6 +280,12 @@ else:  # pragma: no cover - GTK widget construction requires a toolkit runtime
 
             def _done(result: object, error: Exception | None) -> None:
                 _button.set_sensitive(True)
+                self._page.on_update_finished(self._source.id, error)
+
+            run_async(self._manager.update(self._source.id), _done)
+
+        def _on_remove_clicked(self, _button: Gtk.Button) -> None:
+            self._page.confirm_remove(self._source)
 
     class ThirdPartyDatabasesPage(Adw.NavigationPage):
         """Manage external ClamAV signature sources through DatabaseManager."""
@@ -333,9 +298,8 @@ else:  # pragma: no cover - GTK widget construction requires a toolkit runtime
 
             add_button = Gtk.Button(icon_name="list-add-symbolic", tooltip_text="Add database")
             add_button.connect("clicked", self._on_add_clicked)
-            refresh_button = Gtk.Button(
-                icon_name="view-refresh-symbolic", tooltip_text="Update all"
-            )
+            refresh_button = Gtk.Button(icon_name="view-refresh-symbolic",
+                                        tooltip_text="Update all")
             refresh_button.connect("clicked", self._on_update_all_clicked)
 
             header = Adw.HeaderBar(title_widget=Adw.WindowTitle(title="Third-party databases"))
@@ -347,8 +311,7 @@ else:  # pragma: no cover - GTK widget construction requires a toolkit runtime
 
             self._empty_status = Adw.StatusPage(
                 title="No third-party databases",
-                description="Add a source to manage external ClamAV signatures.",
-            )
+                description="Add a source to manage external ClamAV signatures.")
             empty_button = Gtk.Button(label="Add database")
             empty_button.add_css_class("suggested-action")
             empty_button.add_css_class("pill")
@@ -360,6 +323,8 @@ else:  # pragma: no cover - GTK widget construction requires a toolkit runtime
 
             self._install_status_callback()
             self.rebuild_list()
+
+        # -- manager wiring -------------------------------------------------
 
         def _install_status_callback(self) -> None:
             previous: StatusCallback | None = self._manager.status_callback
@@ -377,6 +342,8 @@ else:  # pragma: no cover - GTK widget construction requires a toolkit runtime
                 row.set_status(installed.status, installed.last_error)
             return False
 
+        # -- list rendering -------------------------------------------------
+
         def rebuild_list(self) -> None:
             for child in list(self._list_container.observe_children()):
                 self._list_container.remove(child)
@@ -387,93 +354,126 @@ else:  # pragma: no cover - GTK widget construction requires a toolkit runtime
                 self._list_container.append(self._empty_status)
                 return
 
+            group = Adw.PreferencesGroup(title="External ClamAV signature databases")
+            for source in sources:
+                row = ThirdPartyDatabaseRow(self._manager, source, self)
+                self._rows[source.id] = row
+                group.add(row)
+            self._list_container.append(group)
+
+        def schedule_refresh(self) -> None:
+            if self._refresh_pending:
+                return
+            self._refresh_pending = True
+            GLib.idle_add(self._rebuild_idle)
+
+        def _rebuild_idle(self) -> bool:
+            self.rebuild_list()
+            self._refresh_pending = False
+            return False
+
+        def _on_add_clicked(self, _button: Gtk.Button) -> None:
+            dialog = AddDatabaseDialog(self._manager, self._on_database_added)
+            dialog.present(self.root)
+
+        def _on_database_added(self, source: DatabaseSource) -> None:
+            self.rebuild_list()
+            self._toast_overlay.add_toast(Adw.Toast(title=f"Added {source.name}"))
+
         def _on_update_all_clicked(self, _button: Gtk.Button) -> None:
-            _button.set_sensitive(False)
-
             def _done(result: object, error: Exception | None) -> None:
-                _button.set_sensitive(True)
-                if error is not None:
-                    self.show_error("Update failed", str(error))
-                self.schedule_refresh()
+                if error:
+                    self._toast_overlay.add_toast(
+                        Adw.Toast(title="Update failed", timeout=3))
+                else:
+                    self._toast_overlay.add_toast(
+                        Adw.Toast(title="All databases updated", timeout=3))
 
-            run_async(self._manager.update_enabled(), _done)
+            run_async(self._manager.update_all(), _done)
 
         def on_update_finished(self, source_id: str, error: Exception | None) -> None:
-            if isinstance(error, DatabaseUpdateError):
+            row = self._rows.get(source_id)
+            if row is not None:
+                row._refresh_status()
+            if error:
                 self.show_error("Update error", str(error))
-            elif error is not None:
-                self.show_error("Database operation failed", str(error))
-            self.schedule_refresh()
+
+        def show_error(self, title: str, message: str) -> None:
+            dialog = Adw.AlertDialog(
+                heading=title,
+                body=message,
+                close_response="cancel",
+                modal=True)
+            dialog.add_response("cancel", "OK")
+            dialog.present(self.root)
 
         def confirm_remove(self, source: DatabaseSource) -> None:
             dialog = Adw.AlertDialog(
                 heading=f"Remove {source.name}?",
-                body="The source configuration and managed database files will be removed.",
-            )
+                body="This will delete the database source and its local files.",
+                close_response="cancel",
+                modal=True)
             dialog.add_response("cancel", "Cancel")
             dialog.add_response("remove", "Remove")
             dialog.set_response_appearance("remove", Adw.ResponseAppearance.DESTRUCTIVE)
             dialog.connect("response", self._on_remove_response, source.id)
-            dialog.present(self)
+            dialog.present(self.root)
 
-        def _on_remove_response(
-            self, _dialog: Adw.AlertDialog, response: str, source_id: str
-        ) -> None:
-            if response != "remove":
-                return
-            try:
-                self._manager.remove_source(source_id)
-            except (KeyError, OSError) as exc:
-                self.show_error("Database operation failed", str(exc))
-            self.schedule_refresh()
+        def _on_remove_response(self, dialog: Adw.AlertDialog,
+                               response: str, source_id: str) -> None:
+            dialog.close()
+            if response == "remove":
+                try:
+                    self._manager.remove_source(source_id)
+                    self.rebuild_list()
+                    self._toast_overlay.add_toast(Adw.Toast(title="Database removed"))
+                except Exception as exc:  # noqa: BLE001 - user feedback
+                    self.show_error("Removal failed", str(exc))
 
-        def show_error(self, heading: str, message: str) -> None:
-            toast = Adw.Toast.new(f"{heading}: {message}")
-            toast.set_timeout(6)
-            self._toast_overlay.add_toast(toast)
 
-    class AntivirusDatabasesPage(Adw.NavigationPage):
-        """Entry page: official ClamAV database plus the third-party section."""
+class AntivirusDatabasesPage(Adw.PreferencesPage):
+    """Root preferences page with navigation to third-party database management."""
 
-        def __init__(self, manager: DatabaseManager) -> None:
-            super().__init__(title="Antivirus Databases")
-            self._manager = manager
-            self._navigation_view: Adw.NavigationView | None = None
+    def __init__(self, manager: DatabaseManager) -> None:
+        super().__init__(title="Antivirus Databases")
+        self._manager = manager
 
-            page = Adw.PreferencesPage(title="Antivirus Databases")
-            group = Adw.PreferencesGroup(title="Antivirus Databases")
+        group = Adw.PreferencesGroup(title="Third-party databases")
+        group.add(build_database_navigation_row(manager))
+        self.add(group)
 
-            official = Adw.ActionRow(
-                title="ClamAV Official",
-                subtitle="Official signatures are managed by the ClamAV engine via freshclam.",
-            )
-            official.add_prefix(Gtk.Image.new_from_icon_name("security-high-symbolic"))
-            group.add(official)
 
-            third_party = Adw.ActionRow(
-                title="Third-party", subtitle="External ClamAV signature databases"
-            )
-            third_party.add_prefix(Gtk.Image.new_from_icon_name("database-symbolic"))
-            third_party.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
-            third_party.set_activatable(True)
-            third_party.connect("activated", self._on_third_party_activated)
-            group.add(third_party)
+def build_database_navigation(manager: DatabaseManager) -> Adw.NavigationView:
+    """Build the navigation stack for third-party database management."""
+    nav = Adw.NavigationView()
+    page = ThirdPartyDatabasesPage(manager)
+    nav.add(page)
+    return nav
 
-            page.add(group)
-            self.set_child(page)
 
-        def bind_navigation_view(self, view: Adw.NavigationView) -> None:
-            self._navigation_view = view
+def build_database_navigation_row(manager: DatabaseManager) -> Adw.ActionRow:
+    """Build an action row that navigates to the third-party database page."""
+    row = Adw.ActionRow(title="Manage third-party databases",
+                        subtitle="Add, update and remove external ClamAV signature sources")
+    row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+    row.set_activatable(True)
 
-        def _on_third_party_activated(self, _row: Adw.ActionRow) -> None:
-            if self._navigation_view is None:
-                return
-            self._navigation_view.push(ThirdPartyDatabasesPage(self._manager))
+    def _on_activated(_row: Adw.ActionRow) -> None:
+        nav = build_database_navigation(manager)
+        dialog = Adw.Dialog(content=nav, content_width=800, content_height=600)
+        dialog.present(row.root)
 
-    def build_database_navigation(manager: DatabaseManager) -> Adw.NavigationView:
-        """Create a ready-to-use ``Adw.NavigationView`` with both pages wired."""
-        view = Adw.NavigationView()
-        root = AntivirusDatabasesPage(manager)
-        view.add(root)
-        root.bind_navigation_view(view)
-        return view
+    row.connect("activated", _on_activated)
+    return row
+
+
+__all__ = [
+    "GTK_AVAILABLE",
+    "STATUS_LABELS",
+    "AntivirusDatabasesPage",
+    "AddDatabaseDialog",
+    "ThirdPartyDatabaseRow",
+    "ThirdPartyDatabasesPage",
+    "build_database_navigation",
+    "run_async",
+]
