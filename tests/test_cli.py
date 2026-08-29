@@ -22,7 +22,8 @@ from clamguardian.core.base import BaseAVEngine, ScanResult, ScanStatus
 from clamguardian.core.errors import EngineError
 from clamguardian.core.profiles import ScanProfile
 from clamguardian.core.runner import ScanTaskRunner
-from clamguardian.history.interface import HistoryError
+from clamguardian.history import history_record_from_scan
+from clamguardian.history.interface import HistoryError, HistoryRecord, HistoryStore
 
 # ---------------------------------------------------------------------------
 # Fake engines and harness
@@ -78,21 +79,61 @@ def make_result(
 
 
 class FakeRecorder:
-    """Minimal in-memory History recorder capturing recorded results.
+    """In-memory History store fake supporting both recording and querying.
 
-    Records every ``ScanResult`` handed to it (optionally raising) and tracks
-    whether it was closed, mirroring the recorder lifetime the Controller owns.
+    It stands in for the whole :class:`HistoryStore` protocol: ``record_scan``
+    appends the raw :class:`ScanResult` to ``records`` (so the existing scan-flow
+    assertions keep working) **and** persists a snapshot ``HistoryRecord`` that
+    ``list_scans``/``get_scan`` serve back. ``close`` is recorded too.
     """
 
     def __init__(self, exc: Exception | None = None):
         self.exc = exc
         self.records: list[ScanResult] = []
         self.closed = False
+        self._stored: dict[str, HistoryRecord] = {}
 
     async def record_scan(self, result: ScanResult) -> None:
         if self.exc is not None:
             raise self.exc
         self.records.append(result)
+        record = history_record_from_scan(result)
+        self._stored[record.id] = record
+
+    async def get_scan(self, scan_id: str) -> HistoryRecord | None:
+        if self.exc is not None:
+            raise self.exc
+        return self._stored.get(scan_id)
+
+    async def list_scans(
+        self,
+        *,
+        status: str | None = None,
+        profile_id: str | None = None,
+        since: object = None,
+        until: object = None,
+        limit: int = 100,
+        offset: int = 0,
+        ascending: bool = False,
+    ) -> list[HistoryRecord]:
+        if self.exc is not None:
+            raise self.exc
+        records = [r for r in self._stored.values() if status is None or r.status == status]
+        records.sort(key=lambda r: r.started_at, reverse=not ascending)
+        return records[offset : offset + limit]
+
+    async def delete_scan(self, scan_id: str) -> bool:
+        return self._stored.pop(scan_id, None) is not None
+
+    async def clear_history(self) -> int:
+        count = len(self._stored)
+        self._stored.clear()
+        return count
+
+    async def count_scans(self, *, status: str | None = None) -> int:
+        return len(
+            [r for r in self._stored.values() if status is None or r.status == status]
+        )
 
     async def close(self) -> None:
         self.closed = True
@@ -513,5 +554,188 @@ def test_cancelled_scan_not_recorded(tmp_path, monkeypatch):
     out, err = io.StringIO(), io.StringIO()
     code = run(["scan", str(target)], out=out, err=err)
     assert code == 5
-    assert recorder.records == []
     assert recorder.closed is True  # recorder released even on cancellation
+
+
+# ---------------------------------------------------------------------------
+# M4-B6: History reporting / query integration
+# ---------------------------------------------------------------------------
+
+
+def test_top_level_help_includes_history():
+    """The ``history`` command is advertised in the top-level help."""
+    out, err = io.StringIO(), io.StringIO()
+    with pytest.raises(SystemExit) as excinfo:
+        run(["--help"], out=out, err=err)
+    assert excinfo.value.code == 0
+    assert "history" in out.getvalue()
+
+
+def test_history_list_empty(cli):
+    """An empty history renders a clear, non-blank message."""
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")))
+    assert harness("history", "list") == 0
+    assert harness.out.getvalue().strip() == "No scan history found."
+
+
+def test_history_list_empty_json(cli):
+    """An empty history renders a JSON payload with a zero count."""
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")))
+    assert harness("history", "list", "--json") == 0
+    payload = json.loads(harness.out.getvalue())
+    assert payload == {"count": 0, "records": []}
+
+
+def test_history_list_shows_records(cli):
+    """Recorded scans show up in the history list (newest first)."""
+    recorder = FakeRecorder()
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.CLEAN, target="/tmp/first")))
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.INFECTED, target="/tmp/second")))
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "list") == 0
+    text = harness.out.getvalue()
+    assert "Scan history:" in text
+    assert "/tmp/second" in text
+    assert "/tmp/first" in text
+    # Newest first: "/tmp/second" appears before "/tmp/first".
+    assert text.index("/tmp/second") < text.index("/tmp/first")
+
+
+def test_history_list_json_contract(cli):
+    """The JSON list payload exposes the deterministic record contract."""
+    recorder = FakeRecorder()
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.CLEAN, target="/tmp/only")))
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "list", "--json") == 0
+    payload = json.loads(harness.out.getvalue())
+    assert payload["count"] == 1
+    (record,) = payload["records"]
+    assert record["target"] == "/tmp/only"
+    assert record["status"] == "clean"
+    # Guaranteed key set, in contract order.
+    assert list(record) == [
+        "id",
+        "status",
+        "target",
+        "engine",
+        "profile",
+        "threats",
+        "files_scanned",
+        "started_at",
+        "finished_at",
+        "duration_seconds",
+        "error",
+        "metadata",
+    ]
+
+
+def test_history_list_status_filter(cli):
+    """The ``--status`` filter restricts the page to matching records."""
+    recorder = FakeRecorder()
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.CLEAN, target="/tmp/clean")))
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.INFECTED, target="/tmp/infected")))
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "list", "--status", "infected") == 0
+    text = harness.out.getvalue()
+    assert "/tmp/infected" in text
+    assert "/tmp/clean" not in text
+
+
+def test_history_list_limit(cli):
+    """The ``--limit`` option caps the number of rows returned."""
+    recorder = FakeRecorder()
+    for index in range(5):
+        asyncio.run(recorder.record_scan(make_result(ScanStatus.CLEAN, target=f"/tmp/{index}")))
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "list", "--limit", "2", "--json") == 0
+    payload = json.loads(harness.out.getvalue())
+    assert payload["count"] == 2
+
+
+def test_history_show_found(cli):
+    """``history show`` renders a single record's full details."""
+    recorder = FakeRecorder()
+    asyncio.run(
+        recorder.record_scan(
+            make_result(ScanStatus.INFECTED, target="/tmp/bad", threats=("Eicar FOUND",))
+        )
+    )
+    scan_id = list(recorder._stored)[0]
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "show", scan_id) == 0
+    text = harness.out.getvalue()
+    assert scan_id in text
+    assert "/tmp/bad" in text
+    assert "INFECTED" in text
+    assert "Eicar FOUND" in text
+
+
+def test_history_show_json(cli):
+    """``history show --json`` renders the deterministic record contract."""
+    recorder = FakeRecorder()
+    asyncio.run(recorder.record_scan(make_result(ScanStatus.CLEAN, target="/tmp/solo")))
+    scan_id = list(recorder._stored)[0]
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "show", scan_id, "--json") == 0
+    record = json.loads(harness.out.getvalue())
+    assert record["id"] == scan_id
+    assert record["target"] == "/tmp/solo"
+    assert record["status"] == "clean"
+
+
+def test_history_show_not_found(cli):
+    """An unknown id is reported as a usage error without crashing."""
+    recorder = FakeRecorder()
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "show", "does-not-exist") == 2
+    assert "scan not found" in harness.err.getvalue()
+
+
+def test_history_store_open_failure_reports_error(cli, monkeypatch):
+    """A store that cannot be opened blocks the command with an error."""
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")))
+
+    def broken_store() -> HistoryStore:
+        raise HistoryError("cannot open history database: permission denied")
+
+    monkeypatch.setattr(cli_main, "_default_history_store", broken_store)
+    assert harness("history", "list") == 3
+    assert "cannot open history store" in harness.err.getvalue()
+
+
+def test_history_store_read_failure_reports_error(cli, monkeypatch):
+    """A failure while querying surfaces as a runtime error, not a crash."""
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")))
+
+    class FailingStore(FakeRecorder):
+        async def list_scans(self, **kwargs: object) -> list[HistoryRecord]:  # noqa: ANN003
+            raise HistoryError("disk read failure")
+
+    monkeypatch.setattr(cli_main, "_default_history_store", FailingStore)
+    assert harness("history", "list") == 3
+    assert "cannot read history" in harness.err.getvalue()
+
+
+def test_history_command_closes_store(cli):
+    """The command releases the store connection before returning."""
+    recorder = FakeRecorder()
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "list") == 0
+    assert recorder.closed is True
+
+
+def test_history_listing_preserves_scan_result(cli):
+    """Querying history never alters the stored scan outcomes."""
+    recorder = FakeRecorder()
+    asyncio.run(
+        recorder.record_scan(
+            make_result(ScanStatus.INFECTED, target="/tmp/bad", threats=("Eicar FOUND",))
+        )
+    )
+    scan_id = list(recorder._stored)[0]
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "list") == 0
+    record = asyncio.run(recorder.get_scan(scan_id))
+    assert record is not None
+    assert record.status == "infected"
+    assert record.threats == ("Eicar FOUND",)

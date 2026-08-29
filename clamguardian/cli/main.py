@@ -34,7 +34,7 @@ from ..core.errors import ClamGuardianError, ProfileError
 from ..core.profiles import DEFAULT_PROFILE, DEFAULT_REGISTRY, ScanProfile
 from ..core.runner import ScanTaskRunner
 from ..engines.clamav import ClamAVEngine
-from ..history import HistoryError, HistoryStore, SqliteHistoryStore
+from ..history import HistoryError, HistoryRecord, HistoryStore, SqliteHistoryStore
 from .exit_codes import (
     EXIT_CANCELLED,
     EXIT_ENGINE_ERROR,
@@ -43,7 +43,15 @@ from .exit_codes import (
     EXIT_TIMEOUT,
     EXIT_USAGE,
 )
-from .output import cancelled_payload, format_human, format_profiles, result_to_payload
+from .output import (
+    cancelled_payload,
+    format_history_list,
+    format_history_record,
+    format_human,
+    format_profiles,
+    history_record_to_payload,
+    result_to_payload,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from collections.abc import Sequence
@@ -130,12 +138,136 @@ def build_parser() -> argparse.ArgumentParser:
     )
     version_cmd.set_defaults(func=_cmd_version)
 
+    history = sub.add_parser(
+        "history",
+        help="query and report scan history",
+        description=(
+            "Query the scan history recorded by ClamGuardian. "
+            "Use `history list` to list recent scans and `history show ID` "
+            "to inspect a single record."
+        ),
+    )
+    history_sub = history.add_subparsers(
+        dest="history_action", required=True, metavar="ACTION"
+    )
+
+    history_list = history_sub.add_parser(
+        "list",
+        help="list recent scans",
+        description="List recent scans from history, newest first.",
+    )
+    history_list.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        metavar="N",
+        help="maximum number of records to show (default: 20)",
+    )
+    history_list.add_argument(
+        "--status",
+        default=None,
+        metavar="STATUS",
+        help="filter by status (clean, infected, error, timeout, cancelled)",
+    )
+    history_list.add_argument(
+        "--json",
+        action="store_true",
+        help="emit the history page as JSON on stdout",
+    )
+    history_list.set_defaults(func=_cmd_history_list)
+
+    history_show = history_sub.add_parser(
+        "show",
+        help="show a single history record",
+        description="Show the full details of a single history record by id.",
+    )
+    history_show.add_argument("scan_id", metavar="ID", help="id of the scan to show")
+    history_show.add_argument(
+        "--json",
+        action="store_true",
+        help="emit the record as JSON on stdout",
+    )
+    history_show.set_defaults(func=_cmd_history_show)
+
     return parser
 
 
 def _cmd_version(args: argparse.Namespace, streams: _Streams) -> int:
     del args
     print(f"ClamGuardian {__version__}", file=streams.out)
+    return EXIT_OK
+
+
+async def _history_list(
+    store: HistoryStore, args: argparse.Namespace
+) -> list[HistoryRecord]:
+    """Fetch a page of history records honoring the CLI filters."""
+    return await store.list_scans(status=args.status, limit=args.limit)
+
+
+async def _history_show(
+    store: HistoryStore, args: argparse.Namespace
+) -> HistoryRecord | None:
+    """Fetch a single history record by id."""
+    return await store.get_scan(args.scan_id)
+
+
+def _open_history_store(streams: _Streams) -> HistoryStore | None:
+    """Open the history store, reporting a clear error on failure.
+
+    Unlike recording during a scan, an unavailable history store *blocks* the
+    `history` command: there is nothing to report without it. The failure is
+    surfaced as a usage/runtime error rather than silently ignored.
+    """
+    try:
+        return _default_history_store()
+    except HistoryError as exc:
+        print(f"error: cannot open history store: {exc}", file=streams.err)
+        return None
+
+
+def _cmd_history_list(args: argparse.Namespace, streams: _Streams) -> int:
+    store = _open_history_store(streams)
+    if store is None:
+        return EXIT_ENGINE_ERROR
+    try:
+        records = asyncio.run(_history_list(store, args))
+    except HistoryError as exc:
+        print(f"error: cannot read history: {exc}", file=streams.err)
+        return EXIT_ENGINE_ERROR
+    finally:
+        with contextlib.suppress(Exception):
+            asyncio.run(store.close())
+    if args.json:
+        payload = {
+            "count": len(records),
+            "records": [history_record_to_payload(r) for r in records],
+        }
+        print(json.dumps(payload, indent=2), file=streams.out)
+    else:
+        print(format_history_list(records), file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_history_show(args: argparse.Namespace, streams: _Streams) -> int:
+    store = _open_history_store(streams)
+    if store is None:
+        return EXIT_ENGINE_ERROR
+    try:
+        record = asyncio.run(_history_show(store, args))
+    except HistoryError as exc:
+        print(f"error: cannot read history: {exc}", file=streams.err)
+        return EXIT_ENGINE_ERROR
+    finally:
+        with contextlib.suppress(Exception):
+            asyncio.run(store.close())
+    if record is None:
+        print(f"error: scan not found: {args.scan_id}", file=streams.err)
+        return EXIT_USAGE
+    if args.json:
+        print(json.dumps(history_record_to_payload(record), indent=2), file=streams.out)
+    else:
+        print(format_history_record(record), file=streams.out)
     return EXIT_OK
 
 

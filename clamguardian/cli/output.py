@@ -13,8 +13,16 @@ from typing import Any
 
 from ..core.base import ScanResult
 from ..core.profiles import ScanProfile
+from ..history.models import HistoryRecord, encode_timestamp
 
-__all__ = ["format_human", "format_profiles", "result_to_payload"]
+__all__ = [
+    "format_history_list",
+    "format_history_record",
+    "format_human",
+    "format_profiles",
+    "history_record_to_payload",
+    "result_to_payload",
+]
 
 
 def result_to_payload(result: ScanResult, profile_id: str) -> dict[str, Any]:
@@ -85,6 +93,74 @@ def format_human(result: ScanResult) -> str:
     return "\n".join(lines)
 
 
+def format_history_list(records: list[HistoryRecord]) -> str:
+    """Render a page of history records as human-readable text.
+
+    Produces a compact, aligned table: nothing here queries the store. An empty
+    page renders as a single motivating line so the terminal is never blank.
+    """
+    if not records:
+        return "No scan history found."
+    header = f"{'Started':<20} {'Status':<10} {'Target':<30} {'Threats':<10} {'Duration':>8}"
+    lines = ["Scan history:", header]
+    for record in records:
+        started = encode_timestamp(record.started_at)[:19]
+        threats = str(len(record.threats)) if record.threats else "0"
+        target = record.target if len(record.target) <= 30 else "…" + record.target[-29:]
+        lines.append(
+            f"{started:<20} {record.status:<10} {target:<30} {threats:<10} "
+            f"{record.duration_seconds:>7.2f}s"
+        )
+    return "\n".join(lines)
+
+
+def format_history_record(record: HistoryRecord) -> str:
+    """Render a single full history record (threats included) as human text."""
+    lines = [
+        f"Scan: {record.id}",
+        f"Status: {record.status.upper()}",
+        f"Target: {record.target}",
+        f"Engine: {record.engine}",
+        f"Profile: {record.profile_id or '-'}",
+        f"Started: {encode_timestamp(record.started_at)}",
+        f"Finished: {encode_timestamp(record.finished_at)}",
+        f"Duration: {record.duration_seconds:.2f}s",
+        f"Files scanned: {record.files_scanned}",
+        f"Threats: {len(record.threats)}",
+    ]
+    if record.threats:
+        lines.append("Detections:")
+        lines.extend(f"  {threat}" for threat in record.threats)
+    if record.error:
+        lines.append(f"Error: {record.error}")
+    if record.metadata:
+        lines.append("Metadata:")
+        lines.extend(f"  {key}: {value}" for key, value in sorted(record.metadata.items()))
+    return "\n".join(lines)
+
+
+def history_record_to_payload(record: HistoryRecord) -> dict[str, Any]:
+    """Serialize *record* into a deterministic JSON contract.
+
+    Guaranteed keys, always present, in this exact order: ``id``, ``status``,
+    ``target``, ``engine``, ``profile``, ``threats``, ``files_scanned``,
+    ``started_at``, ``finished_at``, ``duration_seconds``, ``error``,
+    ``metadata``.
+    """
+    return {
+        "id": record.id,
+        "status": record.status,
+        "target": record.target,
+        "engine": record.engine,
+        "profile": record.profile_id,
+        "threats": list(record.threats),
+        "files_scanned": record.files_scanned,
+        "started_at": encode_timestamp(record.started_at),
+        "finished_at": encode_timestamp(record.finished_at),
+        "duration_seconds": round(record.duration_seconds, 3),
+        "error": record.error,
+        "metadata": dict(record.metadata),
+    }
 def format_profiles(profiles: tuple[ScanProfile, ...]) -> str:
     """Render the registry profiles as a human-readable table."""
     lines = ["Available scan profiles:"]
