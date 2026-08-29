@@ -31,7 +31,7 @@ def test_wrong_key_cannot_decrypt(tmp_path: Path) -> None:
     entry = vault.quarantine(source)
 
     attacker_vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017 - InvalidTag has no stable alias here
         attacker_vault.restore(entry.item_id, tmp_path / "leaked.txt")
     assert not (tmp_path / "leaked.txt").exists()
 

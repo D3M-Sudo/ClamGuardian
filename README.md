@@ -114,6 +114,47 @@ print(result)
 
 Third-party packages can expose a `clamguardian.threat_providers` entry point whose object is a `BaseThreatProvider` instance or subclass. The manager discovers these providers without hard-coding their modules.
 
+## Third-party ClamAV Databases
+
+ClamAV's official signatures, updated by `freshclam`, do not cover every threat feed. Security researchers and communities publish additional ClamAV-compatible signature databases, and ClamGuardian lets you manage them alongside the official one:
+
+- **Official vs third-party:** the official database is owned by the ClamAV engine/freshclam and is never touched by ClamGuardian's database manager. Third-party sources are fully managed — downloaded, verified, installed, updated and removed by `DatabaseManager`.
+- **Add:** from the UI (`Antivirus Databases → Third-party → Add database`) or programmatically via `DatabaseManager.add_source()`. A source requires an ID, a name, an HTTPS URL, a safe plain filename, and optionally a SHA-256 digest.
+- **Update:** each row has an *Update* button (`await manager.update(source_id)`) and the page header offers *Update all* for every enabled, auto-update source (`await manager.update_enabled()`).
+- **SHA-256 verification:** if a digest is provided, the downloaded artifact is hashed before installation; a mismatch aborts the update.
+- **HTTPS only:** artifact URLs must use `https://`; plain HTTP is rejected by `DatabaseSource` validation.
+- **Atomic install & rollback:** downloads go to a staging directory and are moved into place only after verification. If a step fails, the previously installed database files are restored from a backup, so scanning never loses its current signatures.
+- **Enable / auto-update:** each source can be disabled individually or excluded from bulk updates, with the choice persisted in the manager state file and restored on the next launch.
+- **Remove:** deleting a source also deletes its managed database files after an explicit confirmation dialog.
+
+## GTK4 / Libadwaita UI
+
+The database management flow is a real GTK4/Libadwaita navigation:
+
+```text
+Antivirus Databases
+        |
+        +-- ClamAV Official (managed by freshclam)
+        |
+        +-- Third-party
+                |
+                +-- Database rows (status, enable, auto-update, update, remove)
+                +-- Add database (Adw.Dialog)
+```
+
+- `AntivirusDatabasesPage` is a `Adw.PreferencesPage` embedded in an `Adw.NavigationView`; the *Third-party* row pushes `ThirdPartyDatabasesPage`.
+- `ThirdPartyDatabasesPage` lists one `Adw.ActionRow` per source with live status (Available / Installed / Disabled / Updating… / Update error), enable and auto-update switches, per-row update, and a confirmed remove via `Adw.AlertDialog`. An empty state (`Adw.StatusPage`) opens the add dialog directly.
+- All operations run through an asyncio/GTK bridge (`run_async`) that never blocks the main loop; the UI always renders the real `DatabaseManager` state.
+- The UI module is import-safe on headless systems: without PyGObject the page classes fail only when instantiated, so `pytest` works on CI without GTK.
+
+```python
+from clamguardian.ui import build_database_navigation
+from clamguardian.databases import DatabaseManager
+
+manager = DatabaseManager(db_dir, state_file)
+view = build_database_navigation(manager)  # Adw.NavigationView, ready to embed
+```
+
 ## Security model
 
 - Quarantine data is authenticated and encrypted with AES-256-GCM.

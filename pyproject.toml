@@ -13,13 +13,26 @@ authors = [{ name = "ClamGuardian contributors" }]
 dependencies = [
   "cryptography>=43.0",
   "aiohttp>=3.10",
-  "PyGObject>=3.46",
 ]
 
 [project.optional-dependencies]
+gtk = [
+  "PyGObject>=3.46",
+]
 test = [
   "pytest>=8.0",
   "pytest-asyncio>=0.23",
+]
+
+[tool.uv]
+# PyGObject compiles against system libraries (girepository-2.0, cairo) and
+# therefore lives in the optional `gtk` extra instead of the core
+# dependencies: headless machines can resolve and run the test suite with
+# plain `uvx --with '.[test]' pytest`, while full desktop environments opt in
+# with `uvx --with '.[test,gtk]' pytest` or `uv sync --extra gtk --extra test`.
+# The UI layer is import-safe without GTK (see clamguardian/ui/database_pages.py).
+constraint-dependencies = [
+  "pygobject>=3.53", # requires girepository-2.0 (libgirepository-2.0-dev on Debian/Ubuntu)
 ]
 
 
@@ -37,3 +50,18 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = ["gi", "gi.repository.*", "aiohttp", "cryptography.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Dual implementation module: GTK page classes are conditionally defined
+# (real widgets or headless import-safety shims), which mypy cannot model.
+module = "clamguardian.ui.database_pages"
+disable_error_code = ["attr-defined", "no-redef", "misc"]

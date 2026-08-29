@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import os
-import struct
-from datetime import datetime, timezone
+from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Sequence
 
 from ..core.base import BaseAVEngine, ScanResult
 
@@ -38,12 +37,14 @@ class ClamAVEngine(BaseAVEngine):
     async def scan(self, target: Path, *, recursive: bool = True) -> ScanResult:
         """Scan *target*, preferring clamd and falling back to clamscan."""
         target = Path(target).expanduser().resolve(strict=True)
-        started = datetime.now(timezone.utc)
+        started = datetime.now(UTC)
         if self.socket_path.exists():
             try:
-                output, exit_code = await asyncio.wait_for(self._scan_socket(target), self.command_timeout)
+                output, exit_code = await asyncio.wait_for(
+                    self._scan_socket(target), self.command_timeout
+                )
                 return self._result(target, started, output, exit_code, "clamd")
-            except (OSError, asyncio.TimeoutError, ValueError):
+            except (TimeoutError, OSError, ValueError):
                 pass
         output, exit_code = await self._run_cli_scan(target, recursive=recursive)
         return self._result(target, started, output, exit_code, "clamscan")
@@ -69,7 +70,11 @@ class ClamAVEngine(BaseAVEngine):
                 if b"\n" in chunk and any(token in chunk for token in (b"FOUND", b"OK", b"ERROR")):
                     break
             output = b"".join(chunks).decode("utf-8", errors="replace")
-            code = 1 if any(" ERROR" in line or line.endswith("ERROR") for line in output.splitlines()) else 0
+            code = (
+                1
+                if any(" ERROR" in line or line.endswith("ERROR") for line in output.splitlines())
+                else 0
+            )
             return output, code
         finally:
             writer.close()
@@ -93,21 +98,25 @@ class ClamAVEngine(BaseAVEngine):
         )
         try:
             stdout, _ = await asyncio.wait_for(process.communicate(), self.command_timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             process.kill()
             await process.wait()
             raise
         return stdout.decode("utf-8", errors="replace"), int(process.returncode or 0)
 
     @staticmethod
-    def _result(target: Path, started: datetime, output: str, exit_code: int, engine: str) -> ScanResult:
+    def _result(
+        target: Path, started: datetime, output: str, exit_code: int, engine: str
+    ) -> ScanResult:
         threats = tuple(
             line.strip()
             for line in output.splitlines()
             if line.strip().endswith("FOUND") or ": " in line and " FOUND" in line
         )
         clean = exit_code == 0 and not threats
-        error = None if clean or threats else output.strip() or f"{engine} exited with code {exit_code}"
+        error = (
+            None if clean or threats else output.strip() or f"{engine} exited with code {exit_code}"
+        )
         return ScanResult(
             target=str(target),
             clean=clean,
@@ -115,5 +124,5 @@ class ClamAVEngine(BaseAVEngine):
             engine=engine,
             error=error,
             started_at=started,
-            finished_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(UTC),
         )

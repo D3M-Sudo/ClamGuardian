@@ -1,15 +1,20 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from pathlib import Path
+
 import aiohttp
+
 from .models import DatabaseSource
 from .verifier import verify_sha256
+
 
 class DatabaseProvider(ABC):
     @abstractmethod
     async def download(self, source: DatabaseSource, destination: Path) -> AsyncIterator[Path]:
         raise NotImplementedError
+
 
 class FileDatabaseProvider(DatabaseProvider):
     def __init__(self, timeout_seconds: float = 120.0, max_artifact_bytes: int = 512 * 1024 * 1024):
@@ -25,14 +30,19 @@ class FileDatabaseProvider(DatabaseProvider):
                 try:
                     async with session.get(artifact.url, allow_redirects=True) as response:
                         response.raise_for_status()
-                        if response.content_length and response.content_length > self.max_artifact_bytes:
+                        if (
+                            response.content_length
+                            and response.content_length > self.max_artifact_bytes
+                        ):
                             raise ValueError(f"Artifact {artifact.filename} exceeds size limit")
                         written = 0
                         with temporary.open("wb") as handle:
                             async for chunk in response.content.iter_chunked(1024 * 1024):
                                 written += len(chunk)
                                 if written > self.max_artifact_bytes:
-                                    raise ValueError(f"Artifact {artifact.filename} exceeds size limit")
+                                    raise ValueError(
+                                        f"Artifact {artifact.filename} exceeds size limit"
+                                    )
                                 handle.write(chunk)
                     if artifact.sha256:
                         verify_sha256(temporary, artifact.sha256)
