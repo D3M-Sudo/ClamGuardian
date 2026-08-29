@@ -22,6 +22,7 @@ from clamguardian.core.base import BaseAVEngine, ScanResult, ScanStatus
 from clamguardian.core.errors import EngineError
 from clamguardian.core.profiles import ScanProfile
 from clamguardian.core.runner import ScanTaskRunner
+from clamguardian.history.interface import HistoryError
 
 # ---------------------------------------------------------------------------
 # Fake engines and harness
@@ -76,13 +77,45 @@ def make_result(
     )
 
 
-class CLI:
-    """Small harness capturing run() output and injecting a fake engine."""
+class FakeRecorder:
+    """Minimal in-memory History recorder capturing recorded results.
 
-    def __init__(self, engine: BaseAVEngine, monkeypatch: pytest.MonkeyPatch):
+    Records every ``ScanResult`` handed to it (optionally raising) and tracks
+    whether it was closed, mirroring the recorder lifetime the Controller owns.
+    """
+
+    def __init__(self, exc: Exception | None = None):
+        self.exc = exc
+        self.records: list[ScanResult] = []
+        self.closed = False
+
+    async def record_scan(self, result: ScanResult) -> None:
+        if self.exc is not None:
+            raise self.exc
+        self.records.append(result)
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class CLI:
+    """Small harness capturing run() output and injecting a fake engine.
+
+    A fake recorder is injected too so scan tests never touch a real history
+    database; the recorder is exposed as ``harness.recorder`` for assertions.
+    """
+
+    def __init__(
+        self,
+        engine: BaseAVEngine,
+        monkeypatch: pytest.MonkeyPatch,
+        recorder: FakeRecorder | None = None,
+    ):
         self.out = io.StringIO()
         self.err = io.StringIO()
+        self.recorder = recorder if recorder is not None else FakeRecorder()
         monkeypatch.setattr(cli_main, "_default_engine", lambda: engine)
+        monkeypatch.setattr(cli_main, "_default_history_store", lambda: self.recorder)
 
     def __call__(self, *argv: str) -> int:
         self.out.seek(0)
@@ -94,8 +127,8 @@ class CLI:
 
 @pytest.fixture
 def cli(monkeypatch: pytest.MonkeyPatch):
-    def factory(engine: BaseAVEngine) -> CLI:
-        return CLI(engine, monkeypatch)
+    def factory(engine: BaseAVEngine, recorder: FakeRecorder | None = None) -> CLI:
+        return CLI(engine, monkeypatch, recorder=recorder)
 
     return factory
 
@@ -316,6 +349,7 @@ def test_cancelled_scan_maps_to_exit_5(tmp_path, monkeypatch):
             raise asyncio.CancelledError
 
     monkeypatch.setattr(cli_main, "_default_engine", lambda: FakeEngine())
+    monkeypatch.setattr(cli_main, "_default_history_store", lambda: FakeRecorder())
     monkeypatch.setattr(cli_main, "ScanTaskRunner", CancellingRunner)
     out, err = io.StringIO(), io.StringIO()
     code = run(["scan", str(target)], out=out, err=err)
@@ -338,6 +372,7 @@ def test_interrupted_scan_maps_to_exit_5_and_json(tmp_path, monkeypatch):
             raise EngineError("unused")
 
     monkeypatch.setattr(cli_main, "_default_engine", lambda: NeverEndingEngine())
+    monkeypatch.setattr(cli_main, "_default_history_store", lambda: FakeRecorder())
 
     def fake_run(coro):  # noqa: ANN001, ANN202
         coro.close()  # avoid "coroutine never awaited"
@@ -382,3 +417,101 @@ def test_engine_cancellation_reaps_before_cli_exits():
     result = asyncio.run(asyncio.wait_for(scenario(), timeout=5))
     assert result.status is ScanStatus.CANCELLED
     assert cleaned["done"] is True
+
+
+# ---------------------------------------------------------------------------
+# M4-B5: Recorder / Controller wiring
+# ---------------------------------------------------------------------------
+
+
+def test_successful_scan_records_result(tmp_path, cli):
+    """A clean scan is recorded once with the exact ScanResult produced."""
+    target = tmp_path / "f"
+    target.write_text("x")
+    result = make_result(ScanStatus.CLEAN, target=str(target), files_scanned=2, engine="fake")
+    recorder = FakeRecorder()
+    harness = cli(FakeEngine(result), recorder=recorder)
+    assert harness("scan", str(target)) == 0
+    assert recorder.records == [result]
+
+
+def test_detection_result_records_threats(tmp_path, cli):
+    """An infected result is recorded and still maps to exit code 1."""
+    target = tmp_path / "f"
+    target.write_text("x")
+    result = make_result(ScanStatus.INFECTED, target=str(target), threats=("Eicar-Test-Signature",))
+    recorder = FakeRecorder()
+    harness = cli(FakeEngine(result), recorder=recorder)
+    assert harness("scan", str(target), "--json") == 1
+    assert recorder.records == [result]
+    assert recorder.records[0].threats == ("Eicar-Test-Signature",)
+    assert json.loads(harness.out.getvalue())["status"] == "infected"
+
+
+def test_scan_result_recorded_exactly_once(tmp_path, cli):
+    """A single scan triggers exactly one record operation (no duplicate)."""
+    target = tmp_path / "f"
+    target.write_text("x")
+    result = make_result(ScanStatus.CLEAN, target=str(target))
+    recorder = FakeRecorder()
+    harness = cli(FakeEngine(result), recorder=recorder)
+    assert harness("scan", str(target)) == 0
+    assert len(recorder.records) == 1
+
+
+def test_scan_error_not_recorded(tmp_path, cli):
+    """An engine error that never yields a ScanResult is not recorded."""
+    target = tmp_path / "f"
+    target.write_text("x")
+    harness = cli(FakeEngine(exc=EngineError("clamscan not found")))
+    assert harness("scan", str(target)) == 3
+    assert harness.recorder.records == []
+
+
+def test_recorder_failure_preserves_scan_result(tmp_path, cli):
+    """A recording failure is logged but never alters the scan outcome."""
+    target = tmp_path / "f"
+    target.write_text("x")
+    result = make_result(ScanStatus.INFECTED, target=str(target), threats=("Eicar",))
+    recorder = FakeRecorder(exc=HistoryError("disk full"))
+    harness = cli(FakeEngine(result), recorder=recorder)
+    assert harness("scan", str(target), "--json") == 1
+    assert "could not record scan history" in harness.err.getvalue()
+    payload = json.loads(harness.out.getvalue())
+    assert payload["status"] == "infected"
+    assert payload["threats"] == ["Eicar"]
+
+
+def test_history_store_open_failure_disables_recording(tmp_path, cli, monkeypatch):
+    """An unavailable history layer disables recording without blocking the scan."""
+    target = tmp_path / "f"
+    target.write_text("x")
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target=str(target))))
+
+    def broken_store() -> None:
+        raise HistoryError("cannot open history database: permission denied")
+
+    monkeypatch.setattr(cli_main, "_default_history_store", broken_store)
+    assert harness("scan", str(target)) == 0
+    assert "history recording disabled" in harness.err.getvalue()
+    assert harness.recorder.records == []
+
+
+def test_cancelled_scan_not_recorded(tmp_path, monkeypatch):
+    """Cancellation yields no ScanResult at the boundary, so nothing is recorded."""
+    target = tmp_path / "f"
+    target.write_text("x")
+    recorder = FakeRecorder()
+    monkeypatch.setattr(cli_main, "_default_engine", lambda: FakeEngine())
+    monkeypatch.setattr(cli_main, "_default_history_store", lambda: recorder)
+
+    class CancellingRunner(ScanTaskRunner):
+        async def submit(self, target, **kwargs):  # noqa: ANN001, ANN003
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(cli_main, "ScanTaskRunner", CancellingRunner)
+    out, err = io.StringIO(), io.StringIO()
+    code = run(["scan", str(target)], out=out, err=err)
+    assert code == 5
+    assert recorder.records == []
+    assert recorder.closed is True  # recorder released even on cancellation

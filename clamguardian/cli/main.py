@@ -7,7 +7,10 @@ package) are strictly limited to:
 * target existence validation (read-only, mirroring the engine's contract);
 * resolving profiles through :data:`~clamguardian.core.profiles.DEFAULT_REGISTRY`;
 * driving the event loop with a thin synchronous entry point;
-* presenting results (human or JSON).
+* presenting results (human or JSON);
+* wiring scan completion into the History recorder (best-effort): the Core
+  produces a :class:`ScanResult`, the Controller decides the scan is finished,
+  and the Recorder persists it without ever altering the scan's outcome.
 
 Scan orchestration is delegated entirely to the Core:
 ``ScanProfileRegistry`` → ``ScanTaskRunner`` → ``BaseAVEngine``. The CLI
@@ -31,6 +34,7 @@ from ..core.errors import ClamGuardianError, ProfileError
 from ..core.profiles import DEFAULT_PROFILE, DEFAULT_REGISTRY, ScanProfile
 from ..core.runner import ScanTaskRunner
 from ..engines.clamav import ClamAVEngine
+from ..history import HistoryError, HistoryStore, SqliteHistoryStore
 from .exit_codes import (
     EXIT_CANCELLED,
     EXIT_ENGINE_ERROR,
@@ -58,6 +62,17 @@ class _Streams:
 def _default_engine() -> BaseAVEngine:
     """Return the production engine (kept indirection-friendly for tests)."""
     return ClamAVEngine()
+
+
+def _default_history_store() -> HistoryStore:
+    """Return the production history store.
+
+    A failure to open the store surfaces as :class:`HistoryError`; the scan flow
+    treats that as a best-effort disable so an unavailable history layer never
+    blocks a completed scan. Kept indirection-friendly for tests, exactly like
+    :func:`_default_engine`.
+    """
+    return SqliteHistoryStore()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -188,6 +203,49 @@ def _report_result(
     return EXIT_OK
 
 
+async def _record_best_effort(
+    recorder: HistoryStore,
+    result: ScanResult,
+    streams: _Streams,
+) -> None:
+    """Persist *result* best-effort; recording failure never alters the scan.
+
+    Mirrors the M4 contract (``HistoryError`` = storage failure): a failed
+    write is reported as a warning and the original ``ScanResult`` is preserved
+    unchanged, so an unavailable history layer can never retroactively turn a
+    valid scan result into a scan failure.
+    """
+    try:
+        await recorder.record_scan(result)
+    except Exception as exc:  # defensive: recording must never break a scan
+        print(f"warning: could not record scan history: {exc}", file=streams.err)
+
+
+async def _scan_and_record(
+    runner: ScanTaskRunner,
+    target: Path,
+    profile: ScanProfile,
+    recorder: HistoryStore | None,
+    streams: _Streams,
+) -> ScanResult:
+    """Run one scan and, once a :class:`ScanResult` exists, record it (best-effort).
+
+    The Core produces the result; this Controller decides the scan is finished
+    and hands the result to the History recorder. The recorder is closed in a
+    ``finally`` so it is never destroyed before a completed result has been
+    recorded, and failure/cancellation still releases its connection.
+    """
+    try:
+        result = await runner.submit(target, profile=profile)
+        if recorder is not None:
+            await _record_best_effort(recorder, result, streams)
+        return result
+    finally:
+        if recorder is not None:
+            with contextlib.suppress(Exception):
+                await recorder.close()
+
+
 def _run_scan(
     engine: BaseAVEngine,
     target: Path,
@@ -195,14 +253,20 @@ def _run_scan(
     args: argparse.Namespace,
     streams: _Streams,
 ) -> int:
-    """Drive one scan through the Core runner, handling cancellation."""
+    """Drive one scan through the Core runner, recording its history."""
     profile_id = profile.id
     runner = ScanTaskRunner(engine, max_concurrency=1)
+    recorder: HistoryStore | None = None
+    try:
+        recorder = _default_history_store()
+    except HistoryError as exc:
+        # Best-effort persistence: an unavailable history layer never blocks a scan.
+        print(f"warning: history recording disabled: {exc}", file=streams.err)
     if not args.json:
         print(f"ClamGuardian\nProfile: {profile.name}\nTarget: {target}", file=streams.out)
         print("Scanning...", file=streams.out)
     try:
-        result = asyncio.run(runner.submit(target, profile=profile))
+        result = asyncio.run(_scan_and_record(runner, target, profile, recorder, streams))
     except KeyboardInterrupt:
         # asyncio.run cancelled the main task: the engine's cancellation
         # lifecycle (SIGTERM process group → grace → SIGKILL → wait) has
