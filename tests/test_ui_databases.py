@@ -16,6 +16,7 @@ from clamguardian.databases.models import (
     InstalledDatabase,
 )
 from clamguardian.ui import GTK_AVAILABLE, ThirdPartyDatabasesPage
+from clamguardian.ui import database_pages
 from clamguardian.ui.database_pages import STATUS_LABELS, run_async
 
 
@@ -158,9 +159,13 @@ def test_state_persistence_round_trip(tmp_path: Path) -> None:
     assert restored.status("thirdparty").status == DatabaseStatus.INSTALLED
 
 
-def test_run_async_worker_thread_fallback() -> None:
+def test_run_async_worker_thread_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     """Without a running loop the coroutine runs and the callback receives its result."""
     import threading
+
+    # Force the headless path: with GTK available the callback is marshalled
+    # through GLib.idle_add and requires a running GLib main loop.
+    monkeypatch.setattr(database_pages, "GTK_AVAILABLE", False)
 
     results: list[object] = []
     done = threading.Event()
@@ -175,4 +180,37 @@ def test_run_async_worker_thread_fallback() -> None:
 
     run_async(_value(), _collect)
     assert done.wait(timeout=5)
+    assert results == [(42, None)]
+
+
+def test_run_async_gtk_main_loop() -> None:
+    """With GTK available and a GLib main loop running the callback is marshalled back."""
+    import threading
+
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import GLib
+
+    if not GTK_AVAILABLE:  # pragma: no cover - headless environments
+        pytest.skip("GTK/PyGObject not available")
+
+    results: list[object] = []
+    done = threading.Event()
+    loop = GLib.MainLoop()
+
+    async def _value() -> int:
+        await asyncio.sleep(0)
+        return 42
+
+    def _collect(result: object, error: Exception | None) -> None:
+        results.append((result, error))
+        done.set()
+        loop.quit()
+
+    run_async(_value(), _collect)
+    # Safety net so a regression cannot hang CI forever.
+    GLib.timeout_add_seconds(10, loop.quit)
+    loop.run()
+    assert done.is_set()
     assert results == [(42, None)]
