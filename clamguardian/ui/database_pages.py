@@ -96,6 +96,9 @@ def run_async(coro, on_done: AsyncDoneCallback | None = None) -> None:
 class _GtkNotAvailable:
     """Import-safety shim applied to UI classes on headless systems."""
 
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        raise RuntimeError("PyGObject/GTK4/Libadwaita is not available on this system")
+
 if not GTK_AVAILABLE:  # pragma: no cover - headless environments
     AntivirusDatabasesPage = _GtkNotAvailable
     AddDatabaseDialog = _GtkNotAvailable
@@ -431,40 +434,38 @@ else:
                     self.show_error("Removal failed", str(exc))
 
 
-class AntivirusDatabasesPage(Adw.PreferencesPage):
-    """Root preferences page with navigation to third-party database management."""
+    class AntivirusDatabasesPage(Adw.PreferencesPage):
+        """Root preferences page with navigation to third-party database management."""
 
-    def __init__(self, manager: DatabaseManager) -> None:
-        super().__init__(title="Antivirus Databases")
-        self._manager = manager
+        def __init__(self, manager: DatabaseManager) -> None:
+            super().__init__(title="Antivirus Databases")
+            self._manager = manager
 
-        group = Adw.PreferencesGroup(title="Third-party databases")
-        group.add(build_database_navigation_row(manager))
-        self.add(group)
+            group = Adw.PreferencesGroup(title="Third-party databases")
+            group.add(build_database_navigation_row(manager))
+            self.add(group)
 
+    def build_database_navigation(manager: DatabaseManager) -> Adw.NavigationView:
+        """Build the navigation stack for third-party database management."""
+        nav = Adw.NavigationView()
+        page = ThirdPartyDatabasesPage(manager)
+        nav.add(page)
+        return nav
 
-def build_database_navigation(manager: DatabaseManager) -> Adw.NavigationView:
-    """Build the navigation stack for third-party database management."""
-    nav = Adw.NavigationView()
-    page = ThirdPartyDatabasesPage(manager)
-    nav.add(page)
-    return nav
+    def build_database_navigation_row(manager: DatabaseManager) -> Adw.ActionRow:
+        """Build an action row that navigates to the third-party database page."""
+        row = Adw.ActionRow(title="Manage third-party databases",
+                            subtitle="Add, update and remove external ClamAV signature sources")
+        row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+        row.set_activatable(True)
 
+        def _on_activated(_row: Adw.ActionRow) -> None:
+            nav = build_database_navigation(manager)
+            dialog = Adw.Dialog(content=nav, content_width=800, content_height=600)
+            dialog.present(row.root)
 
-def build_database_navigation_row(manager: DatabaseManager) -> Adw.ActionRow:
-    """Build an action row that navigates to the third-party database page."""
-    row = Adw.ActionRow(title="Manage third-party databases",
-                        subtitle="Add, update and remove external ClamAV signature sources")
-    row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
-    row.set_activatable(True)
-
-    def _on_activated(_row: Adw.ActionRow) -> None:
-        nav = build_database_navigation(manager)
-        dialog = Adw.Dialog(content=nav, content_width=800, content_height=600)
-        dialog.present(row.root)
-
-    row.connect("activated", _on_activated)
-    return row
+        row.connect("activated", _on_activated)
+        return row
 
 
 __all__ = [

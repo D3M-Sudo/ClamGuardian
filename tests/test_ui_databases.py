@@ -15,8 +15,7 @@ from clamguardian.databases.models import (
     DatabaseStatus,
     InstalledDatabase,
 )
-from clamguardian.ui import GTK_AVAILABLE, ThirdPartyDatabasesPage
-from clamguardian.ui import database_pages
+from clamguardian.ui import GTK_AVAILABLE, ThirdPartyDatabasesPage, database_pages
 from clamguardian.ui.database_pages import STATUS_LABELS, run_async
 
 
@@ -187,13 +186,13 @@ def test_run_async_gtk_main_loop() -> None:
     """With GTK available and a GLib main loop running the callback is marshalled back."""
     import threading
 
+    if not GTK_AVAILABLE:  # pragma: no cover - headless environments
+        pytest.skip("GTK/PyGObject not available")
+
     import gi
 
     gi.require_version("Gtk", "4.0")
     from gi.repository import GLib
-
-    if not GTK_AVAILABLE:  # pragma: no cover - headless environments
-        pytest.skip("GTK/PyGObject not available")
 
     results: list[object] = []
     done = threading.Event()
