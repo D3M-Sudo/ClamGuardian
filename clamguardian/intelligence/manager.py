@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import importlib
+from collections.abc import Iterable
 from importlib import metadata
-from typing import Iterable
 
 from ..core.base import BaseThreatProvider
 
@@ -29,7 +29,11 @@ class ThreatProviderManager:
         """Load all installed providers from the configured entry-point group."""
         loaded: list[str] = []
         entries = metadata.entry_points()
-        selected = entries.select(group=self.ENTRY_POINT_GROUP) if hasattr(entries, "select") else entries.get(self.ENTRY_POINT_GROUP, [])
+        selected = (
+            entries.select(group=self.ENTRY_POINT_GROUP)
+            if hasattr(entries, "select")
+            else entries.get(self.ENTRY_POINT_GROUP, [])  # type: ignore[arg-type]
+        )
         for entry in selected:
             provider = entry.load()
             if isinstance(provider, type):

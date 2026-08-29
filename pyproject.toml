@@ -37,3 +37,18 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = ["gi", "gi.repository.*", "aiohttp", "cryptography.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Dual implementation module: GTK page classes are conditionally defined
+# (real widgets or headless import-safety shims), which mypy cannot model.
+module = "clamguardian.ui.database_pages"
+disable_error_code = ["attr-defined", "no-redef", "misc"]

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import aiohttp
@@ -39,7 +38,7 @@ class VirusTotalProvider(BaseThreatProvider):
                         body = await response.text()
                         raise RuntimeError(f"VirusTotal API error {response.status}: {body[:500]}")
                     payload = await response.json()
-            except asyncio.TimeoutError as exc:
+            except TimeoutError as exc:
                 raise TimeoutError("VirusTotal request timed out") from exc
         attributes = payload.get("data", {}).get("attributes", {})
         stats = attributes.get("last_analysis_stats", {})

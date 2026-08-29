@@ -8,7 +8,9 @@ from clamguardian.engines.clamav import ClamAVEngine
 
 
 @pytest.mark.asyncio
-async def test_cli_fallback_scans_and_normalizes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+async def test_cli_fallback_scans_and_normalizes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     target = tmp_path / "sample.txt"
     target.write_text("clean")
     engine = ClamAVEngine(socket_path=tmp_path / "missing.sock")

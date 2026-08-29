@@ -7,12 +7,12 @@ from pathlib import Path
 
 import gi
 
-gi.require_version("GObject", "2.0")
-from gi.repository import GObject
+gi.require_version("GObject", "2.0")  # noqa: E402 - required before gi.repository import
+from gi.repository import GObject  # noqa: E402 - gi version must be set first
 
-from ..core.base import ScanResult
-from ..core.runner import ScanTaskRunner
-from ..engines.clamav import ClamAVEngine
+from ..core.base import ScanResult  # noqa: E402 - follows the gi bootstrap above
+from ..core.runner import ScanTaskRunner  # noqa: E402 - follows the gi bootstrap above
+from ..engines.clamav import ClamAVEngine  # noqa: E402 - follows the gi bootstrap above
 
 
 class ShieldTaskController(GObject.Object):

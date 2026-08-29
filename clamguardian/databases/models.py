@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
+
 
 class DatabaseStatus(StrEnum):
     AVAILABLE = "available"
@@ -11,11 +13,13 @@ class DatabaseStatus(StrEnum):
     UPDATING = "updating"
     ERROR = "error"
 
+
 @dataclass(frozen=True, slots=True)
 class DatabaseArtifact:
     filename: str
     url: str
     sha256: str | None = None
+
 
 @dataclass(frozen=True, slots=True)
 class DatabaseSource:
@@ -25,7 +29,7 @@ class DatabaseSource:
     artifacts: tuple[DatabaseArtifact, ...]
     enabled: bool = True
     auto_update: bool = True
-    added_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    added_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self):
         if not self.id.strip() or not self.name.strip():
@@ -41,6 +45,7 @@ class DatabaseSource:
                 digest = a.sha256.lower()
                 if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
                     raise ValueError(f"Invalid SHA-256 digest for {a.filename}")
+
 
 @dataclass(frozen=True, slots=True)
 class InstalledDatabase:
