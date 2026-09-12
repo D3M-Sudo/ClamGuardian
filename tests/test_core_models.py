@@ -3,14 +3,22 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
-from clamguardian.core.base import BaseAVEngine, ScanProgress, ScanResult, ScanStatus
+from clamguardian.core.base import (
+    BaseAVEngine,
+    ScanProgress,
+    ScanResult,
+    ScanStatus,
+    compute_file_sha256,
+)
 from clamguardian.core.errors import EngineError
 from clamguardian.core.runner import ScanTaskRunner
+from clamguardian.history import history_record_from_scan
 
 # ---------------------------------------------------------------------------
 # ScanResult / ScanProgress models
@@ -268,3 +276,46 @@ async def test_controller_cancel_all_cancels_active_scans() -> None:
         await task
     await cancel_task
     assert "scan-cancelled" in [name for name, _ in recorder.events]
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: M4 Content Hash Tests
+# ---------------------------------------------------------------------------
+
+
+def test_compute_file_sha256_single_file(tmp_path: Path) -> None:
+    target = tmp_path / "test.bin"
+    content = b"ClamGuardian SHA256 test payload " * 1000
+    target.write_bytes(content)
+
+    expected = hashlib.sha256(content).hexdigest()
+    digest = compute_file_sha256(target)
+    assert digest == expected
+
+
+def test_compute_file_sha256_directory_returns_none(tmp_path: Path) -> None:
+    dir_target = tmp_path / "subdir"
+    dir_target.mkdir()
+    assert compute_file_sha256(dir_target) is None
+
+
+def test_compute_file_sha256_missing_file_returns_none(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.txt"
+    assert compute_file_sha256(missing) is None
+
+
+def test_scan_result_and_history_record_sha256_properties(tmp_path: Path) -> None:
+    target = tmp_path / "f.txt"
+    target.write_text("sample content")
+    expected_hash = hashlib.sha256(b"sample content").hexdigest()
+
+    result = ScanResult(target=str(target), clean=True, metadata={"sha256": expected_hash})
+    assert result.sha256 == expected_hash
+
+    record = history_record_from_scan(result)
+    assert record.sha256 == expected_hash
+
+    dir_result = ScanResult(target=str(tmp_path), clean=True)
+    assert dir_result.sha256 is None
+    dir_record = history_record_from_scan(dir_result)
+    assert dir_record.sha256 is None

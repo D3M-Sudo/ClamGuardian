@@ -85,8 +85,13 @@ class QuarantineVault:
         metadata, nonce, ciphertext = record
         aad = json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode()
         plaintext = self._aes.decrypt(nonce, ciphertext, aad)
-        target = Path(destination) if destination is not None else Path(metadata["original_path"])
-        target = target.expanduser()
+        if destination is not None:
+            target = Path(destination).expanduser().resolve()
+        else:
+            raw_orig = metadata.get("original_path", "")
+            if not raw_orig or raw_orig.startswith("..") or "/../" in raw_orig:
+                raise ValueError("Invalid or unsafe original path in quarantine metadata")
+            target = Path(raw_orig).expanduser().resolve()
         target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         self._atomic_write(target, plaintext, mode=0o600)
         self._path(item_id).unlink()

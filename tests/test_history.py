@@ -942,3 +942,67 @@ def test_history_error_alias() -> None:
     from clamguardian.history import HistoryError as PublicHistoryError
 
     assert PublicHistoryError is HistoryError
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: M4 Profile Propagation and Persistence
+# ---------------------------------------------------------------------------
+
+
+def test_record_from_scan_resolves_profile_from_metadata() -> None:
+    """When result has profile_id in metadata, history_record_from_scan resolves it."""
+    result = make_result(metadata={"profile_id": "quick"})
+    rec = history_record_from_scan(result)
+    assert rec.profile_id == "quick"
+    assert rec.profile_snapshot is not None
+    assert rec.profile_snapshot["id"] == "quick"
+    assert rec.profile_snapshot["max_filesize_mib"] == 25
+
+
+@pytest.mark.asyncio
+async def test_record_scan_persists_profile_and_snapshot(tmp_path: Path) -> None:
+    """store.record_scan persists profile_id and profile_snapshot to SQLite."""
+    store = make_store(tmp_path)
+    profile = ScanProfile.full()
+    result = make_result(metadata={"profile_id": profile.id})
+    rec = await store.record_scan(result, profile=profile)
+    assert rec.profile_id == "full"
+    assert rec.profile_snapshot is not None
+    assert rec.profile_snapshot["detect_pua"] is True
+
+    got = await store.get_scan(rec.id)
+    assert got is not None
+    assert got.profile_id == "full"
+    assert got.profile_snapshot is not None
+    assert got.profile_snapshot["detect_pua"] is True
+
+
+@pytest.mark.asyncio
+async def test_record_scan_handles_legacy_missing_profile_data(tmp_path: Path) -> None:
+    """Scans without profile info persist profile_id=None and profile_snapshot=None safely."""
+    store = make_store(tmp_path)
+    result = make_result()  # no metadata["profile_id"]
+    rec = await store.record_scan(result)
+    assert rec.profile_id is None
+    assert rec.profile_snapshot is None
+
+    got = await store.get_scan(rec.id)
+    assert got is not None
+    assert got.profile_id is None
+    assert got.profile_snapshot is None
+
+
+@pytest.mark.asyncio
+async def test_list_scans_filter_by_profile_id(tmp_path: Path) -> None:
+    """store.list_scans(profile_id=...) filters records by profile_id."""
+    store = make_store(tmp_path)
+    await store.record_scan(make_result(target="/quick_file", metadata={"profile_id": "quick"}))
+    await store.record_scan(make_result(target="/full_file", metadata={"profile_id": "full"}))
+
+    quick_scans = await store.list_scans(profile_id="quick")
+    assert len(quick_scans) == 1
+    assert quick_scans[0].target == "/quick_file"
+
+    full_scans = await store.list_scans(profile_id="full")
+    assert len(full_scans) == 1
+    assert full_scans[0].target == "/full_file"

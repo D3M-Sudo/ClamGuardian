@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.clamguardian.ClamGuardian</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>ClamGuardian</name>
+  <summary>Security framework for ClamAV scanning and quarantine vaulting</summary>
+  <description>
+    <p>
+      ClamGuardian provides antivirus scanning, encrypted quarantine vaulting,
+      threat intelligence integration, and event-driven monitoring for Linux.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.clamguardian.ClamGuardian.desktop</launchable>
+  <releases>
+    <release version="1.0.0" date="2026-09-12">
+      <description>
+        <p>ClamGuardian 1.0 Release featuring profile-aware history, encrypted AES-256-GCM quarantine vault, and ClamAV engine integration.</p>
+      </description>
+    </release>
+  </releases>
+</component>

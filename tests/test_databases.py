@@ -59,3 +59,30 @@ def test_rejects_unsafe_source():
         DatabaseSource(
             "x", "X", "x", (DatabaseArtifact("../evil.cvd", "https://example.invalid/x"),)
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 Security Gap Closure: Database Verifier & Provider
+# ---------------------------------------------------------------------------
+
+
+def test_verify_sha256_checksum_mismatch(tmp_path: Path):
+    from clamguardian.databases.verifier import verify_sha256
+
+    target = tmp_path / "test.db"
+    target.write_bytes(b"actual content")
+    wrong_hash = "0" * 64
+
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        verify_sha256(target, wrong_hash)
+
+
+def test_verify_sha256_matching_checksum(tmp_path: Path):
+    from clamguardian.databases.verifier import verify_sha256
+
+    target = tmp_path / "test.db"
+    data = b"matching content"
+    target.write_bytes(data)
+    correct_hash = hashlib.sha256(data).hexdigest()
+
+    verify_sha256(target, correct_hash)  # no raise
