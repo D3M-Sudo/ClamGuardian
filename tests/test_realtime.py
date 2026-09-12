@@ -99,21 +99,58 @@ async def test_orchestrator_debouncing_and_deduplication(tmp_path: Path) -> None
     ]
 
     _tasks = await orchestrator.handle_events(events)
-    # Immediately handled (debounced, so not executed yet in zero time)
-    await asyncio.sleep(0.02)
-    tasks2 = await orchestrator.handle_events([])
-
-    if tasks2:
-        await asyncio.gather(*tasks2)
+    # Push-driven: sleep past debounce window without invoking handle_events() again
+    await asyncio.sleep(0.03)
 
     assert len(engine.scanned) == 1
     assert engine.scanned[0] == target.resolve()
 
 
 @pytest.mark.asyncio
+async def test_orchestrator_push_debounce_single_event(tmp_path: Path) -> None:
+    """P1-REALTIME-DEBOUNCE: Single event triggers scan automatically after debounce window."""
+    target = tmp_path / "push_event.txt"
+    target.write_text("content")
+
+    engine = StubEngine()
+    runner = ScanTaskRunner(engine)
+    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.05)
+
+    events = [FileEvent(path=target, event_type=FileEventType.CREATE)]
+    await orchestrator.handle_events(events)
+
+    # Scanned count is initially 0
+    assert len(engine.scanned) == 0
+
+    # Wait past debounce window WITHOUT calling handle_events() again
+    await asyncio.sleep(0.08)
+
+    assert len(engine.scanned) == 1
+    assert engine.scanned[0] == target.resolve()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_queue_backpressure_bound(tmp_path: Path) -> None:
+    """P1-REALTIME-QUEUE-BOUND: Backlog (pending + active) cannot exceed max_queue_depth."""
+    engine = StubEngine(delay=0.1)
+    runner = ScanTaskRunner(engine, max_concurrency=1)
+    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.01, max_queue_depth=2)
+
+    files = [tmp_path / f"file_{i}.txt" for i in range(5)]
+    for f in files:
+        f.write_text("data")
+
+    events = [FileEvent(path=f, event_type=FileEventType.CREATE) for f in files]
+    await orchestrator.handle_events(events)
+
+    assert orchestrator.dropped_events_count == 3
+    await asyncio.sleep(0.2)
+    await orchestrator.close()
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_file_disappearance_before_scan(tmp_path: Path) -> None:
     missing_file = tmp_path / "vanished.txt"
-    # File is not created on disk
 
     engine = StubEngine()
     runner = ScanTaskRunner(engine)
@@ -153,4 +190,39 @@ def test_inotify_monitor_instantiation_or_skip() -> None:
     if not INOTIFY_AVAILABLE:
         pytest.skip("Linux inotify is not available in this environment")
     monitor = InotifyMonitor()
+    monitor.close()
+
+
+def test_inotify_monitor_recursive_nested_creation(tmp_path: Path) -> None:
+    """P1-REALTIME-RECURSIVE-WATCH: Nested directory tree is monitored recursively."""
+    if not INOTIFY_AVAILABLE:
+        pytest.skip("Linux inotify is not available in this environment")
+
+    root = tmp_path / "root"
+    nested_dir = root / "level1" / "level2"
+    nested_dir.mkdir(parents=True)
+
+    monitor = InotifyMonitor()
+    monitor.add_watch(root)
+
+    # File created deep in existing nested tree
+    target_file = nested_dir / "deep_file.txt"
+    target_file.write_text("content")
+
+    events = monitor.read_events(timeout=0.2)
+    paths = [e.path for e in events]
+    assert target_file.resolve() in [p.resolve() for p in paths]
+
+    # Dynamic creation of new nested directory
+    new_dir = root / "new_folder"
+    new_dir.mkdir()
+    _ = monitor.read_events(timeout=0.2)
+
+    dynamic_file = new_dir / "dynamic.txt"
+    dynamic_file.write_text("dynamic")
+
+    events2 = monitor.read_events(timeout=0.2)
+    paths2 = [e.path for e in events2]
+    assert dynamic_file.resolve() in [p.resolve() for p in paths2]
+
     monitor.close()
