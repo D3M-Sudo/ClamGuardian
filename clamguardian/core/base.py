@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -11,6 +12,27 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .profiles import ScanProfile
+
+
+def compute_file_sha256(path: Path, chunk_size: int = 65536) -> str | None:
+    """Safely compute SHA-256 for a single regular file.
+
+    Returns ``None`` if *path* is a directory, not a regular file, does not exist,
+    or cannot be read (e.g. permission error, file disappeared, broken symlink).
+    Uses chunked reading to handle large files efficiently without loading them
+    entirely into memory.
+    """
+    try:
+        resolved = Path(path).resolve(strict=True)
+        if not resolved.is_file():
+            return None
+        hasher = hashlib.sha256()
+        with resolved.open("rb") as handle:
+            while chunk := handle.read(chunk_size):
+                hasher.update(chunk)
+        return hasher.hexdigest()
+    except (OSError, ValueError):
+        return None
 
 
 class ScanStatus(Enum):
@@ -84,6 +106,11 @@ class ScanResult:
     def duration_seconds(self) -> float:
         """Return elapsed scan time in seconds."""
         return max(0.0, (self.finished_at - self.started_at).total_seconds())
+
+    @property
+    def sha256(self) -> str | None:
+        """Return the calculated SHA-256 digest for single-file targets, or ``None``."""
+        return self.metadata.get("sha256")
 
     @classmethod
     def cancelled(cls, target: str, started_at: datetime | None = None) -> ScanResult:

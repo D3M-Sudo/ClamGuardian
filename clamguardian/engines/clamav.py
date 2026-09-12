@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ..core.base import BaseAVEngine, ScanResult, ScanStatus
+from ..core.base import BaseAVEngine, ScanResult, ScanStatus, compute_file_sha256
 from ..core.errors import EngineError
 from ..core.profiles import DEFAULT_PROFILE, ScanProfile
 
@@ -79,6 +79,9 @@ class ClamAVEngine(BaseAVEngine):
             return ScanResult.timed_out(str(target), started)
         result = self._result(target, started, output, exit_code, "clamscan")
         result.metadata["profile_id"] = profile.id
+        sha256 = compute_file_sha256(target)
+        if sha256 is not None:
+            result.metadata["sha256"] = sha256
         return result
 
     async def update_signatures(self) -> str:

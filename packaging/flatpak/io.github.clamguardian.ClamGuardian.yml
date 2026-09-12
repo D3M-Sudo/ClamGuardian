@@ -1,0 +1,22 @@
+app-id: io.github.clamguardian.ClamGuardian
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+command: clamguardian
+finish-args:
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=ipc
+  - --talk-name=org.freedesktop.Flatpak
+  - --filesystem=host:ro
+  - --filesystem=xdg-data/clamguardian:create
+
+modules:
+  - name: clamguardian
+    buildsystem: simple
+    build-commands:
+      - pip install --no-deps --prefix=/app .
+    sources:
+      - type: dir
+        path: ../..

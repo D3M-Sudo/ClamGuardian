@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=ClamGuardian
+GenericName=Antivirus & Security Guard
+Comment=Linux antivirus scanning, quarantine vault, and security management
+Exec=clamguardian
+Icon=io.github.clamguardian.ClamGuardian
+Terminal=false
+Type=Application
+Categories=Utility;Security;System;
+Keywords=antivirus;clamav;scan;quarantine;security;
+StartupNotify=true
