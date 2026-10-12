@@ -17,7 +17,7 @@ Phase 4: M4 Finalization & Report [COMPLETED]
 Phase 5: M5 Security Hardening [COMPLETED]
 Phase 6: M5 P2 Evaluation [COMPLETED]
 Phase 7: M6 CI & Quality Gates [COMPLETED]
-Phase 8: M7 Packaging [PENDING]
+Phase 8: M7 Packaging [COMPLETED]
 Phase 9: 1.0 Release Gate [PENDING]
     ↓
 Phase 10: 1.1 USB Auto-Scan [DEFERRED - out of 1.0 scope]
@@ -104,9 +104,10 @@ Phase 12: 2.x-A Event-Driven Monitoring [DEFERRED - out of 1.0 scope]
 - **Evidence:** `docs/M6-CI-GATE-REPORT.md`; dedicated `audit` job on the pinned lockfile (`uv lock --check` + `pip-audit --strict -r`), `test` job on Python 3.11/3.12/3.13.
 
 ### Phase 8 & 9: M7 Packaging & 1.0 Release Gate
-- **Status:** PENDING
+- **Status:** Phase 8 (packaging) COMPLETED - Phase 9 (1.0 release gate) PENDING
 - **Scope:** Desktop metadata, icon, Flatpak manifest, 1.0 release readiness audit & gate.
 - **Dependencies:** Phase 7.
+- **Evidence:** `docs/M7-PACKAGING-REPORT.md`; `tests/test_packaging.py`; wheel built, installed and run end to end. Phase 9 stays open until the release candidate checklist is executed.
 
 ### Phase 10: 1.1 USB Auto-Scan
 - **Status:** DEFERRED (out of 1.0 scope)

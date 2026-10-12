@@ -1,0 +1,40 @@
+# Development manifest: builds the current working tree instead of a pinned
+# revision. Use io.github.clamguardian.ClamGuardian.yml (pinned to the v1.0.0
+# tag) for release and Flathub submission builds; see README.md in this
+# directory for the differences and for the open release-gate items.
+app-id: io.github.clamguardian.ClamGuardian
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+command: clamguardian
+finish-args:
+  # --- GUI -------------------------------------------------------------
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=ipc
+  # --- Host ClamAV -----------------------------------------------------
+  # clamscan/freshclam are executed through `flatpak-spawn --host` and clamd is
+  # reached over its UNIX socket on the host, so the sandbox needs to talk to
+  # the flatpak portal and to read the host filesystem (socket + definitions).
+  - --talk-name=org.freedesktop.Flatpak
+  - --filesystem=host:ro
+  # --- Network ---------------------------------------------------------
+  # Only used for explicit, user-initiated third-party database downloads.
+  - --share=network
+  # --- Application data ------------------------------------------------
+  # Quarantine vault, scan history and database state live in the app data dir.
+  - --filesystem=xdg-data/clamguardian:create
+
+modules:
+  - name: clamguardian
+    buildsystem: simple
+    build-commands:
+      - pip install --no-deps --prefix=/app .
+      - install -Dm644 data/io.github.clamguardian.ClamGuardian.desktop /app/share/applications/io.github.clamguardian.ClamGuardian.desktop
+      - install -Dm644 data/io.github.clamguardian.ClamGuardian.metainfo.xml /app/share/metainfo/io.github.clamguardian.ClamGuardian.metainfo.xml
+      - install -Dm644 data/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg /app/share/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg
+    sources:
+      - type: dir
+
+        path: ../..

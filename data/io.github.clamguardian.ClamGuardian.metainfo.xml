@@ -8,14 +8,39 @@
   <description>
     <p>
       ClamGuardian provides antivirus scanning, encrypted quarantine vaulting,
-      threat intelligence integration, and event-driven monitoring for Linux.
+      scan profiles, a persisted scan history, and host-aware ClamAV execution
+      for Linux.
+    </p>
+    <p>
+      Scans run through clamd when it is available and fall back to clamscan;
+      quarantined files are stored with AES-256-GCM authenticated encryption and
+      can be restored from the vault.
     </p>
   </description>
   <launchable type="desktop-id">io.github.clamguardian.ClamGuardian.desktop</launchable>
+  <developer id="io.github.clamguardian">
+    <name>ClamGuardian contributors</name>
+  </developer>
+  <url type="homepage">https://github.com/D3M-Sudo/ClamGuardian</url>
+  <url type="bugtracker">https://github.com/D3M-Sudo/ClamGuardian/issues</url>
+  <url type="vcs-browser">https://github.com/D3M-Sudo/ClamGuardian</url>
+  <categories>
+    <category>Utility</category>
+    <category>Security</category>
+    <category>System</category>
+  </categories>
+  <!-- All OARS 1.1 attributes default to "none": the application presents no
+       objectionable content. -->
+  <content_rating type="oars-1.1"/>
   <releases>
-    <release version="1.0.0" date="2026-09-12">
+    <release version="1.0.0" date="2026-10-13">
       <description>
-        <p>ClamGuardian 1.0 Release featuring profile-aware history, encrypted AES-256-GCM quarantine vault, and ClamAV engine integration.</p>
+        <p>
+          First stable release: profile-aware scan history, SHA-256 content
+          hashing, AES-256-GCM quarantine vault with chunked streaming,
+          ClamAV engine integration with Flatpak-aware host execution, and a
+          pinned dependency audit in CI.
+        </p>
       </description>
     </release>
   </releases>
