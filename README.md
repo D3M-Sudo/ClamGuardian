@@ -238,7 +238,7 @@ ruff check .
 mypy clamguardian
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs `ruff` and `pytest` on Python 3.11, 3.12, and 3.13, installs the GTK/PyGObject system dependencies required by the package, and triggers on every pull request plus pushes to `main`.
+GitHub Actions (`.github/workflows/ci.yml`) triggers on every pull request and on pushes to `main`, `feature` and `development`. The `test` job installs the GTK/PyGObject system dependencies the package needs and runs `ruff check .`, `mypy clamguardian` and `pytest` on Python 3.11, 3.12 and 3.13. A separate `audit` job verifies that `uv.lock` matches `pyproject.toml` (`uv lock --check`) and runs `pip-audit --strict` against the pinned runtime dependency set exported from the lockfile; see `docs/M6-CI-GATE-REPORT.md`.
 
 ## Branching model
 

@@ -16,7 +16,7 @@ Phase 4: M4 Finalization & Report [COMPLETED]
     ↓
 Phase 5: M5 Security Hardening [IN PROGRESS]
 Phase 6: M5 P2 Evaluation [PENDING]
-Phase 7: M6 CI & Quality Gates [PENDING]
+Phase 7: M6 CI & Quality Gates [COMPLETED]
 Phase 8: M7 Packaging [PENDING]
 Phase 9: 1.0 Release Gate [PENDING]
     ↓
@@ -97,9 +97,10 @@ Phase 12: 2.x-A Event-Driven Monitoring [DEFERRED - out of 1.0 scope]
 - **Dependencies:** Phase 4.
 
 ### Phase 7: M6 CI & Quality Gates
-- **Status:** PENDING
+- **Status:** COMPLETED
 - **Scope:** Integrate `mypy` and `pip-audit` into GitHub Actions CI pipeline.
 - **Dependencies:** Phase 5 & 6.
+- **Evidence:** `docs/M6-CI-GATE-REPORT.md`; dedicated `audit` job on the pinned lockfile (`uv lock --check` + `pip-audit --strict -r`), `test` job on Python 3.11/3.12/3.13.
 
 ### Phase 8 & 9: M7 Packaging & 1.0 Release Gate
 - **Status:** PENDING
