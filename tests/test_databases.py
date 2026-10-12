@@ -195,3 +195,68 @@ async def test_provider_aborts_install_on_digest_mismatch(
             pass
 
     assert list(destination.glob("*")) == []
+
+
+@pytest.mark.asyncio
+async def test_provider_refuses_artifact_without_digest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """M5 (P1-DB-01): an artifact with no declared digest must never be installed.
+
+    Fail closed: without a digest the payload cannot be verified, so it must be
+    refused *before* any byte is fetched, not installed and trusted.
+    """
+    from clamguardian.databases import provider as provider_module
+    from clamguardian.databases.provider import FileDatabaseProvider
+
+    provider = FileDatabaseProvider()
+    monkeypatch.setattr(
+        provider_module.aiohttp,
+        "ClientSession",
+        lambda *a, **k: _FakeSession(b"unverified payload"),
+    )
+    source = DatabaseSource(
+        "thirdparty",
+        "Third Party",
+        "Test source",
+        (DatabaseArtifact("thirdparty.cvd", "https://example.invalid/db.cvd"),),
+    )
+
+    destination = tmp_path / "db"
+    with pytest.raises(ValueError, match="no SHA-256 digest"):
+        async for _ in provider.download(source, destination):
+            pass
+
+    assert list(destination.glob("*")) == []
+
+
+@pytest.mark.asyncio
+async def test_manager_update_refuses_digestless_artifact(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """M5 (P1-DB-01): the refusal is surfaced as a failed update, nothing installed."""
+    from clamguardian.databases import provider as provider_module
+    from clamguardian.databases.provider import FileDatabaseProvider
+
+    monkeypatch.setattr(
+        provider_module.aiohttp,
+        "ClientSession",
+        lambda *a, **k: _FakeSession(b"unverified payload"),
+    )
+    manager = DatabaseManager(
+        tmp_path / "db", tmp_path / "state.json", provider=FileDatabaseProvider()
+    )
+    manager.add_source(
+        DatabaseSource(
+            "thirdparty",
+            "Third Party",
+            "Test source",
+            (DatabaseArtifact("thirdparty.cvd", "https://example.invalid/db.cvd"),),
+        )
+    )
+
+    with pytest.raises(DatabaseUpdateError, match="no SHA-256 digest"):
+        await manager.update("thirdparty")
+
+    assert not (tmp_path / "db" / "thirdparty.cvd").exists()
+    assert manager.status("thirdparty").status == DatabaseStatus.ERROR

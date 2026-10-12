@@ -119,7 +119,7 @@ else:
             ("description", "Description", "e.g. Community ClamAV signatures"),
             ("url", "Database URL", "https://…"),
             ("filename", "Filename", "e.g. malware.db"),
-            ("sha256", "SHA-256 (optional)", "64 hexadecimal characters"),
+            ("sha256", "SHA-256 (required)", "64 hexadecimal characters"),
         )
 
         def __init__(self, manager: DatabaseManager,
@@ -187,8 +187,13 @@ else:
                 self._show_error(f"Database source already exists: {values['source_id']}")
                 return
 
+            digest = values["sha256"].lower()
+            if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+                self._show_error("SHA-256 digest is required: 64 hexadecimal characters.")
+                return
+
             artifact = DatabaseArtifact(filename=values["filename"], url=values["url"],
-                                        sha256=values["sha256"] or None)
+                                        sha256=digest)
             try:
                 source = DatabaseSource(id=values["source_id"], name=values["name"],
                                         description=values["description"], artifacts=(artifact,))

@@ -25,6 +25,13 @@ class FileDatabaseProvider(DatabaseProvider):
         destination.mkdir(parents=True, exist_ok=True)
         async with aiohttp.ClientSession(timeout=self.timeout) as session:
             for artifact in source.artifacts:
+                # Fail closed: an artifact with no declared digest can never be
+                # verified, so it is refused before a single byte is fetched
+                # instead of being installed and trusted.
+                if not artifact.sha256:
+                    raise ValueError(
+                        f"Refusing to install {artifact.filename}: no SHA-256 digest declared"
+                    )
                 output = destination / artifact.filename
                 temporary = output.with_name(output.name + ".part")
                 try:
@@ -44,8 +51,7 @@ class FileDatabaseProvider(DatabaseProvider):
                                         f"Artifact {artifact.filename} exceeds size limit"
                                     )
                                 handle.write(chunk)
-                    if artifact.sha256:
-                        verify_sha256(temporary, artifact.sha256)
+                    verify_sha256(temporary, artifact.sha256)
                     temporary.replace(output)
                     yield output
                 except Exception:
