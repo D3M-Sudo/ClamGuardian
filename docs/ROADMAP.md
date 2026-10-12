@@ -14,8 +14,8 @@ Phase 2: M4 Content Hashing [COMPLETED]
 Phase 3: M4 Security Test Gap Closure [COMPLETED]
 Phase 4: M4 Finalization & Report [COMPLETED]
     ↓
-Phase 5: M5 Security Hardening [IN PROGRESS]
-Phase 6: M5 P2 Evaluation [PENDING]
+Phase 5: M5 Security Hardening [COMPLETED]
+Phase 6: M5 P2 Evaluation [COMPLETED]
 Phase 7: M6 CI & Quality Gates [COMPLETED]
 Phase 8: M7 Packaging [PENDING]
 Phase 9: 1.0 Release Gate [PENDING]
@@ -92,9 +92,10 @@ Phase 12: 2.x-A Event-Driven Monitoring [DEFERRED - out of 1.0 scope]
 - **Evidence:** `docs/M4-FINAL-REPORT.md`; boundaries verified, quality gates green (203 passed / 2 skipped, ruff, mypy on 26 source files).
 
 ### Phase 5 & 6: M5 Security Hardening & P2 Evaluation
-- **Status:** PENDING
+- **Status:** COMPLETED
 - **Scope:** Quarantine streaming/chunked AES-256-GCM encryption, database download integrity, explicit scan target validation (handling special files/symlinks), host execution hardening, intelligence trust boundaries, P2 evaluation.
 - **Dependencies:** Phase 4.
+- **Evidence:** `docs/M5-HARDENING-REPORT.md`; fixes `3394f86`, `192695c`, `d1a5cb3`, `b21e320`.
 
 ### Phase 7: M6 CI & Quality Gates
 - **Status:** COMPLETED
