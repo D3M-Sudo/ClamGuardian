@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -14,6 +14,10 @@ from .runner import ScanTaskRunner
 
 if TYPE_CHECKING:
     from ..history import HistoryStore
+
+
+#: Best-effort History failures are reported here, never raised.
+_LOGGER = logging.getLogger(__name__)
 
 
 class USBScanError(RuntimeError):
@@ -92,9 +96,7 @@ class USBDeviceScanner:
             result = await self.runner.submit(
                 target, profile=selected_profile, on_start=on_start
             )
-            if self.history_store is not None:
-                with contextlib.suppress(Exception):
-                    await self.history_store.record_scan(result, profile=selected_profile)
+            await self._record_history(result, selected_profile)
             return result
         except asyncio.CancelledError:
             return ScanResult.cancelled(str(target))
@@ -107,3 +109,22 @@ class USBDeviceScanner:
             )
         finally:
             self._active_mounts.discard(target)
+
+    async def _record_history(self, result: ScanResult, profile: ScanProfile) -> None:
+        """Persist *result* on a best-effort basis; never alter the outcome.
+
+        A storage failure must not turn a completed scan into a failed one, but
+        it must not vanish silently either: it is logged so an operator can see
+        that History is incomplete. The exception is deliberately caught as
+        ``Exception`` and not as ``HistoryError``: Core must not import the
+        History layer at runtime, and an unexpected backend error must still not
+        abort a completed scan.
+        """
+        if self.history_store is None:
+            return
+        try:
+            await self.history_store.record_scan(result, profile=profile)
+        except Exception:
+            _LOGGER.warning(
+                "could not record USB scan of %s in history", result.target, exc_info=True
+            )

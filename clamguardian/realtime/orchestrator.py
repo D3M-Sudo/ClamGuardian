@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from time import time
@@ -17,6 +18,10 @@ from .policy import RealtimePolicy
 if TYPE_CHECKING:
     from ..core.runner import ScanTaskRunner
     from ..history import HistoryStore
+
+
+#: Best-effort History failures are reported here, never raised.
+_LOGGER = logging.getLogger(__name__)
 
 
 class RealtimeScanOrchestrator:
@@ -177,13 +182,15 @@ class RealtimeScanOrchestrator:
             else:
                 result = await self.runner.submit(path, profile=self.profile)
 
-            if self.history_store is not None:
-                with contextlib.suppress(Exception):
-                    await self.history_store.record_scan(result, profile=self.profile)
+            await self._record_history(result)
 
             if on_complete is not None:
-                with contextlib.suppress(Exception):
+                try:
                     on_complete(result)
+                except Exception:
+                    _LOGGER.warning(
+                        "scan completion callback failed for %s", path, exc_info=True
+                    )
 
             return result
         except asyncio.CancelledError:
@@ -201,6 +208,28 @@ class RealtimeScanOrchestrator:
                         with contextlib.suppress(RuntimeError):
                             loop = asyncio.get_running_loop()
                             self._schedule_timer(loop, path, on_complete)
+
+
+    async def _record_history(self, result: ScanResult) -> None:
+        """Persist *result* on a best-effort basis; never alter the outcome.
+
+        A storage failure must not turn a completed scan into a failed one, but
+        it must not vanish silently either: it is logged so an operator can see
+        that History is incomplete. The exception is deliberately caught as
+        ``Exception`` and not as ``HistoryError``: the realtime layer must not
+        import the History backend, and an unexpected storage error must still
+        not abort a completed scan.
+        """
+        if self.history_store is None:
+            return
+        try:
+            await self.history_store.record_scan(result, profile=self.profile)
+        except Exception:
+            _LOGGER.warning(
+                "could not record realtime scan of %s in history",
+                result.target,
+                exc_info=True,
+            )
 
     async def close(self) -> None:
         """Shutdown orchestrator, cancelling timers and active scans."""

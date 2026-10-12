@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -10,7 +11,7 @@ import pytest
 
 from clamguardian.core.base import BaseAVEngine, ScanResult, ScanStatus
 from clamguardian.core.runner import ScanTaskRunner
-from clamguardian.history import SqliteHistoryStore
+from clamguardian.history import HistoryError, SqliteHistoryStore
 from clamguardian.realtime import (
     INOTIFY_AVAILABLE,
     FileEvent,
@@ -267,3 +268,66 @@ async def test_orchestrator_history_propagates_applied_profile(
     assert records[0].profile_snapshot is not None
     assert records[0].profile_snapshot["id"] == "default"
     await store.close()
+
+
+class FailingHistoryStore:
+    """Minimal store whose persistence always fails (HistoryStore contract)."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def record_scan(self, result, profile=None):
+        self.calls += 1
+        raise HistoryError("disk full")
+
+
+@pytest.mark.asyncio
+async def test_history_failure_is_best_effort_and_logged(
+    caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
+    """M4 best-effort: a storage failure neither fails the scan nor stays silent."""
+    target = tmp_path / "logged.txt"
+    target.write_text("data")
+
+    store = FailingHistoryStore()
+    orchestrator = RealtimeScanOrchestrator(
+        ScanTaskRunner(StubEngine()), history_store=store, debounce_seconds=0.0
+    )
+
+    with caplog.at_level(logging.WARNING):
+        tasks = await orchestrator.handle_events(
+            [FileEvent(path=target, event_type=FileEventType.CREATE)]
+        )
+        results = await asyncio.gather(*tasks)
+
+    assert store.calls == 1
+    assert results[0] is not None
+    assert results[0].status is ScanStatus.CLEAN
+    assert "could not record realtime scan" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_completion_callback_failure_is_logged(
+    caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
+    """A failing on_scan_complete callback must not discard the scan result."""
+    target = tmp_path / "callback.txt"
+    target.write_text("data")
+
+    orchestrator = RealtimeScanOrchestrator(
+        ScanTaskRunner(StubEngine()), debounce_seconds=0.0
+    )
+
+    def exploding_callback(result):
+        raise RuntimeError("callback bug")
+
+    with caplog.at_level(logging.WARNING):
+        tasks = await orchestrator.handle_events(
+            [FileEvent(path=target, event_type=FileEventType.CREATE)],
+            on_scan_complete=exploding_callback,
+        )
+        results = await asyncio.gather(*tasks)
+
+    assert results[0] is not None
+    assert results[0].status is ScanStatus.CLEAN
+    assert "scan completion callback failed" in caplog.text

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,7 @@ from clamguardian.core.base import BaseAVEngine, ScanResult, ScanStatus
 from clamguardian.core.profiles import ScanProfile
 from clamguardian.core.runner import ScanTaskRunner
 from clamguardian.core.usb import USBDeviceScanner
-from clamguardian.history import SqliteHistoryStore
+from clamguardian.history import HistoryError, SqliteHistoryStore
 
 
 class StubEngine(BaseAVEngine):
@@ -118,3 +119,34 @@ async def test_usb_scan_device_disappearance_during_scan(tmp_path: Path) -> None
     result = await scanner.scan_device(mount)
     assert result.status is ScanStatus.ERROR
     assert "disk unmounted unexpectedly" in (result.error or "")
+
+
+class FailingHistoryStore:
+    """Minimal store whose persistence always fails (HistoryStore contract)."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def record_scan(self, result, profile=None):
+        self.calls += 1
+        raise HistoryError("disk full")
+
+
+@pytest.mark.asyncio
+async def test_usb_history_failure_is_best_effort_and_logged(
+    caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
+    """M4 best-effort: a storage failure neither fails the USB scan nor stays silent."""
+    mount = tmp_path / "usb_drive"
+    mount.mkdir()
+    (mount / "file.txt").write_text("usb file")
+
+    store = FailingHistoryStore()
+    scanner = USBDeviceScanner(ScanTaskRunner(StubEngine()), history_store=store)
+
+    with caplog.at_level(logging.WARNING):
+        result = await scanner.scan_device(mount)
+
+    assert store.calls == 1
+    assert result.status is ScanStatus.CLEAN
+    assert "could not record USB scan" in caplog.text
