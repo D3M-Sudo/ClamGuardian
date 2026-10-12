@@ -9,20 +9,20 @@ This document outlines the authoritative development roadmap for ClamGuardian, t
 ```
 M0 → M0.5 → F0 → M1 → M2 → M3 → M4-A → M4-B (B1..B7) [COMPLETED]
     ↓
-Phase 1: M4 Profile Propagation [NEXT]
-Phase 2: M4 Content Hashing [PENDING]
-Phase 3: M4 Security Test Gap Closure [PENDING]
-Phase 4: M4 Finalization & Report [PENDING]
+Phase 1: M4 Profile Propagation [COMPLETED]
+Phase 2: M4 Content Hashing [COMPLETED]
+Phase 3: M4 Security Test Gap Closure [COMPLETED]
+Phase 4: M4 Finalization & Report [COMPLETED]
     ↓
-Phase 5: M5 Security Hardening [PENDING]
+Phase 5: M5 Security Hardening [IN PROGRESS]
 Phase 6: M5 P2 Evaluation [PENDING]
 Phase 7: M6 CI & Quality Gates [PENDING]
 Phase 8: M7 Packaging [PENDING]
 Phase 9: 1.0 Release Gate [PENDING]
     ↓
-Phase 10: 1.1 USB Auto-Scan [PENDING]
-Phase 11: Threat Intelligence Integration [PENDING]
-Phase 12: 2.x-A Event-Driven Monitoring [PENDING]
+Phase 10: 1.1 USB Auto-Scan [DEFERRED - out of 1.0 scope]
+Phase 11: Threat Intelligence Integration [DEFERRED - out of 1.0 scope]
+Phase 12: 2.x-A Event-Driven Monitoring [DEFERRED - out of 1.0 scope]
     ↓
 2.x-B / 2.x-C [DEFERRED]
 ```
@@ -89,7 +89,7 @@ Phase 12: 2.x-A Event-Driven Monitoring [PENDING]
 - **Status:** COMPLETED
 - **Scope:** Verify Core/Engine/History boundary isolation, run full quality gates, produce M4 Report.
 - **Dependencies:** Phase 3.
-- **Evidence:** `docs/M4-FINAL-REPORT.md`; boundaries verified, quality gates green (224 passed / 2 skipped, ruff, mypy).
+- **Evidence:** `docs/M4-FINAL-REPORT.md`; boundaries verified, quality gates green (203 passed / 2 skipped, ruff, mypy on 26 source files).
 
 ### Phase 5 & 6: M5 Security Hardening & P2 Evaluation
 - **Status:** PENDING
@@ -107,19 +107,22 @@ Phase 12: 2.x-A Event-Driven Monitoring [PENDING]
 - **Dependencies:** Phase 7.
 
 ### Phase 10: 1.1 USB Auto-Scan
-- **Status:** PENDING
+- **Status:** DEFERRED (out of 1.0 scope)
 - **Scope:** Device/mount detection, target validation, task runner scan triggering for removable media.
 - **Dependencies:** 1.0 Release Gate.
+- **Note:** An implementation existed on the PR #5 branch; it is not part of the 1.0 branch (nothing in the CLI/UI consumed it) and will be reintroduced with its own gate and call site.
 
 ### Phase 11: Threat Intelligence Integration
-- **Status:** PENDING
+- **Status:** DEFERRED (out of 1.0 scope)
 - **Scope:** Explicit VirusTotal SHA-256 lookup integration using content-hash seam, with opt-in policy and rate limiting.
 - **Dependencies:** Phase 10.
+- **Note:** The `clamguardian.intelligence` package is not part of the 1.0 branch. The Core seam `BaseThreatProvider` (`core/base.py`) is kept as the extension contract.
 
 ### Phase 12: 2.x-A Event-Driven Monitoring
-- **Status:** PENDING
+- **Status:** DEFERRED (out of 1.0 scope)
 - **Scope:** Linux `inotify` monitoring module (`clamguardian/realtime/`), event normalization, debouncing, deduplication, and task runner orchestration.
 - **Dependencies:** Phase 11.
+- **Note:** The `clamguardian/realtime` package is not part of the 1.0 branch: it is unwired and still carries open P1 defects (duplicate dispatch, queue bound, shutdown, stale watches, silent inotify overflow). It returns with the remediation tracked in the PR #5 audit report.
 
 ---
 

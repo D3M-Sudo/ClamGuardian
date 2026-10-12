@@ -61,8 +61,8 @@ Key objectives:
 5. **UI (`clamguardian/ui`):**
    - GTK4 / Libadwaita presentation controller and views.
    - Must be import-safe on headless systems without PyGObject.
-6. **Realtime (`clamguardian/realtime`):**
-   - Owns `inotify` event-driven filesystem monitoring, debouncing, deduplication, and policy filtering. Reuses `ScanTaskRunner`.
+6. **Realtime (`clamguardian/realtime`) — deferred, not part of the 1.0 branch:**
+   - Target ownership: `inotify` event-driven filesystem monitoring, debouncing, deduplication, and policy filtering. Reuses `ScanTaskRunner`. The implementation was removed from the 1.0 branch because it was unwired and still carried open P1 defects; it returns with the 2.x-A gate.
 
 ---
 
@@ -96,9 +96,9 @@ Key objectives:
 
 ## 6. Post-1.0 Evolution & Boundaries
 
-- **1.1 USB Auto-Scan:** Automatic detection and scanning of mounted removable volumes using existing `ScanTaskRunner`.
-- **1.x Threat Intelligence:** VirusTotal SHA-256 lookup integration using content-hash seam with explicit user opt-in.
-- **2.x-A Event-Driven Monitoring:** Native Linux `inotify` event monitoring behind `FileMonitor` and `RealtimeScanOrchestrator`.
+- **1.1 USB Auto-Scan:** Automatic detection and scanning of mounted removable volumes using existing `ScanTaskRunner`. Deferred out of 1.0 (no call site yet).
+- **1.x Threat Intelligence:** VirusTotal SHA-256 lookup integration using content-hash seam with explicit user opt-in. Deferred out of 1.0; the Core seam (`BaseThreatProvider`) is already in place.
+- **2.x-A Event-Driven Monitoring:** Native Linux `inotify` event monitoring behind `FileMonitor` and `RealtimeScanOrchestrator`. Deferred out of 1.0 (see component 6 above).
 - **Explicit Non-Goals / Deferred Features:**
   - No `Maldet`/`LMD` dependencies.
   - No root daemon / Polkit / systemd system service in 2.x-A.

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "clamguardian"
 version = "1.0.0"
-description = "Security framework for ClamAV scanning, quarantine, and threat intelligence on Linux"
+description = "Security framework for ClamAV scanning, quarantine, and security management on Linux"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "GPL-3.0-or-later" }
@@ -13,7 +13,6 @@ authors = [{ name = "ClamGuardian contributors" }]
 dependencies = [
   "cryptography>=43.0",
   "aiohttp>=3.10",
-  "inotify-simple>=1.3.5; sys_platform == 'linux'",
 ]
 
 [project.scripts]
@@ -63,7 +62,7 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 
 [[tool.mypy.overrides]]
-module = ["gi", "gi.repository.*", "aiohttp", "cryptography.*", "inotify_simple"]
+module = ["gi", "gi.repository.*", "aiohttp", "cryptography.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
 [![Code style: ruff](https://img.shields.io/badge/lint-ruff-261230.svg)](https://github.com/astral-sh/ruff)
 
-ClamGuardian is a Linux-first security framework built around ClamAV. It provides an asynchronous AV abstraction, encrypted quarantine, native GObject event signalling, and a dynamic threat-intelligence provider layer suitable for GTK4/Libadwaita applications and headless integrations.
+ClamGuardian is a Linux-first security framework built around ClamAV. It provides an asynchronous AV abstraction, encrypted quarantine, scan profiles, a persisted scan history, and native GObject event signalling, suitable for GTK4/Libadwaita applications and headless integrations.
 
 ## Architecture
 
@@ -25,10 +25,6 @@ BaseAVEngine <---- ClamAVEngine
                   |
           Flatpak: flatpak-spawn --host
 
-Threat Intelligence
-        |
-ThreatProviderManager ---> VirusTotalProvider / external plugins
-
 Security storage
         |
 QuarantineVault ---> AES-256-GCM encrypted records
@@ -42,7 +38,6 @@ QuarantineVault ---> AES-256-GCM encrypted records
 - **Flatpak-aware execution:** optionally routes host commands through `flatpak-spawn --host`.
 - **Reactive event API:** `ShieldTaskController` emits `scan-started`, `scan-finished`, `threat-detected`, and `scan-cancelled` as native GObject signals.
 - **Encrypted quarantine:** AES-256-GCM authenticated encryption, owner-only vault permissions, atomic writes, and integrity-protected metadata.
-- **Extensible threat intelligence:** abstract `BaseThreatProvider`, dynamic Python entry-point discovery, and a VirusTotal v3 provider.
 - **Async concurrency:** bounded multi-slot scan runner with cancellation support.
 - **Python 3.11+:** typed, packaged with Hatchling, and tested by pytest.
 
@@ -179,23 +174,6 @@ entry = vault.quarantine(Path("/path/to/suspicious-file"))
 vault.restore(entry.item_id)
 ```
 
-### VirusTotal
-
-Supply the API key at runtime; never commit it to source control.
-
-```python
-import asyncio
-from clamguardian.intelligence import VirusTotalProvider
-
-provider = VirusTotalProvider(api_key="YOUR_API_KEY")
-result = asyncio.run(provider.lookup_hash("0" * 64))
-print(result)
-```
-
-### Dynamic providers
-
-Third-party packages can expose a `clamguardian.threat_providers` entry point whose object is a `BaseThreatProvider` instance or subclass. The manager discovers these providers without hard-coding their modules.
-
 ## Third-party ClamAV Databases
 
 ClamAV's official signatures, updated by `freshclam`, do not cover every threat feed. Security researchers and communities publish additional ClamAV-compatible signature databases, and ClamGuardian lets you manage them alongside the official one:
@@ -244,7 +222,6 @@ view = build_database_navigation(manager)  # Adw.NavigationView, ready to embed
 - Metadata is authenticated as AES-GCM associated data, preventing undetected metadata tampering.
 - Vault directories are created with `0700`; record and restored-file writes use `0600`.
 - External commands are executed without a shell, reducing command-injection exposure.
-- VirusTotal credentials are held in memory by the provider and are not written to disk.
 
 ## Testing and CI
 
@@ -278,7 +255,7 @@ Development follows the flow `feature → testing → development → main`:
 
 ## Scope
 
-This repository is the core framework. A complete desktop product can build its GTK4/Libadwaita presentation layer, portal permissions, service integration, USB monitoring, real-time/on-access monitoring, scan profiles, and operational policy on top of these primitives.
+This repository is the core framework. A complete desktop product can build its GTK4/Libadwaita presentation layer, portal permissions, service integration, USB monitoring, real-time/on-access monitoring, and operational policy on top of these primitives.
 
 ## License
 
