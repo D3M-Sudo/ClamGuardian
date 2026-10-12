@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from clamguardian.core.base import ScanStatus
 from clamguardian.engines.clamav import ClamAVEngine
 
 
@@ -139,3 +140,80 @@ async def test_special_filesystem_objects_handling(
         assert compute_file_sha256(fifo_path) is None
     except OSError:
         pass  # mkfifo might fail on unsupported filesystems
+
+
+@pytest.mark.asyncio
+async def test_clamd_branch_records_single_file_sha256(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """M4 Final: the preferred clamd path must record the content hash too.
+
+    The digest used to be computed only on the clamscan fallback, so on a host
+    with a running clamd no single-file scan ever carried ``metadata["sha256"]``
+    and the Threat Intelligence seam had no hash to look up.
+    """
+    import hashlib
+
+    file_target = tmp_path / "sample.txt"
+    file_target.write_text("clamd hash")
+    expected_hash = hashlib.sha256(b"clamd hash").hexdigest()
+
+    socket_path = tmp_path / "clamd.ctl"
+    socket_path.touch()  # only ``exists()`` gates the socket branch
+    engine = ClamAVEngine(socket_path=socket_path)
+
+    async def fake_socket(target, profile):
+        return f"{target}: OK\n", 0, ()
+
+    monkeypatch.setattr(engine, "_scan_socket", fake_socket)
+
+    result = await engine.scan(file_target)
+    assert result.engine == "clamd"
+    assert result.sha256 == expected_hash
+    assert result.metadata["profile_id"] == "default"
+
+
+@pytest.mark.asyncio
+async def test_clamd_branch_has_no_sha256_for_directories(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A directory scan served by clamd must not record a misleading digest."""
+    dir_target = tmp_path / "scanned_dir"
+    dir_target.mkdir()
+
+    socket_path = tmp_path / "clamd.ctl"
+    socket_path.touch()
+    engine = ClamAVEngine(socket_path=socket_path)
+
+    async def fake_socket(target, profile):
+        return f"{target}: OK\n", 0, ()
+
+    monkeypatch.setattr(engine, "_scan_socket", fake_socket)
+
+    result = await engine.scan(dir_target)
+    assert result.engine == "clamd"
+    assert result.sha256 is None
+
+
+@pytest.mark.asyncio
+async def test_timed_out_scan_still_records_applied_profile(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A timed-out scan must still state which profile was applied.
+
+    No digest is computed in this case: the engine already gave up on the
+    target, and hashing it afterwards would repeat the very work that timed out.
+    """
+    target = tmp_path / "slow.bin"
+    target.write_text("payload")
+    engine = ClamAVEngine(socket_path=tmp_path / "missing.sock")
+
+    async def fake_cli(target, *, profile):
+        raise TimeoutError
+
+    monkeypatch.setattr(engine, "_run_cli_scan", fake_cli)
+
+    result = await engine.scan(target)
+    assert result.status is ScanStatus.TIMEOUT
+    assert result.metadata["profile_id"] == "default"
+    assert result.sha256 is None

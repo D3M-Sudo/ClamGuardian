@@ -1006,3 +1006,40 @@ async def test_list_scans_filter_by_profile_id(tmp_path: Path) -> None:
     full_scans = await store.list_scans(profile_id="full")
     assert len(full_scans) == 1
     assert full_scans[0].target == "/full_file"
+
+
+def test_record_from_scan_resolves_engine_default_profile() -> None:
+    """The engine default profile is resolvable even though it is not a preset.
+
+    ``DEFAULT_PROFILE`` (id ``"default"``) is what the engine applies when no
+    profile is passed, but it is deliberately absent from ``DEFAULT_REGISTRY``
+    (it is not user-selectable). The history row must nevertheless carry the
+    snapshot of the configuration that was actually applied.
+    """
+    result = make_result(metadata={"profile_id": "default"})
+    rec = history_record_from_scan(result)
+    assert rec.profile_id == "default"
+    assert rec.profile_snapshot is not None
+    assert rec.profile_snapshot["id"] == "default"
+
+
+@pytest.mark.asyncio
+async def test_unregistered_profile_id_is_not_persisted_raw(tmp_path: Path) -> None:
+    """An id matching no known profile must degrade to ``None``, not be stored.
+
+    ``result.metadata`` travels with the engine result and is treated as
+    untrusted input: persisting an arbitrary string would break the invariant
+    that ``profile_id`` always refers to a real configuration, and would make
+    the value filterable through ``list_scans(profile_id=...)``.
+    """
+    store = make_store(tmp_path)
+    result = make_result(metadata={"profile_id": "totally-bogus-untrusted"})
+
+    rec = await store.record_scan(result)
+    assert rec.profile_id is None
+    assert rec.profile_snapshot is None
+
+    got = await store.get_scan(rec.id)
+    assert got is not None
+    assert got.profile_id is None
+    assert await store.list_scans(profile_id="totally-bogus-untrusted") == []

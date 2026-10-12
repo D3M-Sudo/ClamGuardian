@@ -69,16 +69,37 @@ class ClamAVEngine(BaseAVEngine):
                 # never silently ignored, always reported in metadata.
                 if unsupported:
                     result.metadata["profile_unsupported_clamd"] = ",".join(unsupported)
-                result.metadata["profile_id"] = profile.id
-                return result
+                return self._finalize(result, target, profile)
             except (TimeoutError, OSError, ValueError):
                 pass
         try:
             output, exit_code = await self._run_cli_scan(target, profile=profile)
         except TimeoutError:
-            return ScanResult.timed_out(str(target), started)
+            # No digest in this case: the engine already gave up on this target,
+            # and hashing it afterwards would repeat the very work that timed
+            # out (typically a very large or very slow file).
+            return self._annotate_profile(ScanResult.timed_out(str(target), started), profile)
         result = self._result(target, started, output, exit_code, "clamscan")
+        return self._finalize(result, target, profile)
+
+    @staticmethod
+    def _annotate_profile(result: ScanResult, profile: ScanProfile) -> ScanResult:
+        """Record which scan profile was applied to *result*."""
         result.metadata["profile_id"] = profile.id
+        return result
+
+    @classmethod
+    def _finalize(cls, result: ScanResult, target: Path, profile: ScanProfile) -> ScanResult:
+        """Annotate *result* with the applied profile and the content digest.
+
+        Both engine paths (clamd over the UNIX socket and the ``clamscan``
+        fallback) go through here, so ``metadata["profile_id"]`` and
+        ``metadata["sha256"]`` are recorded identically whichever backend
+        served the scan. ``compute_file_sha256`` returns ``None`` for
+        directories, special files and unreadable targets, so a directory scan
+        never carries a misleading digest.
+        """
+        cls._annotate_profile(result, profile)
         sha256 = compute_file_sha256(target)
         if sha256 is not None:
             result.metadata["sha256"] = sha256

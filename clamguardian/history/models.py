@@ -18,7 +18,7 @@ from types import MappingProxyType
 from typing import Any
 
 from ..core.base import ScanResult
-from ..core.profiles import DEFAULT_REGISTRY, ScanProfile
+from ..core.profiles import ScanProfile, resolve_profile
 
 #: Budgets from the M4-A design. The metadata serialized limit is ~8 KiB and
 #: the combined metadata + profile_snapshot budget is ~32 KiB. Capping each JSON
@@ -189,13 +189,14 @@ def history_record_from_scan(
     duration = max(0.0, (finished - started).total_seconds())
 
     meta_profile_id = result.metadata.get("profile_id") if result.metadata else None
-    if profile is None and meta_profile_id:
-        try:
-            profile = DEFAULT_REGISTRY.get(meta_profile_id)
-        except Exception:
-            profile = None
+    if profile is None:
+        # ``result.metadata`` travels with the engine result and is treated as
+        # untrusted input: an id matching no known profile degrades to "no
+        # profile" instead of being persisted verbatim, so ``profile_id``
+        # always refers to a configuration that really exists.
+        profile = resolve_profile(meta_profile_id)
 
-    profile_id = profile.id if profile is not None else meta_profile_id
+    profile_id = profile.id if profile is not None else None
     snap = profile_snapshot(profile)
 
     return HistoryRecord(

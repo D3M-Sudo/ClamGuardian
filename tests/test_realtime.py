@@ -226,3 +226,44 @@ def test_inotify_monitor_recursive_nested_creation(tmp_path: Path) -> None:
     assert dynamic_file.resolve() in [p.resolve() for p in paths2]
 
     monitor.close()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_history_propagates_applied_profile(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """M4 Final: realtime scans must persist profile_id *and* profile_snapshot.
+
+    The orchestrator passes ``profile=None`` (the engine then applies its
+    default profile), so the profile recorded in History can only be resolved
+    from the engine result. Before the fix the row carried the id but lost the
+    snapshot of the configuration that had actually been applied.
+    """
+    from clamguardian.engines.clamav import ClamAVEngine
+
+    target = tmp_path / "profiled.txt"
+    target.write_text("data")
+
+    engine = ClamAVEngine(socket_path=tmp_path / "missing.sock")
+
+    async def fake_command(args):
+        return f"{target}: OK\n", 0
+
+    monkeypatch.setattr(engine, "_run_command", fake_command)
+
+    store = SqliteHistoryStore(tmp_path / "history.db")
+    orchestrator = RealtimeScanOrchestrator(
+        ScanTaskRunner(engine), history_store=store, debounce_seconds=0.0
+    )
+
+    tasks = await orchestrator.handle_events(
+        [FileEvent(path=target, event_type=FileEventType.CREATE)]
+    )
+    await asyncio.gather(*tasks)
+
+    records = await store.list_scans()
+    assert len(records) == 1
+    assert records[0].profile_id == "default"
+    assert records[0].profile_snapshot is not None
+    assert records[0].profile_snapshot["id"] == "default"
+    await store.close()
