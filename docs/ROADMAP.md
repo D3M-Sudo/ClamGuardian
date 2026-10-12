@@ -68,24 +68,28 @@ Phase 12: 2.x-A Event-Driven Monitoring [PENDING]
 ## Active & Pending Roadmap Phases
 
 ### Phase 1: M4 Profile-Aware History Propagation
-- **Status:** NEXT
+- **Status:** COMPLETED
 - **Scope:** Ensure scan profile information (`profile_id`, `profile_snapshot`) flows deterministically from Scan Request → ScanProfile → ScanTaskRunner → Engine → ScanResult → History.
 - **Dependencies:** M4-B history layer.
+- **Evidence:** `docs/M4-FINAL-REPORT.md` (fixes `81ea321`, `88a57a6`).
 
 ### Phase 2: M4 Content Hash Model
-- **Status:** PENDING
+- **Status:** COMPLETED
 - **Scope:** Compute SHA-256 for single-file scan artifacts (`sha256=<digest>`); set `sha256=None` for directory scans.
 - **Dependencies:** Phase 1.
+- **Evidence:** `docs/M4-FINAL-REPORT.md`; digest now recorded on both engine backends.
 
 ### Phase 3: M4 Security Test Gap Closure
-- **Status:** PENDING
+- **Status:** COMPLETED
 - **Scope:** Audit and add comprehensive tests for Quarantine (ciphertext, corrupted auth, path traversal, TOCTOU), Database updates (checksum mismatch, rollback), Engine (Flatpak host execution), and Filesystem (special files, symlinks, FIFOs, sockets, devices).
 - **Dependencies:** Phase 2.
+- **Evidence:** `docs/M4-FINAL-REPORT.md`; provider-level digest enforcement tests added. Database digest optionality is an M5 item (see report, section 5).
 
 ### Phase 4: M4 Finalization & Report
-- **Status:** PENDING
+- **Status:** COMPLETED
 - **Scope:** Verify Core/Engine/History boundary isolation, run full quality gates, produce M4 Report.
 - **Dependencies:** Phase 3.
+- **Evidence:** `docs/M4-FINAL-REPORT.md`; boundaries verified, quality gates green (224 passed / 2 skipped, ruff, mypy).
 
 ### Phase 5 & 6: M5 Security Hardening & P2 Evaluation
 - **Status:** PENDING

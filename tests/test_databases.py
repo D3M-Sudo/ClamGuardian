@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import hashlib
 from pathlib import Path
 
@@ -86,3 +88,110 @@ def test_verify_sha256_matching_checksum(tmp_path: Path):
     correct_hash = hashlib.sha256(data).hexdigest()
 
     verify_sha256(target, correct_hash)  # no raise
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 Security Gap Closure: provider-level digest enforcement
+# ---------------------------------------------------------------------------
+
+
+class _FakeResponse:
+    """Minimal aiohttp response: only what FileDatabaseProvider consumes."""
+
+    def __init__(self, payload: bytes) -> None:
+        self._payload = payload
+        self.content_length = len(payload)
+
+    def raise_for_status(self) -> None:
+        return None
+
+    @property
+    def content(self) -> _FakeResponse:
+        return self
+
+    async def iter_chunked(self, size: int):
+        for start in range(0, len(self._payload), size):
+            yield self._payload[start : start + size]
+
+    async def __aenter__(self) -> _FakeResponse:
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> bool:
+        return False
+
+
+class _FakeSession:
+    """Stand-in for ``aiohttp.ClientSession`` that serves a fixed payload."""
+
+    def __init__(self, payload: bytes) -> None:
+        self._payload = payload
+
+    async def __aenter__(self) -> _FakeSession:
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> bool:
+        return False
+
+    def get(self, url: str, allow_redirects: bool = True) -> _FakeResponse:
+        return _FakeResponse(self._payload)
+
+
+def _artifact_source(payload: bytes, digest: str):
+    return DatabaseSource(
+        "thirdparty",
+        "Third Party",
+        "Test source",
+        (DatabaseArtifact("thirdparty.cvd", "https://example.invalid/db.cvd", digest),),
+    )
+
+
+@pytest.mark.asyncio
+async def test_provider_installs_artifact_only_after_digest_verification(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """A verified download publishes the artifact and leaves no ``.part`` behind."""
+    from clamguardian.databases import provider as provider_module
+    from clamguardian.databases.provider import FileDatabaseProvider
+
+    payload = b"verified definitions"
+    provider = FileDatabaseProvider()
+    monkeypatch.setattr(
+        provider_module.aiohttp, "ClientSession", lambda *a, **k: _FakeSession(payload)
+    )
+
+    destination = tmp_path / "db"
+    installed = [
+        path
+        async for path in provider.download(
+            _artifact_source(payload, hashlib.sha256(payload).hexdigest()), destination
+        )
+    ]
+
+    assert [p.name for p in installed] == ["thirdparty.cvd"]
+    assert (destination / "thirdparty.cvd").read_bytes() == payload
+    assert list(destination.glob("*.part")) == []
+
+
+@pytest.mark.asyncio
+async def test_provider_aborts_install_on_digest_mismatch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """A tampered download must abort the install and publish nothing."""
+    from clamguardian.databases import provider as provider_module
+    from clamguardian.databases.provider import FileDatabaseProvider
+
+    provider = FileDatabaseProvider()
+    monkeypatch.setattr(
+        provider_module.aiohttp,
+        "ClientSession",
+        lambda *a, **k: _FakeSession(b"tampered payload"),
+    )
+
+    destination = tmp_path / "db"
+    source = _artifact_source(b"expected payload", hashlib.sha256(b"expected payload").hexdigest())
+
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        async for _ in provider.download(source, destination):
+            pass
+
+    assert list(destination.glob("*")) == []
