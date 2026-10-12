@@ -260,3 +260,91 @@ async def test_manager_update_refuses_digestless_artifact(
 
     assert not (tmp_path / "db" / "thirdparty.cvd").exists()
     assert manager.status("thirdparty").status == DatabaseStatus.ERROR
+
+
+class SelectiveProvider:
+    """Serves a fixed payload per source and can fail for one specific source."""
+
+    def __init__(self, fail_for: str = "") -> None:
+        self.fail_for = fail_for
+
+    async def download(self, source, destination):
+        if source.id == self.fail_for:
+            raise RuntimeError("network unavailable")
+        destination.mkdir(parents=True, exist_ok=True)
+        payload = b"good"
+        path = destination / source.artifacts[0].filename
+        path.write_bytes(payload)
+        yield path
+
+
+def _named_source(source_id: str, *, enabled: bool = True, auto_update: bool = True):
+    digest = hashlib.sha256(b"good").hexdigest()
+    return DatabaseSource(
+        source_id,
+        source_id.title(),
+        "Test source",
+        (DatabaseArtifact(f"{source_id}.cvd", "https://example.invalid/db.cvd", digest),),
+        enabled,
+        auto_update,
+    )
+
+
+@pytest.mark.asyncio
+async def test_rollback_restores_previous_artifact_when_install_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """M5 (P3-DBG-03): a failure while installing must not lose the old database.
+
+    The original artifact is moved to a backup directory that is deleted in the
+    ``finally`` block, so the rollback entry has to be recorded *before* the
+    staged file is moved into place.
+    """
+    database_dir = tmp_path / "db"
+    manager = DatabaseManager(
+        database_dir, tmp_path / "state.json", provider=SelectiveProvider()
+    )
+    manager.add_source(_named_source("thirdparty"))
+    await manager.update("thirdparty")
+    assert (database_dir / "thirdparty.cvd").read_bytes() == b"good"
+
+    real_replace = Path.replace
+
+    def failing_replace(self: Path, target: Path) -> Path:
+        # Fail only the install move (staging dir -> database dir): the rollback
+        # restore (backup dir -> database dir) must be allowed to succeed.
+        source_dir = self.parent.name
+        if (
+            Path(target).parent == database_dir
+            and source_dir.startswith(".thirdparty-")
+            and "-backup-" not in source_dir
+        ):
+            raise OSError("simulated install failure")
+        return real_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", failing_replace)
+
+    with pytest.raises(DatabaseUpdateError):
+        await manager.update("thirdparty")
+
+    assert (database_dir / "thirdparty.cvd").read_bytes() == b"good"
+
+
+@pytest.mark.asyncio
+async def test_update_enabled_updates_eligible_sources_and_isolates_failures(
+    tmp_path: Path,
+):
+    """'Update all' updates every eligible source and survives a failing one."""
+    manager = DatabaseManager(
+        tmp_path / "db", tmp_path / "state.json", provider=SelectiveProvider(fail_for="broken")
+    )
+    manager.add_source(_named_source("ok"))
+    manager.add_source(_named_source("manual", auto_update=False))
+    manager.add_source(_named_source("broken"))
+    manager.add_source(_named_source("disabled", enabled=False))
+
+    results = await manager.update_enabled()
+
+    assert sorted(entry.source.id for entry in results) == ["broken", "ok"]
+    assert manager.status("ok").status == DatabaseStatus.INSTALLED
+    assert manager.status("broken").status == DatabaseStatus.ERROR

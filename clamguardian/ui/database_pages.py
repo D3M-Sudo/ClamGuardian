@@ -397,7 +397,7 @@ else:
                     self._toast_overlay.add_toast(
                         Adw.Toast(title="All databases updated", timeout=3))
 
-            run_async(self._manager.update_all(), _done)
+            run_async(self._manager.update_enabled(), _done)
 
         def on_update_finished(self, source_id: str, error: Exception | None) -> None:
             row = self._rows.get(source_id)
