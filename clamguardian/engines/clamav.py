@@ -53,6 +53,9 @@ class ClamAVEngine(BaseAVEngine):
         profile is applied (recursion driven by ``recursive``).
         """
         target = Path(target).expanduser().resolve(strict=True)
+        rejection = self._reject_unsupported_target(target)
+        if rejection is not None:
+            return rejection
         if profile is None:
             profile = DEFAULT_PROFILE.with_overrides(recursive=recursive)
         else:
@@ -81,6 +84,25 @@ class ClamAVEngine(BaseAVEngine):
             return self._annotate_profile(ScanResult.timed_out(str(target), started), profile)
         result = self._result(target, started, output, exit_code, "clamscan")
         return self._finalize(result, target, profile)
+
+
+    def _reject_unsupported_target(self, target: Path) -> ScanResult | None:
+        """Refuse special targets before any engine backend is invoked.
+
+        Only regular files and directories are meaningful scan targets: reading
+        a FIFO blocks until a writer appears, and a character/block device may
+        be unbounded. Such targets are reported explicitly as ``ERROR`` instead
+        of being handed to ClamAV (M5 "explicit scan target validation").
+        """
+        if target.is_dir() or target.is_file():
+            return None
+        return ScanResult(
+            target=str(target),
+            clean=False,
+            status=ScanStatus.ERROR,
+            engine=self.name,
+            error="Unsupported scan target: not a regular file or directory",
+        )
 
     @staticmethod
     def _annotate_profile(result: ScanResult, profile: ScanProfile) -> ScanResult:
@@ -264,15 +286,27 @@ class ClamAVEngine(BaseAVEngine):
                 process.kill()
             await process.wait()
 
+
+    @staticmethod
+    def _detection_lines(output: str) -> tuple[str, ...]:
+        """Extract the canonical ``<path>: <signature> FOUND`` detection lines.
+
+        Both clamd and clamscan emit one such line per detection, so the line
+        must end with ``FOUND`` *and* carry the ``": "`` separator. Matching on
+        the bare substring ``" FOUND"`` made a clean path like
+        ``/tmp/my FOUND report.txt: OK`` look like a threat.
+        """
+        return tuple(
+            line.strip()
+            for line in output.splitlines()
+            if line.strip().endswith("FOUND") and ": " in line
+        )
+
     @staticmethod
     def _result(
         target: Path, started: datetime, output: str, exit_code: int, engine: str
     ) -> ScanResult:
-        threats = tuple(
-            line.strip()
-            for line in output.splitlines()
-            if line.strip().endswith("FOUND") or ": " in line and " FOUND" in line
-        )
+        threats = ClamAVEngine._detection_lines(output)
         if exit_code == 0 and not threats:
             status = ScanStatus.CLEAN
         elif threats:

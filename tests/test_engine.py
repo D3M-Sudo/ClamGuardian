@@ -217,3 +217,67 @@ async def test_timed_out_scan_still_records_applied_profile(
     assert result.status is ScanStatus.TIMEOUT
     assert result.metadata["profile_id"] == "default"
     assert result.sha256 is None
+
+
+@pytest.mark.asyncio
+async def test_special_targets_are_rejected_before_scanning(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """M5: FIFOs and sockets must be refused explicitly, never handed to ClamAV.
+
+    Reading a FIFO blocks until a writer appears, and a device node may be
+    unbounded: the engine has to reject these targets *before* invoking any
+    backend, as required by the M5 "explicit scan target validation" scope.
+    """
+    import os
+    import socket
+
+    engine = ClamAVEngine(socket_path=tmp_path / "missing.sock")
+    invoked: list[list[str]] = []
+
+    async def fake_command(args):
+        invoked.append(list(args))
+        return "OK\n", 0
+
+    monkeypatch.setattr(engine, "_run_command", fake_command)
+
+    fifo = tmp_path / "pipe.fifo"
+    try:
+        os.mkfifo(fifo)
+    except OSError:  # pragma: no cover - filesystem without FIFO support
+        pytest.skip("mkfifo is not supported on this filesystem")
+
+    fifo_result = await engine.scan(fifo)
+    assert fifo_result.status is ScanStatus.ERROR
+    assert "not a regular file or directory" in (fifo_result.error or "")
+
+    socket_path = tmp_path / "agent.sock"
+    unix_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        unix_socket.bind(str(socket_path))
+        socket_result = await engine.scan(socket_path)
+    finally:
+        unix_socket.close()
+
+    assert socket_result.status is ScanStatus.ERROR
+    assert "not a regular file or directory" in (socket_result.error or "")
+    assert invoked == [], "no backend may be invoked for a special target"
+
+
+@pytest.mark.asyncio
+async def test_clean_path_containing_found_is_not_a_detection(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A clean path containing the literal " FOUND" must not be reported as a threat."""
+    target = tmp_path / "my FOUND report.txt"
+    target.write_text("clean")
+    engine = ClamAVEngine(socket_path=tmp_path / "missing.sock")
+
+    async def fake_command(args):
+        return f"{target}: OK\n", 0
+
+    monkeypatch.setattr(engine, "_run_command", fake_command)
+
+    result = await engine.scan(target)
+    assert result.status is ScanStatus.CLEAN
+    assert result.threats == ()
