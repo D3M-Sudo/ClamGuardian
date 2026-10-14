@@ -28,12 +28,39 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - name: Install package and test dependencies
-        run: python -m pip install --upgrade pip setuptools && python -m pip install '.[test,gtk]' ruff
+        # `pip` is upgraded so the runner can build this project's wheel and
+        # PyGObject. `setuptools` is deliberately NOT upgraded: neither
+        # `hatchling` (this project's build backend) nor `meson-python`
+        # (PyGObject's build backend) requires it, and upgrading it was the
+        # workaround that used to make the old in-job audit pass. Dependency
+        # auditing now runs in the dedicated `audit` job below, against the
+        # pinned runtime dependency set.
+        run: python -m pip install --upgrade pip && python -m pip install '.[test,gtk]' ruff
       - name: Lint
         run: ruff check .
       - name: Type Check
         run: mypy clamguardian
-      - name: Security Audit
-        run: pip-audit
       - name: Test
         run: pytest
+
+  audit:
+    name: Dependency audit (pinned runtime set)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv and pip-audit
+        # Only the audit tooling is installed here. The project itself is never
+        # installed in this job, so nothing in this environment can mask or
+        # change the outcome of the audit.
+        run: python -m pip install --upgrade pip uv pip-audit
+      - name: Verify that uv.lock matches pyproject.toml
+        run: uv lock --check
+      - name: Export the pinned runtime dependency set
+        run: uv export --frozen --no-emit-project --format requirements-txt > requirements.lock.txt
+      - name: Audit the pinned runtime dependency set
+        run: pip-audit --strict --progress-spinner off -r requirements.lock.txt
