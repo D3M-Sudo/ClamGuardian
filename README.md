@@ -50,7 +50,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install '.[test]'        # headless (core framework + tests)
-python -m pip install '.[test,gtk]'    # full desktop (adds PyGObject >= 3.53)
+python -m pip install '.[test,gtk]'    # full desktop (adds PyGObject >= 3.46)
 ```
 
 With [uv](https://docs.astral.sh/uv/) the locked environments are:
@@ -60,7 +60,7 @@ uvx --with '.[test]' pytest            # headless CI path
 uvx --with '.[test,gtk]' pytest        # full GTK path
 ```
 
-On Debian/Ubuntu systems, install PyGObject build prerequisites if pip needs to compile it. The `gtk` extra pins PyGObject >= 3.53, which requires the girepository-2.0 bindings (`libgirepository-2.0-dev`):
+On Debian/Ubuntu systems, install PyGObject build prerequisites if pip needs to compile it. The `gtk` extra allows PyGObject >= 3.46; versions 3.53 and newer require the girepository-2.0 bindings (`libgirepository-2.0-dev`):
 
 ```bash
 sudo apt-get update

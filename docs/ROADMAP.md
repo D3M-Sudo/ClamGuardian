@@ -101,13 +101,14 @@ Phase 12: 2.x-A Event-Driven Monitoring [DEFERRED - out of 1.0 scope]
 - **Status:** COMPLETED
 - **Scope:** Integrate `mypy` and `pip-audit` into GitHub Actions CI pipeline.
 - **Dependencies:** Phase 5 & 6.
-- **Evidence:** `docs/M6-CI-GATE-REPORT.md`; dedicated `audit` job on the pinned lockfile (`uv lock --check` + `pip-audit --strict -r`), `test` job on Python 3.11/3.12/3.13.
+- **Evidence:** `docs/M6-CI-GATE-REPORT.md`; dedicated `audit` job on the pinned lockfile (`uv lock --check` + `pip-audit --strict -r`), `test` job on Python 3.11/3.12/3.13. **Closed by execution:** CI run `38493461942` on `9832b4d` — `audit` job green (`pip-audit --strict`: "No known vulnerabilities found"), `test` green on 3.11/3.12/3.13 (247 tests each).
 
 ### Phase 8 & 9: M7 Packaging & 1.0 Release Gate
 - **Status:** Phase 8 (packaging) COMPLETED - Phase 9 (1.0 release gate) PENDING
 - **Scope:** Desktop metadata, icon, Flatpak manifest, 1.0 release readiness audit & gate.
 - **Dependencies:** Phase 7.
 - **Evidence:** `docs/M7-PACKAGING-REPORT.md`; `tests/test_packaging.py`; wheel built, installed and run end to end. Phase 9 stays open until the release candidate checklist is executed.
+- **Phase 9 remaining:** build both Flatpak manifests with `flatpak-builder`, validate the metainfo with `appstreamcli`, scan with a real ClamAV (not a stub), verify the GTK UI on a desktop session, execute the release checklist, and create the `v1.0.0` tag the release manifest is pinned to. None of these is covered by the M6 gate.
 
 ### Phase 10: 1.1 USB Auto-Scan
 - **Status:** DEFERRED (out of 1.0 scope)
@@ -119,7 +120,7 @@ Phase 12: 2.x-A Event-Driven Monitoring [DEFERRED - out of 1.0 scope]
 - **Status:** DEFERRED (out of 1.0 scope)
 - **Scope:** Explicit VirusTotal SHA-256 lookup integration using content-hash seam, with opt-in policy and rate limiting.
 - **Dependencies:** Phase 10.
-- **Note:** The `clamguardian.intelligence` package is not part of the 1.0 branch. The Core seam `BaseThreatProvider` (`core/base.py`) is kept as the extension contract.
+- **Note:** The `clamguardian.intelligence` package is present on the 1.0 branch but **unwired**: nothing in the CLI or UI imports it, and no distribution declares the `clamguardian.threat_providers` entry-point group it discovers, so it is not reachable in the 1.0 release. The Core seam `BaseThreatProvider` (`core/base.py`) is the extension contract. The phase returns with its own call site and gate.
 
 ### Phase 12: 2.x-A Event-Driven Monitoring
 - **Status:** DEFERRED (out of 1.0 scope)

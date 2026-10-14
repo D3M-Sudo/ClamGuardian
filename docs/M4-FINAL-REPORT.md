@@ -116,10 +116,17 @@ with their tests:
 |---|---|---|
 | `clamguardian/realtime/` (+ `tests/test_realtime.py`) | unwired, and still carries open P1 defects that need their own gate | PR #5 branch `feature-756467115717530540`; returns as WP-5 (2.x-A) |
 | `clamguardian/core/usb.py` (+ `tests/test_usb.py`) | unwired: no CLI/UI call site | PR #5 branch; returns as WP-6 (1.1) |
-| `clamguardian/intelligence/` (+ `tests/test_intelligence.py`) | unwired threat-intelligence providers | PR #5 branch; returns with Phase 11 |
+| `tests/test_intelligence.py` | tests for the unwired threat-intelligence providers | PR #5 branch; returns with Phase 11 |
 | `docs/design/2.x-A-realtime-remediation-design.md` | documents the removed subsystem and describes already-fixed defects as open | travels with the realtime module |
 | `inotify-simple` runtime dependency (`pyproject.toml`, `uv.lock`) | used only by the removed realtime package | returns with WP-5 |
 
 The Core extension seam `BaseThreatProvider` (`core/base.py`) is intentionally
 kept: it is an abstract contract, not an implementation, and it is part of the
 Architecture Freeze v1 provider boundary.
+
+The `clamguardian/intelligence/` **package** itself is *not* removed: it predates
+PR #5 (it is present on `feature` since the initial commit) and is kept on the 1.0
+branch **unwired** — nothing in the CLI or UI imports it, and no distribution
+declares the `clamguardian.threat_providers` entry-point group it looks for. Only
+its tests were deferred. Deleting the package would have removed pre-existing code
+from the base branch, which is outside the scope of this remediation.

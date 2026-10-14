@@ -14,9 +14,13 @@ additionally closed a **live vulnerability finding** (`CVE-2026-104874`) that th
 gate had never been able to report, because the gate had never actually run
 (section 4).
 
-> **Status: Phase 7 is NOT closed.** The gate is now executable and passes
-> locally, but it has no green CI run yet (section 5). It must not be marked
-> COMPLETED until the `audit` job of a CI run on the release candidate is green.
+> **Status: Phase 7 is CLOSED.** The gate has now actually run: CI run
+> [`38493461942`](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/38493461942)
+> on commit `9832b4d`, job `Dependency audit (pinned runtime set)` — green, with
+> `pip-audit --strict` reporting "No known vulnerabilities found" (section 5).
+>
+> **Phase 9 — the 1.0 release gate — remains OPEN** and is a separate gate, not
+> covered by this report. See section 5 and `docs/ROADMAP.md`.
 
 ---
 
@@ -123,11 +127,16 @@ under review.
 ```text
 pytest -q                 228 passed, 2 skipped in 2.23s
 ruff check .              All checks passed!
-mypy clamguardian         Success: no issues found in 26 source files
+mypy clamguardian         Success: no issues found in 29 source files
 uv lock --check           Resolved 54 packages (exit 0: lockfile in sync)
 actionlint                exit 0 (repository-wide)
 git diff --check          exit 0
 ```
+
+`mypy` reports **29** source files rather than the 26 quoted by the first
+revision of this report: the three `clamguardian/intelligence/` modules are kept
+on this branch (unwired — nothing imports them; see `docs/ROADMAP.md`, Phase 11)
+instead of being deleted, so the package count grew by three.
 
 `actionlint` 1.7.12 was run over `.github/workflows/` and reports no findings, so
 the edited workflow is syntactically and semantically valid for GitHub Actions
@@ -245,30 +254,42 @@ $ pip-audit --strict --progress-spinner off -r requirements.lock.txt
 No known vulnerabilities found                  # exit 0
 ```
 
-## 5. CI evidence still outstanding
+## 5. CI evidence — obtained
 
-`pip-audit` **was** executed for this work order (section 4). The limitation
-recorded in the first revision — the sandbox's TLS interception, which the Python
-clients did not trust — was overcome by pointing the audit client at the system
-trust store; the vulnerability feed was reachable, and the output above is real
-output, not a construction argument.
+The authoritative evidence for this gate now exists. The workflow was landed on
+this branch (`9832b4d`) and the gate ran on the real runner:
 
-What is still missing is the **CI run**. The authoritative evidence for Phase 7 is
-the `audit` job of a run on the release candidate; until that run exists and is
-green, this gate is **not closed**, whatever the local results say.
+| | |
+|---|---|
+| Run | [`38493461942`](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/38493461942) — workflow `CI`, event `pull_request` |
+| Commit | `9832b4d9fbbab97ad6ceb82b455067da616e3edb` |
+| `Dependency audit (pinned runtime set)` | **pass** (26 s) — [job 115623792470](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/38493461942/job/115623792470) |
+| `test (3.11)` / `test (3.12)` / `test (3.13)` | **pass** — 247 tests each, 0 skipped |
 
-Landing the workflow change is a separate open item. It touches
-`.github/workflows/`, and the automated credential available in this environment
-is a GitHub App installation token that GitHub rejects for workflow writes
-("refusing to allow a GitHub App to create or update workflow ... without
-`workflows` permission") — the same limitation the first revision recorded. The
-change is therefore prepared in the working tree and must be committed and pushed
-with a credential that holds the `workflows` permission.
+Job log, verbatim:
 
-The `test` job's Python-version matrix (3.11/3.12/3.13) and the GTK install step
-are likewise only exercised by a real CI run: PyGObject cannot be built in this
-environment, so the `gtk` extra install is unverified here (section 3.2 counts 2
-environmental skips for that reason).
+```text
+Verify that uv.lock matches pyproject.toml -> Resolved 54 packages in 1ms
+Export the pinned runtime dependency set   -> uv export --frozen --no-emit-project --format requirements-txt > requirements.lock.txt
+Audit the pinned runtime dependency set    -> pip-audit --strict --progress-spinner off -r requirements.lock.txt
+                                           -> No known vulnerabilities found
+```
+
+**Phase 7 is therefore closed by execution, not by construction.** The earlier
+obstacle recorded in the first revision of this report — GitHub rejecting a
+workflow write from the automated credential for lack of the `workflows`
+permission — was resolved by landing the change with a credential that holds it.
+
+Two points that must not be conflated with that closure:
+
+1. **CI runs 247 tests; the headless local run 228 + 2 skipped.** With
+   GTK/PyGObject installed the GTK-dependent parametrisations execute, so the CI
+   run is the more complete evidence. The 2 local skips are environmental.
+2. **Phase 9 — the 1.0 release gate — is still open**, and it is *not* what this
+   report covers. Still to be executed: build both Flatpak manifests, validate
+   the metainfo with `appstreamcli`, scan with a real ClamAV, verify the GTK UI
+   on a desktop session, run the release checklist, and create the `v1.0.0` tag
+   the release manifest is pinned to. See `docs/ROADMAP.md`.
 
 ## 6. Follow-ups (not part of M6)
 
