@@ -8,10 +8,13 @@ The concrete backend lives in :mod:`clamguardian.history.backend`.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ..core.base import ScanResult
 from .models import HistoryRecord
+
+if TYPE_CHECKING:
+    from ..core.profiles import ScanProfile
 
 
 class HistoryError(Exception):
@@ -46,7 +49,9 @@ class HistoryStore(Protocol):
     criterion so it can never silently clear the whole history.
     """
 
-    async def record_scan(self, result: ScanResult) -> HistoryRecord: ...
+    async def record_scan(
+        self, result: ScanResult, profile: ScanProfile | None = None
+    ) -> HistoryRecord: ...
 
     async def get_scan(self, scan_id: str) -> HistoryRecord | None: ...
 

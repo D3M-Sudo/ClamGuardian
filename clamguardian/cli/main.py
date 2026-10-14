@@ -422,6 +422,7 @@ async def _record_best_effort(
     recorder: HistoryStore,
     result: ScanResult,
     streams: _Streams,
+    profile: ScanProfile | None = None,
 ) -> None:
     """Persist *result* best-effort; recording failure never alters the scan.
 
@@ -431,7 +432,7 @@ async def _record_best_effort(
     valid scan result into a scan failure.
     """
     try:
-        await recorder.record_scan(result)
+        await recorder.record_scan(result, profile=profile)
     except Exception as exc:  # defensive: recording must never break a scan
         print(f"warning: could not record scan history: {exc}", file=streams.err)
 
@@ -453,7 +454,7 @@ async def _scan_and_record(
     try:
         result = await runner.submit(target, profile=profile)
         if recorder is not None:
-            await _record_best_effort(recorder, result, streams)
+            await _record_best_effort(recorder, result, streams, profile=profile)
         return result
     finally:
         if recorder is not None:

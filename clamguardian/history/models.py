@@ -18,7 +18,7 @@ from types import MappingProxyType
 from typing import Any
 
 from ..core.base import ScanResult
-from ..core.profiles import ScanProfile
+from ..core.profiles import ScanProfile, resolve_profile
 
 #: Budgets from the M4-A design. The metadata serialized limit is ~8 KiB and
 #: the combined metadata + profile_snapshot budget is ~32 KiB. Capping each JSON
@@ -164,6 +164,11 @@ class HistoryRecord:
         object.__setattr__(self, "metadata", _freeze_deep(self.metadata))
         object.__setattr__(self, "profile_snapshot", _freeze_deep(self.profile_snapshot))
 
+    @property
+    def sha256(self) -> str | None:
+        """Return the recorded SHA-256 digest for single-file targets, or ``None``."""
+        return self.metadata.get("sha256")
+
 
 def history_record_from_scan(
     result: ScanResult,
@@ -182,7 +187,18 @@ def history_record_from_scan(
     started = _as_utc(result.started_at)
     finished = _as_utc(result.finished_at)
     duration = max(0.0, (finished - started).total_seconds())
+
+    meta_profile_id = result.metadata.get("profile_id") if result.metadata else None
+    if profile is None:
+        # ``result.metadata`` travels with the engine result and is treated as
+        # untrusted input: an id matching no known profile degrades to "no
+        # profile" instead of being persisted verbatim, so ``profile_id``
+        # always refers to a configuration that really exists.
+        profile = resolve_profile(meta_profile_id)
+
+    profile_id = profile.id if profile is not None else None
     snap = profile_snapshot(profile)
+
     return HistoryRecord(
         id=record_id or uuid.uuid4().hex,
         target=str(result.target),
@@ -191,7 +207,7 @@ def history_record_from_scan(
         files_scanned=int(result.files_scanned or 0),
         threats=tuple(str(t) for t in result.threats),
         error=result.error,
-        profile_id=profile.id if profile is not None else None,
+        profile_id=profile_id,
         profile_snapshot=snap,
         metadata=normalize_metadata(result.metadata),
         started_at=started,

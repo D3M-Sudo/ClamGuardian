@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ..core.base import ScanResult
+from ..core.profiles import ScanProfile
 from .interface import HistoryError
 from .models import (
     HistoryRecord,
@@ -314,9 +315,11 @@ class SqliteHistoryStore:
 
     # -- public async API ----------------------------------------------
 
-    async def record_scan(self, result: ScanResult) -> HistoryRecord:
+    async def record_scan(
+        self, result: ScanResult, profile: ScanProfile | None = None
+    ) -> HistoryRecord:
         """Persist *result* atomically (master + threats) and return its record."""
-        record = history_record_from_scan(result)
+        record = history_record_from_scan(result, profile=profile)
         conn = self._require_conn()
         with self._lock:
             try:

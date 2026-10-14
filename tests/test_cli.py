@@ -93,12 +93,15 @@ class FakeRecorder:
         self.closed = False
         self._stored: dict[str, HistoryRecord] = {}
 
-    async def record_scan(self, result: ScanResult) -> None:
+    async def record_scan(
+        self, result: ScanResult, profile: ScanProfile | None = None
+    ) -> HistoryRecord:
         if self.exc is not None:
             raise self.exc
         self.records.append(result)
-        record = history_record_from_scan(result)
+        record = history_record_from_scan(result, profile=profile)
         self._stored[record.id] = record
+        return record
 
     async def get_scan(self, scan_id: str) -> HistoryRecord | None:
         if self.exc is not None:

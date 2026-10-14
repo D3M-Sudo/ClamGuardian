@@ -5,26 +5,49 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-import gi
+try:  # pragma: no cover - exercised on systems with PyGObject
+    import gi
 
-gi.require_version("GObject", "2.0")  # noqa: E402 - required before gi.repository import
-from gi.repository import GObject  # noqa: E402 - gi version must be set first
+    gi.require_version("GObject", "2.0")
+    from gi.repository import GObject
 
-from ..core.base import ScanResult  # noqa: E402 - follows the gi bootstrap above
-from ..core.profiles import ScanProfile  # noqa: E402 - follows the gi bootstrap above
-from ..core.runner import ScanTaskRunner  # noqa: E402 - follows the gi bootstrap above
-from ..engines.clamav import ClamAVEngine  # noqa: E402 - follows the gi bootstrap above
+    GTK_AVAILABLE = True
+except (ImportError, ValueError):  # pragma: no cover - headless environments
+    GTK_AVAILABLE = False
+    GObject = None
+
+from ..core.base import ScanResult
+from ..core.profiles import ScanProfile
+from ..core.runner import ScanTaskRunner
+from ..engines.clamav import ClamAVEngine
 
 
-class ShieldTaskController(GObject.Object):
+class _HeadlessGObject:
+    """Import-safety fallback when GObject is not available."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    def emit(self, signal_name: str, *args: object) -> None:
+        """No-op signal emission on headless systems."""
+        pass
+
+
+_ControllerBase: type = (
+    GObject.Object if GTK_AVAILABLE and GObject is not None else _HeadlessGObject
+)
+
+
+class ShieldTaskController(_ControllerBase):
     """Bridge asynchronous scan tasks to native GObject signals."""
 
-    __gsignals__ = {
-        "scan-started": (GObject.SignalFlags.RUN_LAST, None, (str,)),
-        "scan-finished": (GObject.SignalFlags.RUN_LAST, None, (object,)),
-        "threat-detected": (GObject.SignalFlags.RUN_LAST, None, (str, str)),
-        "scan-cancelled": (GObject.SignalFlags.RUN_LAST, None, (str,)),
-    }
+    if GTK_AVAILABLE and GObject is not None:
+        __gsignals__ = {
+            "scan-started": (GObject.SignalFlags.RUN_LAST, None, (str,)),
+            "scan-finished": (GObject.SignalFlags.RUN_LAST, None, (object,)),
+            "threat-detected": (GObject.SignalFlags.RUN_LAST, None, (str, str)),
+            "scan-cancelled": (GObject.SignalFlags.RUN_LAST, None, (str,)),
+        }
 
     def __init__(self, engine: ClamAVEngine | None = None, max_concurrency: int = 2) -> None:
         super().__init__()

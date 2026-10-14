@@ -151,3 +151,23 @@ class ScanProfileRegistry:
 DEFAULT_REGISTRY = ScanProfileRegistry(
     [ScanProfile.quick(), ScanProfile.home(), ScanProfile.full(), ScanProfile.custom()]
 )
+
+
+def resolve_profile(profile_id: str | None) -> ScanProfile | None:
+    """Return the profile registered under *profile_id*, or ``None``.
+
+    Unlike :meth:`ScanProfileRegistry.get` this resolver never raises: it is
+    applied to ids taken from an engine result (``ScanResult.metadata``), i.e.
+    from untrusted input, where an unknown id must degrade to "no profile"
+    instead of aborting a history write.
+
+    :data:`DEFAULT_PROFILE` is resolvable even though it is deliberately not a
+    user-selectable preset and therefore not part of :data:`DEFAULT_REGISTRY`.
+    """
+    if not profile_id:
+        return None
+    if profile_id in DEFAULT_REGISTRY:
+        return DEFAULT_REGISTRY.get(profile_id)
+    if profile_id == DEFAULT_PROFILE.id:
+        return DEFAULT_PROFILE
+    return None

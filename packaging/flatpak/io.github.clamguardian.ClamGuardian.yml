@@ -1,0 +1,45 @@
+# Release manifest (Flatpak / Flathub submission).
+#
+# The source is pinned to an immutable tag: Flathub and any reproducible build
+# refuse to build from a moving branch. The `v1.0.0` tag is created by the 1.0
+# release gate (docs/ROADMAP.md, Phase 9); when cutting a new release, update
+# `tag` and add the resulting `commit` so a moved tag cannot change the build.
+#
+# For a build against the working tree use the local manifest:
+#   flatpak-builder build-dir io.github.clamguardian.ClamGuardian.local.yml
+app-id: io.github.clamguardian.ClamGuardian
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+command: clamguardian
+finish-args:
+  # --- GUI -------------------------------------------------------------
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=ipc
+  # --- Host ClamAV -----------------------------------------------------
+  # clamscan/freshclam are executed through `flatpak-spawn --host` and clamd is
+  # reached over its UNIX socket on the host, so the sandbox needs to talk to
+  # the flatpak portal and to read the host filesystem (socket + definitions).
+  - --talk-name=org.freedesktop.Flatpak
+  - --filesystem=host:ro
+  # --- Network ---------------------------------------------------------
+  # Only used for explicit, user-initiated third-party database downloads.
+  - --share=network
+  # --- Application data ------------------------------------------------
+  # Quarantine vault, scan history and database state live in the app data dir.
+  - --filesystem=xdg-data/clamguardian:create
+
+modules:
+  - name: clamguardian
+    buildsystem: simple
+    build-commands:
+      - pip install --no-deps --prefix=/app .
+      - install -Dm644 data/io.github.clamguardian.ClamGuardian.desktop /app/share/applications/io.github.clamguardian.ClamGuardian.desktop
+      - install -Dm644 data/io.github.clamguardian.ClamGuardian.metainfo.xml /app/share/metainfo/io.github.clamguardian.ClamGuardian.metainfo.xml
+      - install -Dm644 data/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg /app/share/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg
+    sources:
+      - type: git
+        url: https://github.com/D3M-Sudo/ClamGuardian.git
+        tag: v1.0.0
