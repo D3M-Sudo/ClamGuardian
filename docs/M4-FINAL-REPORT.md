@@ -4,7 +4,7 @@
 **Branch:** `fix/pr5-audit-remediation` (remediation of PR #5, base `feature`)
 **Baseline under audit:** `3bf087316f683bac012ffcd370a8b3ffd149c951` (PR #5 head)
 **Fixes for this gate:** `81ea321` (profile propagation + clamd digest), `88a57a6` (best-effort observability)
-**Independent audit that produced the findings:** read-only audit of PR #5 (report archived on the service branch `cline/1afzx1w5`)
+**Independent audit that produced the findings:** read-only audit of PR #5 (report archived under the annotated tag `audit/pr5-2026-10-12`)
 
 ---
 
@@ -114,7 +114,7 @@ with their tests:
 
 | Removed | Reason | Where it lives now |
 |---|---|---|
-| `clamguardian/realtime/` (+ `tests/test_realtime.py`) | unwired, and still carries open P1 defects that need their own gate | PR #5 branch `feature-756467115717530540`; returns as WP-5 (2.x-A) |
+| `clamguardian/realtime/` (+ `tests/test_realtime.py`) | unwired, and still carries open P1 defects that need their own gate | git history — reachable from the annotated tag `audit/pr5-2026-10-12`; returns as WP-5 (2.x-A) |
 | `clamguardian/core/usb.py` (+ `tests/test_usb.py`) | unwired: no CLI/UI call site | PR #5 branch; returns as WP-6 (1.1) |
 | `tests/test_intelligence.py` | tests for the unwired threat-intelligence providers | PR #5 branch; returns with Phase 11 |
 | `docs/design/2.x-A-realtime-remediation-design.md` | documents the removed subsystem and describes already-fixed defects as open | travels with the realtime module |
