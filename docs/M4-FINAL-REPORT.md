@@ -115,8 +115,8 @@ with their tests:
 | Removed | Reason | Where it lives now |
 |---|---|---|
 | `clamguardian/realtime/` (+ `tests/test_realtime.py`) | unwired, and still carries open P1 defects that need their own gate | git history — reachable from the annotated tag `audit/pr5-2026-10-12`; returns as WP-5 (2.x-A) |
-| `clamguardian/core/usb.py` (+ `tests/test_usb.py`) | unwired: no CLI/UI call site | PR #5 branch; returns as WP-6 (1.1) |
-| `tests/test_intelligence.py` | tests for the unwired threat-intelligence providers | PR #5 branch; returns with Phase 11 |
+| `clamguardian/core/usb.py` (+ `tests/test_usb.py`) | unwired: no CLI/UI call site | git history — reachable from the annotated tag `audit/pr5-2026-10-12`; returns as WP-6 (1.1) |
+| `tests/test_intelligence.py` | tests for the unwired threat-intelligence providers | git history — reachable from the annotated tag `audit/pr5-2026-10-12`; returns with Phase 11 |
 | `docs/design/2.x-A-realtime-remediation-design.md` | documents the removed subsystem and describes already-fixed defects as open | travels with the realtime module |
 | `inotify-simple` runtime dependency (`pyproject.toml`, `uv.lock`) | used only by the removed realtime package | returns with WP-5 |
 

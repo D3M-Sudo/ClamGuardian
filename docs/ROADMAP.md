@@ -114,7 +114,7 @@ Phase 12: 2.x-A Event-Driven Monitoring [DEFERRED - out of 1.0 scope]
 - **Status:** DEFERRED (out of 1.0 scope)
 - **Scope:** Device/mount detection, target validation, task runner scan triggering for removable media.
 - **Dependencies:** 1.0 Release Gate.
-- **Note:** An implementation existed on the PR #5 branch; it is not part of the 1.0 branch (nothing in the CLI/UI consumed it) and will be reintroduced with its own gate and call site.
+- **Note:** An implementation existed on the PR #5 branch and survives in git history — reachable from the annotated tag `audit/pr5-2026-10-12`. It is not part of the 1.0 branch (nothing in the CLI/UI consumed it) and will be reintroduced with its own gate and call site.
 
 ### Phase 11: Threat Intelligence Integration
 - **Status:** DEFERRED (out of 1.0 scope)
@@ -126,7 +126,7 @@ Phase 12: 2.x-A Event-Driven Monitoring [DEFERRED - out of 1.0 scope]
 - **Status:** DEFERRED (out of 1.0 scope)
 - **Scope:** Linux `inotify` monitoring module (`clamguardian/realtime/`), event normalization, debouncing, deduplication, and task runner orchestration.
 - **Dependencies:** Phase 11.
-- **Note:** The `clamguardian/realtime` package is not part of the 1.0 branch: it is unwired and still carries open P1 defects (duplicate dispatch, queue bound, shutdown, stale watches, silent inotify overflow). It returns with the remediation tracked in the PR #5 audit report.
+- **Note:** The `clamguardian/realtime` package is not part of the 1.0 branch: it is unwired and still carries open P1 defects (duplicate dispatch, queue bound, shutdown, stale watches, silent inotify overflow). It returns with the remediation tracked in the PR #5 audit report (archived under the annotated tag `audit/pr5-2026-10-12`).
 
 ---
 
