@@ -1,8 +1,14 @@
 # ClamGuardian 1.0 — Release Gate Checklist (Phase 9)
 
-**Release candidate:** `feature` @ `26a9c14b70330b421c95758fc1271073be5ad42f`
+**Release candidate:** `feature`
+**Evidence collected on:** `26a9c14b70330b421c95758fc1271073be5ad42f`
 **Version:** `1.0.0` (`pyproject.toml` and `clamguardian.__version__`)
 **Pass performed:** 2026-10-15
+
+> **Which commit to tag.** The evidence below was collected on the SHA above.
+> This document landed in a later commit on the same branch, and the tag must point
+> at the **final** release commit — use the current `feature` tip (section 4), not
+> necessarily the SHA above.
 
 > **Verdict: the gate is NOT closed.** Four required checks could not be executed
 > in the environment where this pass was performed — Flatpak builds, AppStream
@@ -246,7 +252,10 @@ early would produce a "release" whose Flatpak, AppStream, ClamAV and GTK checks
 were never run.
 
 ```bash
-git tag -a v1.0.0 26a9c14b70330b421c95758fc1271073be5ad42f -m "ClamGuardian 1.0.0"
+# tag the FINAL release commit — the current tip of the branch, not necessarily
+# the SHA whose evidence is recorded at the top of this document
+git fetch origin
+git tag -a v1.0.0 "$(git rev-parse origin/feature)" -m "ClamGuardian 1.0.0"
 git push origin v1.0.0
 ```
 
