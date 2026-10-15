@@ -108,7 +108,7 @@ Phase 12: 2.x-A Event-Driven Monitoring [DEFERRED - out of 1.0 scope]
 - **Scope:** Desktop metadata, icon, Flatpak manifest, 1.0 release readiness audit & gate.
 - **Dependencies:** Phase 7.
 - **Evidence:** `docs/M7-PACKAGING-REPORT.md`; `tests/test_packaging.py`; wheel built, installed and run end to end. Phase 9 stays open until the release candidate checklist is executed.
-- **Phase 9 remaining:** build both Flatpak manifests with `flatpak-builder`, validate the metainfo with `appstreamcli`, scan with a real ClamAV (not a stub), verify the GTK UI on a desktop session, execute the release checklist, and create the `v1.0.0` tag the release manifest is pinned to. None of these is covered by the M6 gate.
+- **Phase 9 remaining:** build both Flatpak manifests with `flatpak-builder`, validate the metainfo with `appstreamcli`, scan with a real ClamAV (not a stub), verify the GTK UI on a desktop session, execute the release checklist, and create the `v1.0.0` tag the release manifest is pinned to. None of these is covered by the M6 gate. The checklist, the per-gate evidence and the procedure for each open gate live in **`docs/RELEASE-GATE-1.0.md`**.
 
 ### Phase 10: 1.1 USB Auto-Scan
 - **Status:** DEFERRED (out of 1.0 scope)
