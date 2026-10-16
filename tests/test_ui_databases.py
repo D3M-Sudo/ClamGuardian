@@ -213,3 +213,17 @@ def test_run_async_gtk_main_loop() -> None:
     loop.run()
     assert done.is_set()
     assert results == [(42, None)]
+
+
+def test_ui_only_calls_existing_database_manager_methods() -> None:
+    """Regression for P2-DBG-02: the page called ``DatabaseManager.update_all()``,
+    which does not exist, so the "Update all" button raised AttributeError at
+    runtime (invisible to the headless suite, where the page is a shim).
+    """
+    import re
+
+    source = Path(database_pages.__file__).read_text(encoding="utf-8")
+    called = set(re.findall(r"_manager\.(\w+)\s*\(", source))
+    assert called, "expected the page to call the manager"
+    missing = sorted(name for name in called if not hasattr(DatabaseManager, name))
+    assert missing == [], f"the UI calls methods the manager does not define: {missing}"
