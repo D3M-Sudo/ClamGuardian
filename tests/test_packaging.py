@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import configparser
 import importlib
+import re
 import tomllib
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -178,6 +179,64 @@ def test_development_manifest_builds_the_working_tree() -> None:
     dir_sources = [s for s in sources if s.get("type") == "dir"]
     assert len(dir_sources) == 1, "the development manifest must build from the working tree"
     assert dir_sources[0].get("path") == "../.."
+
+
+# Dipendenze del backend di build hatchling: non sono dipendenze runtime del
+# progetto (hatchling è solo in [build-system]; packaging/pathspec/pluggy
+# compaiono in uv.lock solo come transitive delle dev-dependencies e la loro
+# versione lockata non è vincolante per la sandbox di build). Vengono quindi
+# escluse dal confronto con uv.lock: la loro versione è dettata dai requisiti
+# di hatchling, non dal lock.
+BUILD_BACKEND_ONLY = {
+    "hatchling",
+    "packaging",
+    "pathspec",
+    "pluggy",
+    "tomlkit",
+    "trove-classifiers",
+}
+
+
+def test_vendored_runtime_wheels_match_uv_lock() -> None:
+    """Le versioni runtime vendute nei manifest devono coincidere con uv.lock.
+
+    È la difesa contro le divergenze che sorgono quando un `uv lock` aggiorna le
+    versioni senza ribruciare le wheel vendute (e viceversa): senza questo test la
+    build Flatpak può passare usando dipendenze diverse da quelle che `uv lock
+    --check` e `pip-audit` verificano nel gate di release.
+    """
+    with (ROOT / "uv.lock").open("rb") as handle:
+        lock = tomllib.load(handle)
+    lock_versions = {pkg["name"]: pkg["version"] for pkg in lock.get("package", [])}
+
+    wheel_re = re.compile(r"^(?P<name>[A-Za-z0-9_.]+)-(?P<version>[0-9][A-Za-z0-9_.]*?)-.+\.whl$")
+    mismatches: list[str] = []
+
+    for manifest_name in MANIFESTS:
+        module = _clamguardian_module(_manifest(manifest_name))
+        for source in module["sources"]:
+            if source.get("type") != "file":
+                continue
+            filename = source["url"].rsplit("/", 1)[-1]
+            match = wheel_re.match(filename)
+            if match is None:
+                mismatches.append(f"{manifest_name}: cannot parse wheel name {filename!r}")
+                continue
+            # I filename usano underscore (charset_normalizer), il lock i trattini.
+            name = match.group("name").replace("_", "-").lower()
+            if name in BUILD_BACKEND_ONLY:
+                continue
+            locked = lock_versions.get(name)
+            if locked is None:
+                continue  # non una dipendenza runtime del progetto
+            if match.group("version") != locked:
+                mismatches.append(
+                    f"{manifest_name}: {name} vendored {match.group('version')} != uv.lock {locked}"
+                )
+
+    assert mismatches == [], (
+        "vendored runtime wheels diverge from uv.lock, re-pin them: " + "; ".join(mismatches)
+    )
 
 
 def test_flatpak_finish_args_cover_what_the_code_needs() -> None:

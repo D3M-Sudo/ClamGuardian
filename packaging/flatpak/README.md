@@ -25,6 +25,36 @@ entry, the AppStream metainfo and the scalable icon are installed into
 itself ships the same three files through `[tool.hatch.build.targets.wheel.shared-data]`
 in `pyproject.toml`.
 
+## Vendored wheels & maintenance (re-pin)
+
+The build is fully offline: every wheel (the `hatchling` backend + its
+dependencies + the runtime dependencies) is a `type: file` source with a pinned
+`sha256`. Two invariants must hold:
+
+- **Runtime wheels must match `uv.lock`.** `tests/test_packaging.py::
+  test_vendored_runtime_wheels_match_uv_lock` enforces it, so a `uv lock`
+  update that moves a version fails the test instead of silently building a
+  different dependency set than `uv lock --check` / `pip-audit` verify.
+- **Platform tags must match the runtime.** The `org.gnome.Sdk//51` sandbox
+  runs Python 3.14, so binary wheels are pinned to `cp314` (e.g. `cffi`,
+  `aiohttp`); `py3-none-any` and `abi3` wheels are also fine. x86_64
+  `manylinux` only (the Flathub/CI build arch).
+
+To re-pin after a `uv lock` bump (or a cffi/aiohttp release), for each changed
+package fetch the wheel URL + `sha256` from the PyPI JSON API and update **both**
+manifests (the `sources` entry *and* the filename in the build-command):
+
+```sh
+PKG=<name>; VER=<version>   # from uv.lock
+curl -s "https://pypi.org/pypi/$PKG/$VER/json" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(u['filename'], u['url'], u['digests']['sha256']) for u in d['urls'] if u['packagetype']=='bdist_wheel' and ('none-any' in u['filename'] or ('cp314' in u['filename'] and 'x86_64' in u['filename']))]"
+pytest tests/test_packaging.py   # the uv-lock test confirms the re-pin
+```
+
+`hatchling`, `packaging`, `pathspec`, `pluggy`, `tomlkit` and
+`trove-classifiers` are backend-only (hatchling is declared in
+`[build-system]`; the others are its own runtime deps) and are exempt from
+the lock check; they only need a re-pin when hatchling itself is bumped.
+
 ## finish-args rationale
 
 | Argument | Why |
