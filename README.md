@@ -1,11 +1,18 @@
 # ClamGuardian
 
 [![CI](https://github.com/D3M-Sudo/ClamGuardian/actions/workflows/ci.yml/badge.svg)](https://github.com/D3M-Sudo/ClamGuardian/actions/workflows/ci.yml)
+[![Release Gate](https://github.com/D3M-Sudo/ClamGuardian/actions/workflows/release-gate.yml/badge.svg)](https://github.com/D3M-Sudo/ClamGuardian/actions/workflows/release-gate.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
 [![Code style: ruff](https://img.shields.io/badge/lint-ruff-261230.svg)](https://github.com/astral-sh/ruff)
 
-ClamGuardian is a Linux-first security framework built around ClamAV. It provides an asynchronous AV abstraction, encrypted quarantine, native GObject event signalling, and a dynamic threat-intelligence provider layer suitable for GTK4/Libadwaita applications and headless integrations.
+ClamGuardian is a Linux-first security framework built around ClamAV. It provides an asynchronous AV abstraction, encrypted quarantine, scan profiles, a persisted scan history, and native GObject event signalling, suitable for GTK4/Libadwaita applications and headless integrations.
+
+> **v1.0.0 released** (2026-10-16, tag `v1.0.0` @ `745e1e7`): the release gate is
+> closed — both Flatpak manifests build offline against `org.gnome.Platform//51`,
+> AppStream validates, real ClamAV scans (clean + EICAR via `clamscan` and `clamd`)
+> and the GTK smoke test pass in CI. See `docs/RELEASE-GATE-1.0.md` for the
+> evidence and `docs/ROADMAP.md` for what comes after 1.0.
 
 ## Architecture
 
@@ -25,10 +32,6 @@ BaseAVEngine <---- ClamAVEngine
                   |
           Flatpak: flatpak-spawn --host
 
-Threat Intelligence
-        |
-ThreatProviderManager ---> VirusTotalProvider / external plugins
-
 Security storage
         |
 QuarantineVault ---> AES-256-GCM encrypted records
@@ -37,14 +40,31 @@ QuarantineVault ---> AES-256-GCM encrypted records
 ## Features
 
 - **Hybrid ClamAV execution:** prefers `/run/clamd.ctl`, then falls back to `clamscan`/`freshclam` through `asyncio.subprocess`.
+- **CLI / headless interface (M3):** `clamguardian scan|profiles|version` — a thin front-end over the same Core used by the GTK UI (see `docs/design/cli.md`), with human and `--json` output, centralized exit codes and M0.5-grade Ctrl+C cancellation.
+- **Scan profiles (M2):** immutable, validated `ScanProfile` presets (`quick`, `home`, `full`, `custom`) shared by every front-end; the UI never touches ClamAV CLI flags (see `docs/design/scan-profiles.md`).
 - **Flatpak-aware execution:** optionally routes host commands through `flatpak-spawn --host`.
 - **Reactive event API:** `ShieldTaskController` emits `scan-started`, `scan-finished`, `threat-detected`, and `scan-cancelled` as native GObject signals.
 - **Encrypted quarantine:** AES-256-GCM authenticated encryption, owner-only vault permissions, atomic writes, and integrity-protected metadata.
-- **Extensible threat intelligence:** abstract `BaseThreatProvider`, dynamic Python entry-point discovery, and a VirusTotal v3 provider.
 - **Async concurrency:** bounded multi-slot scan runner with cancellation support.
 - **Python 3.11+:** typed, packaged with Hatchling, and tested by pytest.
 
 ## Installation
+
+### Flatpak (recommended desktop install, v1.0.0)
+
+Download the installable bundle from the Release Gate run on the `v1.0.0` tag
+(`ClamGuardian-v1.0.0-linux-x86_64.flatpak`, ~4.7 MB):
+
+```bash
+flatpak install --user ClamGuardian-v1.0.0-linux-x86_64.flatpak
+```
+
+Prerequisites on the host: a working ClamAV installation (`clamscan`,
+`freshclam`, optionally the `clamd` daemon) — the sandbox reaches it through
+`flatpak-spawn --host` and the `clamd` UNIX socket — and the GNOME Platform 51
+runtime (installed automatically from Flathub on first run).
+
+### From source
 
 Core dependencies are intentionally minimal (`cryptography`, `aiohttp`): PyGObject lives in the optional `[gtk]` extra, so headless machines can install and test the framework without building GTK bindings. A `uv.lock` is provided for reproducible environments.
 
@@ -53,7 +73,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install '.[test]'        # headless (core framework + tests)
-python -m pip install '.[test,gtk]'    # full desktop (adds PyGObject >= 3.53)
+python -m pip install '.[test,gtk]'    # full desktop (adds PyGObject >= 3.46)
 ```
 
 With [uv](https://docs.astral.sh/uv/) the locked environments are:
@@ -63,7 +83,7 @@ uvx --with '.[test]' pytest            # headless CI path
 uvx --with '.[test,gtk]' pytest        # full GTK path
 ```
 
-On Debian/Ubuntu systems, install PyGObject build prerequisites if pip needs to compile it. The `gtk` extra pins PyGObject >= 3.53, which requires the girepository-2.0 bindings (`libgirepository-2.0-dev`):
+On Debian/Ubuntu systems, install PyGObject build prerequisites if pip needs to compile it. The `gtk` extra allows PyGObject >= 3.46; versions 3.53 and newer require the girepository-2.0 bindings (`libgirepository-2.0-dev`):
 
 ```bash
 sudo apt-get update
@@ -71,6 +91,77 @@ sudo apt-get install -y libgirepository-2.0-dev gir1.2-gtk-4.0 gir1.2-adw-1 libc
 ```
 
 A working ClamAV installation is required for real scans. The framework itself does not install or configure the antivirus daemon.
+
+## Command-line interface (CLI)
+
+Installing the package provides the `clamguardian` console command (also available as `python -m clamguardian.cli`):
+
+```bash
+uv run clamguardian --help
+# or, after pip install:
+clamguardian --help
+```
+
+The CLI shares the exact Core of the GTK UI: profiles come from `ScanProfileRegistry`, scans run through `ScanTaskRunner` and `ClamAVEngine`. It never spawns its own subprocesses and never duplicates scan logic.
+
+### Usage
+
+```bash
+clamguardian scan PATH                     # scan a file or directory
+clamguardian scan PATH --profile quick     # quick / home / full / custom
+clamguardian scan PATH --json              # machine-readable report on stdout
+clamguardian profiles [--json]             # list profiles from the Core registry
+clamguardian version
+```
+
+Without `--profile` the Core's default profile is used (id `default`, *Standard Scan*). Profiles are resolved exclusively from `clamguardian.core.profiles.DEFAULT_REGISTRY`.
+
+Example session:
+
+```text
+$ clamguardian scan ~/Downloads --profile quick
+ClamGuardian
+Profile: Quick Scan
+Target: /home/user/Downloads
+Scanning...
+Scan completed
+Status: CLEAN
+Engine: clamscan
+Duration: 2.41s
+```
+
+### JSON output
+
+`scan --json` prints exactly one JSON object on stdout (diagnostics go to stderr). Guaranteed, deterministic keys:
+
+```json
+{
+  "status": "clean",
+  "profile": "quick",
+  "target": "/home/user/Downloads",
+  "engine": "clamscan",
+  "threats": [],
+  "files_scanned": 0,
+  "duration_seconds": 2.41,
+  "error": null,
+  "metadata": {"profile_id": "quick"}
+}
+```
+
+### Exit codes
+
+| Code | Meaning                             |
+| ---- | ----------------------------------- |
+| 0    | scan completed successfully / clean |
+| 1    | threats detected                    |
+| 2    | usage / CLI argument error          |
+| 3    | engine or runtime error             |
+| 4    | scan timeout                        |
+| 5    | scan cancelled (Ctrl+C)             |
+
+### Ctrl+C
+
+Pressing Ctrl+C during a scan triggers the M0.5 cancellation lifecycle: the ClamAV subprocess group receives `SIGTERM` (then `SIGKILL` after a grace period), the process is reaped, and the CLI exits with code 5. No zombies, no orphans.
 
 ## Usage
 
@@ -105,23 +196,6 @@ vault = QuarantineVault(Path("~/.local/share/clamguardian/quarantine").expanduse
 entry = vault.quarantine(Path("/path/to/suspicious-file"))
 vault.restore(entry.item_id)
 ```
-
-### VirusTotal
-
-Supply the API key at runtime; never commit it to source control.
-
-```python
-import asyncio
-from clamguardian.intelligence import VirusTotalProvider
-
-provider = VirusTotalProvider(api_key="YOUR_API_KEY")
-result = asyncio.run(provider.lookup_hash("0" * 64))
-print(result)
-```
-
-### Dynamic providers
-
-Third-party packages can expose a `clamguardian.threat_providers` entry point whose object is a `BaseThreatProvider` instance or subclass. The manager discovers these providers without hard-coding their modules.
 
 ## Third-party ClamAV Databases
 
@@ -171,7 +245,6 @@ view = build_database_navigation(manager)  # Adw.NavigationView, ready to embed
 - Metadata is authenticated as AES-GCM associated data, preventing undetected metadata tampering.
 - Vault directories are created with `0700`; record and restored-file writes use `0600`.
 - External commands are executed without a shell, reducing command-injection exposure.
-- VirusTotal credentials are held in memory by the provider and are not written to disk.
 
 ## Testing and CI
 
@@ -188,7 +261,18 @@ ruff check .
 mypy clamguardian
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs `ruff` and `pytest` on Python 3.11, 3.12, and 3.13, installs the GTK/PyGObject system dependencies required by the package, and triggers on every pull request plus pushes to `main`.
+GitHub Actions (`.github/workflows/ci.yml`) triggers on every pull request and on pushes to `main`, `feature` and `development`. The `test` job installs the GTK/PyGObject system dependencies the package needs and runs `ruff check .`, `mypy clamguardian` and `pytest` on Python 3.11, 3.12 and 3.13. A separate `audit` job verifies that `uv.lock` matches `pyproject.toml` (`uv lock --check`) and runs `pip-audit --strict` against the pinned runtime dependency set exported from the lockfile; see `docs/M6-CI-GATE-REPORT.md`.
+
+A second workflow, `.github/workflows/release-gate.yml`, is the automated 1.0
+release gate. It runs on pushes to `feature` and on `v*` tags and has 7 jobs:
+`preflight` (branch/HEAD/clean-tree check), `appstream` (`appstreamcli
+validate`), `clamav` (fresh DB, clean + EICAR via `clamscan` and `clamdscan`),
+`gtk-smoke` (UI construction + database pages under Xvfb), `flatpak-local`
+(real offline build of the working-tree manifest against `org.gnome.Platform//51`
++ installable `.flatpak` bundle), `flatpak-release` (same for the tag-pinned
+release manifest, only on tags), and `gate` (fails unless every required job
+succeeded, and uploads `gate-evidence.txt`). The local bundle is kept 14 days,
+the release bundle 90 days. Evidence: `docs/RELEASE-GATE-1.0.md`.
 
 ## Branching model
 
@@ -205,7 +289,7 @@ Development follows the flow `feature → testing → development → main`:
 
 ## Scope
 
-This repository is the core framework. A complete desktop product can build its GTK4/Libadwaita presentation layer, portal permissions, service integration, USB monitoring, real-time/on-access monitoring, scan profiles, and operational policy on top of these primitives.
+This repository is the core framework. A complete desktop product can build its GTK4/Libadwaita presentation layer, portal permissions, service integration, USB monitoring, real-time/on-access monitoring, and operational policy on top of these primitives.
 
 ## License
 

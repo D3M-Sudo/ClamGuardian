@@ -115,8 +115,12 @@ class DatabaseManager:
                     backup_path = backup / path.name
                     if destination.exists():
                         destination.replace(backup_path)
-                    path.replace(destination)
+                    # Recorded *before* installing: the backup directory is
+                    # removed in the ``finally`` block, so a failure while
+                    # moving the staged file in would otherwise lose the
+                    # previous artifact for good.
                     moved.append((destination, backup_path))
+                    path.replace(destination)
                 result = InstalledDatabase(
                     source,
                     DatabaseStatus.INSTALLED,
