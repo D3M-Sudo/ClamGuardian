@@ -103,12 +103,12 @@ uv lock --check    lockfile in sync (54 packages)
 
 | Item | Why it is unverified here | What closes it |
 |---|---|---|
-| `appstreamcli validate` on the metainfo | verified by the Release Gate CI (job green on tag run `38975655153`) — the structural invariants remain covered by `tests/test_packaging.py` | — |
-| A real `flatpak-builder` run | **CLOSED**: tag run `38975655153` built both manifests offline against `org.gnome.Platform//51` and produced the installable bundle | — |
+| `appstreamcli validate` on the metainfo | verified by the Release Gate CI (job green on final tag run `38977065253`) — the structural invariants remain covered by `tests/test_packaging.py` | — |
+| A real `flatpak-builder` run | **CLOSED**: final tag run `38977065253` built both manifests offline against `org.gnome.Platform//51` and produced the installable bundle | — |
 | Offline build backend | **CLOSED**: `hatchling` + its runtime deps are vendored as `type: file` sources with pinned `sha256` (see "Vendored wheels & maintenance" in this README) and installed via `PYTHONPATH=.pep517-build` | — |
 | ClamAV inside the sandbox | reached over `flatpak-spawn --host` and the clamd socket; verified in CI at build level; a full on-desktop run of the packaged app remains a post-1.0 follow-up | run the packaged app on a host with ClamAV |
 | Restoring a quarantined file to the host | **OPEN (residual)**: `--filesystem=host:ro` is read-only, so restoring to an arbitrary host path needs a portal or a narrower writable path | decide the restore policy post-1.0 |
-| The `v1.0.0` tag referenced by the release manifest | **CLOSED**: tag `v1.0.0` → `745e1e7`, built green on run `38975655153` | — (adding `commit:` alongside the tag is recommended hardening for Flathub) |
+| The `v1.0.0` tag referenced by the release manifest | **CLOSED**: tag `v1.0.0` → `8ee8a56`, built green on final run `38977065253` | — (adding `commit:` alongside the tag is recommended hardening for Flathub) |
 
 ---
 

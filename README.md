@@ -8,7 +8,7 @@
 
 ClamGuardian is a Linux-first security framework built around ClamAV. It provides an asynchronous AV abstraction, encrypted quarantine, scan profiles, a persisted scan history, and native GObject event signalling, suitable for GTK4/Libadwaita applications and headless integrations.
 
-> **v1.0.0 released** (2026-10-16, tag `v1.0.0` @ `745e1e7`): the release gate is
+> **v1.0.0 released** (2026-10-16, tag `v1.0.0` @ `8ee8a56`): the release gate is
 > closed — both Flatpak manifests build offline against `org.gnome.Platform//51`,
 > AppStream validates, real ClamAV scans (clean + EICAR via `clamscan` and `clamd`)
 > and the GTK smoke test pass in CI. See `docs/RELEASE-GATE-1.0.md` for the
