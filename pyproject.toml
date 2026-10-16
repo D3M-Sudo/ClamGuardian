@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "clamguardian"
-version = "0.1.0"
-description = "Security framework for ClamAV scanning, quarantine, and threat intelligence on Linux"
+version = "1.0.0"
+description = "Security framework for ClamAV scanning, quarantine, and security management on Linux"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "GPL-3.0-or-later" }
@@ -15,6 +15,9 @@ dependencies = [
   "aiohttp>=3.10",
 ]
 
+[project.scripts]
+clamguardian = "clamguardian.cli.main:main"
+
 [project.optional-dependencies]
 gtk = [
   "PyGObject>=3.46",
@@ -22,6 +25,9 @@ gtk = [
 test = [
   "pytest>=8.0",
   "pytest-asyncio>=0.23",
+  "mypy>=1.10",
+  "pip-audit>=2.7",
+  "pyyaml>=6.0",  # packaging tests parse the Flatpak manifests
 ]
 
 [tool.uv]
@@ -38,6 +44,14 @@ constraint-dependencies = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["clamguardian"]
+
+# Desktop integration ships with the wheel so a plain `pip install` also installs
+# the launcher, the AppStream metadata and the icon.
+# Hatchling maps source (repository path) -> destination (inside the wheel).
+[tool.hatch.build.targets.wheel.shared-data]
+"data/io.github.clamguardian.ClamGuardian.desktop" = "share/applications/io.github.clamguardian.ClamGuardian.desktop"
+"data/io.github.clamguardian.ClamGuardian.metainfo.xml" = "share/metainfo/io.github.clamguardian.ClamGuardian.metainfo.xml"
+"data/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg" = "share/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg"
 
 [tool.pytest.ini_options]
 addopts = "-ra"

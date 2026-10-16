@@ -119,7 +119,7 @@ else:
             ("description", "Description", "e.g. Community ClamAV signatures"),
             ("url", "Database URL", "https://…"),
             ("filename", "Filename", "e.g. malware.db"),
-            ("sha256", "SHA-256 (optional)", "64 hexadecimal characters"),
+            ("sha256", "SHA-256 (required)", "64 hexadecimal characters"),
         )
 
         def __init__(self, manager: DatabaseManager,
@@ -159,7 +159,10 @@ else:
             footer.append(cancel)
             footer.append(add_button)
 
-            view = Adw.ToolbarView(top_bar=Adw.HeaderBar(), content=scrolled, bottom_bar=footer)
+            view = Adw.ToolbarView()
+            view.add_top_bar(Adw.HeaderBar())
+            view.set_content(scrolled)
+            view.add_bottom_bar(footer)
             self.set_child(view)
 
 
@@ -187,8 +190,13 @@ else:
                 self._show_error(f"Database source already exists: {values['source_id']}")
                 return
 
+            digest = values["sha256"].lower()
+            if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+                self._show_error("SHA-256 digest is required: 64 hexadecimal characters.")
+                return
+
             artifact = DatabaseArtifact(filename=values["filename"], url=values["url"],
-                                        sha256=values["sha256"] or None)
+                                        sha256=digest)
             try:
                 source = DatabaseSource(id=values["source_id"], name=values["name"],
                                         description=values["description"], artifacts=(artifact,))
@@ -322,7 +330,10 @@ else:
             self._empty_status.set_child(empty_button)
 
             self._toast_overlay.set_child(self._list_container)
-            self.set_child(Adw.ToolbarView(top_bar=header, content=self._toast_overlay))
+            toolbar = Adw.ToolbarView()
+            toolbar.add_top_bar(header)
+            toolbar.set_content(self._toast_overlay)
+            self.set_child(toolbar)
 
             self._install_status_callback()
             self.rebuild_list()
@@ -392,7 +403,7 @@ else:
                     self._toast_overlay.add_toast(
                         Adw.Toast(title="All databases updated", timeout=3))
 
-            run_async(self._manager.update_all(), _done)
+            run_async(self._manager.update_enabled(), _done)
 
         def on_update_finished(self, source_id: str, error: Exception | None) -> None:
             row = self._rows.get(source_id)
