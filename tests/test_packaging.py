@@ -118,6 +118,14 @@ def test_wheel_ships_the_desktop_integration_files(pyproject: dict) -> None:
         assert (ROOT / source).is_file(), f"shared-data source does not exist: {source}"
 
 
+def _clamguardian_module(manifest: dict) -> dict:
+    """Trova il modulo ``clamguardian`` per nome (non per indice)."""
+    for module in manifest["modules"]:
+        if module.get("name") == APP_ID.replace(".", "-") or module.get("name") == "clamguardian":
+            return module
+    raise AssertionError(f"manifest lacks a module named 'clamguardian': {manifest['modules']}")
+
+
 @pytest.mark.parametrize("manifest_name", MANIFESTS)
 def test_flatpak_manifest_identity_and_integration(manifest_name: str) -> None:
     manifest = _manifest(manifest_name)
@@ -125,28 +133,46 @@ def test_flatpak_manifest_identity_and_integration(manifest_name: str) -> None:
     assert manifest["command"] == "clamguardian"
     assert (DATA / f"{APP_ID}.desktop").is_file()
 
-    commands = "\n".join(manifest["modules"][0]["build-commands"])
+    module = _clamguardian_module(manifest)
+    commands = "\n".join(module["build-commands"])
     for installed in (
         f"/app/share/applications/{APP_ID}.desktop",
         f"/app/share/metainfo/{APP_ID}.metainfo.xml",
         f"/app/share/icons/hicolor/scalable/apps/{APP_ID}.svg",
     ):
         assert installed in commands, f"{manifest_name} does not install {installed}"
+    # Build offline: nessun download da PyPI durante i build-commands.
+    assert "--no-index" in commands, f"{manifest_name} build-commands may attempt network downloads"
+    assert "pip3 install --no-index --no-deps ./hatchling" in commands, (
+        f"{manifest_name} must install hatchling from a local wheel"
+    )
+    assert "--no-build-isolation" in commands, (
+        f"{manifest_name} must avoid build isolation (it would re-download hatchling)"
+    )
+    # Ogni source tipo file deve essere pinned con sha256 (riproducibilità Flathub).
+    for source in module["sources"]:
+        if source.get("type") == "file":
+            assert source.get("url"), f"{manifest_name}: file source missing url"
+            assert source.get("sha256"), f"{manifest_name}: file source missing sha256 pin"
 
 
 def test_release_manifest_pins_an_immutable_source() -> None:
-    sources = _manifest(f"{APP_ID}.yml")["modules"][0]["sources"]
-    assert len(sources) == 1
-    source = sources[0]
-    assert source["type"] == "git", "a release build must not use a working-tree source"
+    module = _clamguardian_module(_manifest(f"{APP_ID}.yml"))
+    sources = module["sources"]
+    # Il release manifest combina fonti offline (wheel con sha256) + sorgente git immutabile.
+    git_sources = [s for s in sources if s.get("type") == "git"]
+    assert len(git_sources) == 1, "a release build must pin exactly one immutable git source"
+    source = git_sources[0]
     assert source.get("url"), "the pinned git source needs a url"
     assert source.get("tag") or source.get("commit"), "the source must be pinned to a tag or commit"
 
 
 def test_development_manifest_builds_the_working_tree() -> None:
-    sources = _manifest(f"{APP_ID}.local.yml")["modules"][0]["sources"]
-    assert [source["type"] for source in sources] == ["dir"]
-    assert sources[0]["path"] == "../.."
+    module = _clamguardian_module(_manifest(f"{APP_ID}.local.yml"))
+    sources = module["sources"]
+    dir_sources = [s for s in sources if s.get("type") == "dir"]
+    assert len(dir_sources) == 1, "the development manifest must build from the working tree"
+    assert dir_sources[0].get("path") == "../.."
 
 
 def test_flatpak_finish_args_cover_what_the_code_needs() -> None:

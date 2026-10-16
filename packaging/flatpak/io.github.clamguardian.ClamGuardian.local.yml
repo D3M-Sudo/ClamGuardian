@@ -30,12 +30,51 @@ modules:
   - name: clamguardian
     buildsystem: simple
     build-commands:
-      - pip3 install hatchling>=1.25
-      - pip install --no-deps --prefix=/app .
+      # hatchling è il build-backend dichiarato in pyproject.toml; la wheel viene
+      # scaricata come source (con rete) e installata offline dal build-dir.
+      - pip3 install --no-index --no-deps ./hatchling-1.32.4-py3-none-any.whl
+      # --no-build-isolation evita che pip ricrei un ambiente isolato (che
+      # tenterebbe il download da PyPI, vietato offline da Flathub).
+      - pip3 install --no-build-isolation --no-deps --no-index --prefix=/app .
+      # Dipendenze runtime (cryptography, aiohttp + transitive): nessun --no-deps
+      # qui perché elentiamo esplicitamente ogni wheel, così pip non cerca la rete.
+      - pip3 install --no-index --no-deps --prefix=/app ./cryptography-50.0.2-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl ./cffi-2.1.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl ./aiohttp-3.14.5-py3-none-any.whl ./aiosignal-1.4.0-py3-none-any.whl ./charset_normalizer-3.5.2-py3-none-any.whl ./frozenlist-1.8.0-py3-none-any.whl ./multidict-7.1.0-py3-none-any.whl ./yarl-1.25.1-py3-none-any.whl ./attrs-26.1.0-py3-none-any.whl ./idna-3.20-py3-none-any.whl
       - install -Dm644 data/io.github.clamguardian.ClamGuardian.desktop /app/share/applications/io.github.clamguardian.ClamGuardian.desktop
       - install -Dm644 data/io.github.clamguardian.ClamGuardian.metainfo.xml /app/share/metainfo/io.github.clamguardian.ClamGuardian.metainfo.xml
       - install -Dm644 data/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg /app/share/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg
     sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/5f/80/91f51f439c05d4ec4623c22928ce16a938d6d793bf709477830823497859/hatchling-1.32.4-py3-none-any.whl
+        sha256: 08ecf7548fb48205e7f213d70c71e67b8271b7242093dc3f1da578b42c734a2c
+      - type: file
+        url: https://files.pythonhosted.org/packages/21/69/64cef1f702bf6657e0cc186ed1a2891d50d29fb41586b254e1c07adea261/cryptography-50.0.2-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+        sha256: 630ebfea3bf689d075f82316324ff7433dc447fe6bc1bfc76524b74b4a9567d2
+      - type: file
+        url: https://files.pythonhosted.org/packages/b1/db/dceb9dd5b231e1da801793f8acc9f3c52a7e1afe40bb1aae37e02b0faad5/cffi-2.1.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+        sha256: c1453022f490d2459a11819d83ad1d586e9ff65a12ac3e705ffebd46d3685dcf
+      - type: file
+        url: https://files.pythonhosted.org/packages/68/30/173960c42b05a6c59f7558e4b12a4b0d9ba376cf6aa9bde7f9e08a30ca8d/aiohttp-3.14.5-py3-none-any.whl
+        sha256: efc21a454892828368b11c2c780de0ff8bc991f73f6b99c6b66e56205470929b
+      - type: file
+        url: https://files.pythonhosted.org/packages/fb/76/641ae371508676492379f16e2fa48f4e2c11741bd63c48be4b12a6b09cba/aiosignal-1.4.0-py3-none-any.whl
+        sha256: 053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e
+      - type: file
+        url: https://files.pythonhosted.org/packages/fc/ad/d07d7862a62ffa6d79d68074d14823243dd235a77c45262acbf6adeb28bf/charset_normalizer-3.5.2-py3-none-any.whl
+        sha256: b6b751274acb69d77b3323d6b7dbaa3c7fdfc1eb829b7eb61d262f32e1af9685
+      - type: file
+        url: https://files.pythonhosted.org/packages/9a/9a/e35b4a917281c0b8419d4207f4334c8e8c5dbf4f3f5f9ada73958d937dcc/frozenlist-1.8.0-py3-none-any.whl
+        sha256: 0c18a16eab41e82c295618a77502e17b195883241c563b00f0aa5106fc4eaa0d
+      - type: file
+        url: https://files.pythonhosted.org/packages/d0/86/a3de309c5e28ee85b314d0e3ba0e0dea6fd361c313322a05e67be4656e1e/multidict-7.1.0-py3-none-any.whl
+        sha256: d9ef29cfd98e17085b4f91bba8fa1570bec6787d5c52ce653ed33a58785585d0
+      - type: file
+        url: https://files.pythonhosted.org/packages/54/22/318c7980066769c6bcd9221ed2248294f5698811da099013098c670565ed/yarl-1.25.1-py3-none-any.whl
+        sha256: 681c758b0490f9e96b78e5fa8e8dc6e648e9185bb6eaebe73183c33ea0c445f3
+      - type: file
+        url: https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl
+        sha256: c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309
+      - type: file
+        url: https://files.pythonhosted.org/packages/58/a2/bb081bab032533a855d44de1d56f8e8426114ff1ba5d1f07a438a0a654f8/idna-3.20-py3-none-any.whl
+        sha256: ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c
       - type: dir
-
         path: ../..
