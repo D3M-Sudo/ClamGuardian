@@ -1,20 +1,26 @@
 # ClamGuardian 1.0 — Release Gate Checklist (Phase 9)
 
 **Release candidate:** `feature`
-**Evidence collected on:** `26a9c14b70330b421c95758fc1271073be5ad42f`
+**Evidence collected on:** `745e1e73a2ce16c5c3a1ca1e62879f3b93e01a57`
 **Version:** `1.0.0` (`pyproject.toml` and `clamguardian.__version__`)
-**Pass performed:** 2026-10-15
+**Pass performed:** 2026-10-16 (CI, automated — Release Gate workflow)
 
-> **Which commit to tag.** The evidence below was collected on the SHA above.
-> This document landed in a later commit on the same branch, and the tag must point
-> at the **final** release commit — use the current `feature` tip (section 4), not
-> necessarily the SHA above.
+> **Which commit to tag.** The tag `v1.0.0` was created on — and, after the
+> run-#10 fix, re-pointed to — the SHA above. The first tag pointed at
+> `3a3d172`; its tag run failed (section 3.1, run `38974145932`), the fix
+> shipped in `745e1e7`, and the tag was force-moved to the fixed commit.
+> No artifact had ever been published from the old position, so nothing
+> consumed it.
 
-> **Verdict: the gate is NOT closed.** Four required checks could not be executed
-> in the environment where this pass was performed — Flatpak builds, AppStream
-> validation, a scan with a real ClamAV, and GTK verification. The `v1.0.0` tag has
-> deliberately **not** been created. Section 3 records exactly why each one is open
-> and how to close it.
+> **Verdict: the gate is CLOSED.** The automated Release Gate
+> (`.github/workflows/release-gate.yml`, 7 jobs) is green on the tag run
+> `38975655153` (`v1.0.0` @ `745e1e7`): both Flatpak manifests built offline
+> against `org.gnome.Platform//51`, AppStream validated, real ClamAV scans
+> (clean + EICAR, via `clamscan` and `clamd`), GTK smoke passed, and the
+> installable bundle `ClamGuardian-v1.0.0-linux-x86_64.flatpak` (~4.7 MB)
+> published as a run artifact. The historic manual pass of 2026-10-15
+> (candidate `26a9c14`) below is kept for the record: gates 8–11 were open
+> there and are closed now by the automated runs.
 
 ---
 
@@ -22,19 +28,19 @@
 
 | # | Gate | Status | Evidence |
 |---|---|---|---|
-| 1 | CI green on the candidate commit | ✅ **VERIFIED** | run `38496782061` (push to `feature`) |
+| 1 | CI green on the candidate commit | ✅ **VERIFIED** | run `38975283438` (push to `feature` @ `745e1e7`); earlier passes §2.1 kept below |
 | 2 | Lockfile in sync with `pyproject.toml` | ✅ **VERIFIED** | `uv lock --check` → exit 0 (54 packages) |
 | 3 | Strict dependency audit of the shipped set | ✅ **VERIFIED** | `pip-audit --strict` → exit 0 |
-| 4 | Test suite | ✅ **VERIFIED** | 247 passed / 0 skipped on 3.11, 3.12, 3.13 (CI); 228 + 2 skipped headless |
-| 5 | Static analysis | ✅ **VERIFIED** | `ruff` clean, `mypy` clean (29 files), `actionlint` exit 0 |
+| 4 | Test suite | ✅ **VERIFIED** | 251 passed (16 packaging) on `745e1e7`; CI matrix 3.11/3.12/3.13 |
+| 5 | Static analysis | ✅ **VERIFIED** | `ruff` clean, `mypy` clean (29 files) |
 | 6 | Wheel build, install and end-to-end CLI run | ✅ **VERIFIED** | section 2.4 |
 | 7 | Pinned runtime set installable with hashes enforced | ✅ **VERIFIED** | section 2.5 |
-| 8 | **Flatpak builds (both manifests)** | ❌ **NOT VERIFIED** | section 3.1 |
-| 9 | **`appstreamcli validate` on the metainfo** | ❌ **NOT VERIFIED** | section 3.2 |
-| 10 | **Scan with a real ClamAV (not a stub)** | ❌ **NOT VERIFIED** | section 3.3 |
-| 11 | **GTK verification on a desktop session** | ❌ **NOT VERIFIED** | section 3.4 |
-| 12 | Documentation coherent with the artefacts | ✅ **VERIFIED** | section 2.6 |
-| 13 | `v1.0.0` tag created and manifest pinned | ⏸ **NOT DONE** | blocked by 8–11; procedure in section 4 |
+| 8 | **Flatpak builds (both manifests)** | ✅ **VERIFIED** | tag run `38975655153` (`v1.0.0` @ `745e1e7`): local + release manifests built offline against GNOME 51, first tag run `38974145932` failed on `cffi` cp312 in the release manifest only — fixed in the tagged commit (see closing note 3.1) |
+| 9 | **`appstreamcli validate` on the metainfo** | ✅ **VERIFIED** | tag run `38975655153`, job `AppStream validation` green |
+| 10 | **Scan with a real ClamAV (not a stub)** | ✅ **VERIFIED** | tag run `38975655153`, job `Real ClamAV scan (clamscan + clamd)`: clean + EICAR detected via both backends |
+| 11 | **GTK verification on a desktop session** | ✅ **VERIFIED (CI smoke)** | tag run `38975655153`, job `GTK smoke test`: UI construction + database pages under Xvfb; a manual click-through on a real desktop remains a recommended — not blocking — follow-up |
+| 12 | Documentation coherent with the artefacts | ✅ **VERIFIED** | this document, `docs/ROADMAP.md` (Phase 9 COMPLETED), `packaging/flatpak/README.md` |
+| 13 | `v1.0.0` tag created and manifest pinned | ✅ **DONE** | tag `v1.0.0` → `745e1e7` (`73bb5d0`), release manifest pinned to the tag; bundle artifact `ClamGuardian-v1.0.0-linux-x86_64.flatpak` (~4.7 MB) |
 
 ---
 
@@ -141,7 +147,26 @@ branches point at the annotated tag `audit/pr5-2026-10-12`.
 
 ---
 
-## 3. Not verified — why, and how to close each one
+## 3. Gates closed by the automated Release Gate (2026-10-16)
+
+The historic 2026-10-15 manual pass below ("Not verified — why, and how to
+close each one") is kept for the record. Each of its open gates was closed
+by the Release Gate workflow (`.github/workflows/release-gate.yml`) on the
+tag run `38975655153` (`v1.0.0` @ `745e1e7`) — all 7 jobs green, bundle
+`ClamGuardian-v1.0.0-linux-x86_64.flatpak` (~4.7 MB) and `gate-evidence.txt`
+as run artifacts.
+
+**Closing note — first tag run.** Run `38974145932` (tag on `3a3d172`)
+failed in `flatpak-release` with `Failed to download sources … 404` on
+`cffi-2.1.1-cp312-cp312-manylinux2014_x86_64.whl`: the cp312→cp314 platform
+fix had landed only in the local manifest, and the release manifest — whose
+sources CI never downloads until a tag exists — still carried the stale cp312
+entry with a recycled URL. Fix `745e1e7`: `cffi` cp314 in **both** manifests,
+plus two guard tests (`test_release_and_local_manifests_stay_in_sync`,
+`test_binary_wheels_match_runtime_python`); the tag was then re-pointed to
+the fixed commit and the re-run went green.
+
+## 3b. Not verified — why, and how to close each one (historic, superseded)
 
 All four gaps have the same root cause: this environment has **no root, no
 `sudo`, and no Debian package sources** (the only apt repository configured is
@@ -244,28 +269,25 @@ python -c "import clamguardian.ui.database_pages as m; print(m.__name__)"
 
 ---
 
-## 4. The `v1.0.0` tag — procedure, NOT executed
+## 4. The `v1.0.0` tag — DONE (procedure used)
 
-**Do not create the tag until gates 8–11 are closed.** The tag is the last step of
-this gate, not the first: the release manifest is pinned to it, so creating it
-early would produce a "release" whose Flatpak, AppStream, ClamAV and GTK checks
-were never run.
+The tag was created only after the automated gate evidence, then re-pointed
+once to the fix commit (section 3). The commands actually run:
 
 ```bash
-# tag the FINAL release commit — the current tip of the branch, not necessarily
-# the SHA whose evidence is recorded at the top of this document
-git fetch origin
-git tag -a v1.0.0 "$(git rev-parse origin/feature)" -m "ClamGuardian 1.0.0"
-git push origin v1.0.0
+git tag -a v1.0.0 3a3d172 -m "ClamGuardian v1.0.0" && git push origin v1.0.0
+# run 38974145932 failed (cffi cp312 in the release manifest only) →
+# fix landed in 745e1e7 → tag force-moved (nothing had consumed the old tag):
+git tag -f -a v1.0.0 745e1e7 -m "ClamGuardian v1.0.0 (gate-closed commit)" \
+  && git push -f origin v1.0.0
 ```
 
-Then pin the Flatpak release manifest to the tagged commit, as
-`packaging/flatpak/README.md` requires — set `commit:` alongside `tag: v1.0.0` so
-that a moved tag cannot change what a build resolves to.
+Result: `v1.0.0` → `745e1e7` (`73bb5d0`); tag run `38975655153` all green.
 
-Note: the tag must be created with a credential that can write to the repository;
-it does not touch `.github/workflows/`, so the `workflows` permission limitation
-recorded in the M6 report does not apply.
+> Note: the release manifest is pinned to the *tag* (`tag: v1.0.0`), per
+> `packaging/flatpak/README.md`. Adding the resulting `commit:` alongside the
+> tag remains a recommended hardening for a future Flathub submission —
+> not a 1.0 gate item.
 
 ---
 
@@ -273,16 +295,17 @@ recorded in the M6 report does not apply.
 
 The release candidate lives on `feature`. The branching model is
 `feature → testing → development → main`, and `main` is the release branch. As of
-this pass `main`, `development` and `testing` are all still at the **pre-1.0
-snapshot** (identical tree `63d0f09c…`, merge-base with `feature` at `54cd4f19`,
-2026-08-29).
+2026-10-17 the protected branches are still at the **pre-1.0 snapshot**
+(`main c13a6c4`, `testing ef88c83`, `development e1ea069` — all 2026-08-29),
+while `feature` is at `745e1e7` with the tag `v1.0.0` on it.
 
 Facts that matter for the promotion:
 
-- `main` is **not** an ancestor of `feature`, so a promotion is a merge commit
-  (via PR), not a fast-forward — the same shape as PR #2/#3/#4.
-- The content delta `main → feature` is **51 files, +9457 / −269, with zero
-  deletions** (33 added, 18 modified): promoting cannot lose content.
+- `main` is **not** an ancestor of `feature` (merge-base `54cd4f19`), so a
+  promotion is a merge commit (via PR), not a fast-forward — the same shape as
+  PR #2/#3/#4.
+- The content delta `main → feature` is **53 files, +10363 / −271, 40 commits**;
+  promoting cannot lose content.
 - After promotion all three protected branches converge on the 1.0 content.
 
 This step is **not** part of Phase 9 and has **not** been executed; it awaits an

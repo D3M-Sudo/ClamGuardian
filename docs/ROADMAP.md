@@ -18,7 +18,7 @@ Phase 5: M5 Security Hardening [COMPLETED]
 Phase 6: M5 P2 Evaluation [COMPLETED]
 Phase 7: M6 CI & Quality Gates [COMPLETED]
 Phase 8: M7 Packaging [COMPLETED]
-Phase 9: 1.0 Release Gate [PENDING]
+Phase 9: 1.0 Release Gate [COMPLETED 2026-10-16 — tag v1.0.0 @ 745e1e7, installable Flatpak bundle]
     ↓
 Phase 10: 1.1 USB Auto-Scan [DEFERRED - out of 1.0 scope]
 Phase 11: Threat Intelligence Integration [DEFERRED - out of 1.0 scope]
@@ -104,11 +104,11 @@ Phase 12: 2.x-A Event-Driven Monitoring [DEFERRED - out of 1.0 scope]
 - **Evidence:** `docs/M6-CI-GATE-REPORT.md`; dedicated `audit` job on the pinned lockfile (`uv lock --check` + `pip-audit --strict -r`), `test` job on Python 3.11/3.12/3.13. **Closed by execution:** CI run `38493461942` on `9832b4d` — `audit` job green (`pip-audit --strict`: "No known vulnerabilities found"), `test` green on 3.11/3.12/3.13 (247 tests each).
 
 ### Phase 8 & 9: M7 Packaging & 1.0 Release Gate
-- **Status:** Phase 8 (packaging) COMPLETED - Phase 9 (1.0 release gate) PENDING
+- **Status:** COMPLETED (both) — 2026-10-16
 - **Scope:** Desktop metadata, icon, Flatpak manifest, 1.0 release readiness audit & gate.
 - **Dependencies:** Phase 7.
-- **Evidence:** `docs/M7-PACKAGING-REPORT.md`; `tests/test_packaging.py`; wheel built, installed and run end to end. Phase 9 stays open until the release candidate checklist is executed.
-- **Phase 9 remaining:** build both Flatpak manifests with `flatpak-builder`, validate the metainfo with `appstreamcli`, scan with a real ClamAV (not a stub), verify the GTK UI on a desktop session, execute the release checklist, and create the `v1.0.0` tag the release manifest is pinned to. None of these is covered by the M6 gate. The checklist, the per-gate evidence and the procedure for each open gate live in **`docs/RELEASE-GATE-1.0.md`**.
+- **Evidence:** `docs/M7-PACKAGING-REPORT.md`; `tests/test_packaging.py` (16 tests); wheel built, installed and run end to end; Release Gate CI (`.github/workflows/release-gate.yml`) — 7 jobs on the tag run `38975655153` (`v1.0.0` @ `745e1e7`): preflight, GNOME 51 offline Flatpak build (local manifest), AppStream validation, real ClamAV (clamscan + clamd, clean + EICAR), GTK smoke, release-manifest build pinned to the tag, and gate summary — all green. Deliverable: `ClamGuardian-v1.0.0-linux-x86_64.flatpak` (installable bundle, ~4.7 MB). The first tag run failed on a `cffi` cp312 wheel left in the release manifest only (404 on first-ever download of those sources); the fix (`cffi` cp314 in both manifests) shipped in `745e1e7` with two guard tests (manifest parity + runtime platform tags), then the tag was re-pointed to the fixed commit.
+- The checklist, the per-gate evidence and the procedure for each gate live in **`docs/RELEASE-GATE-1.0.md`**.
 
 ### Phase 10: 1.1 USB Auto-Scan
 - **Status:** DEFERRED (out of 1.0 scope)

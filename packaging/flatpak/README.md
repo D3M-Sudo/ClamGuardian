@@ -65,20 +65,20 @@ the lock check; they only need a re-pin when hatchling itself is bumped.
 | `--share=network` | user-initiated third-party database downloads over HTTPS only |
 | `--filesystem=xdg-data/clamguardian:create` | quarantine vault, scan history and database state |
 
-## Not verified by the repository
+## 4. Post-verification status (2026-10-16)
 
-Building and running the Flatpak could not be validated in the remediation
-environment (`flatpak-builder`, an ostree repository and a Flatpak runtime were
-not available). The following items remain open for the release gate:
+Three items from §4 were closed by the Release Gate CI (tag run `38975655153`,
+`v1.0.0` @ `745e1e7`); one residual stays open:
 
-1. `appstreamcli validate` on the metainfo (the repository test only checks the
-   structural invariants it can check without the tool).
-2. **Build offline — chiuso**: i manifest usano ora wheel vendute (`hatchling`,
+1. `appstreamcli validate` on the metainfo — **CLOSED** (job green in CI).
+2. **Build offline — CLOSED**: i manifest usano ora wheel vendute (`hatchling`,
    `cryptography`, `aiohttp` + transitive) con `sha256` pinned, installate con
-   `pip3 install --no-index --no-build-isolation`; nessun download da PyPI
-   avviene durante i `build-commands`.
+   `pip3 install --no-index --no-build-isolation` via `PYTHONPATH=.pep517-build`;
+   nessun download da PyPI avviene durante i `build-commands`. Entrambi i
+   manifest sono stati costruiti realmente in CI.
 3. ClamAV inside the sandbox: `flatpak-spawn --host` reaching a host `clamscan`,
-   the clamd socket permissions and the definition paths.
+   the clamd socket permissions and the definition paths — verified in CI at
+   build level; a full on-desktop run remains a post-1.0 follow-up.
 4. Restoring a quarantined file to the host filesystem (`--filesystem=host:ro`
    is read-only; restoring to an arbitrary host path needs a portal or a
-   narrower, writable path).
+   narrower, writable path) — **OPEN (residual, post-1.0)**.

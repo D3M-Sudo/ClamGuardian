@@ -103,12 +103,12 @@ uv lock --check    lockfile in sync (54 packages)
 
 | Item | Why it is unverified here | What closes it |
 |---|---|---|
-| `appstreamcli validate` on the metainfo | the tool is not installed in this environment and the sandbox cannot install distribution packages | run it in the release gate environment; the structural invariants it checks are covered by `tests/test_packaging.py` |
-| A real `flatpak-builder` run | `flatpak-builder`, an ostree repository and a Flatpak runtime are absent | build both manifests in a Flatpak-capable environment |
-| Offline build backend | Flathub builds without network, while `pip install .` with build isolation tries to download `hatchling` | add a `python3-hatchling` module or vendor the wheel (recorded in `packaging/flatpak/README.md`) |
-| ClamAV inside the sandbox | `clamscan`/`clamd`/`freshclam` are not installed; the CLI was exercised against a stub | run the packaged app on a host with ClamAV |
-| Restoring a quarantined file to the host | `--filesystem=host:ro` is read-only, so restoring to an arbitrary host path needs a portal or a narrower writable path | decide the restore policy in the release gate |
-| The `v1.0.0` tag referenced by the release manifest | it is created by the 1.0 release gate (Phase 9), not before | create the tag when cutting the release, then add the resulting `commit` to the manifest |
+| `appstreamcli validate` on the metainfo | verified by the Release Gate CI (job green on tag run `38975655153`) — the structural invariants remain covered by `tests/test_packaging.py` | — |
+| A real `flatpak-builder` run | **CLOSED**: tag run `38975655153` built both manifests offline against `org.gnome.Platform//51` and produced the installable bundle | — |
+| Offline build backend | **CLOSED**: `hatchling` + its runtime deps are vendored as `type: file` sources with pinned `sha256` (see "Vendored wheels & maintenance" in this README) and installed via `PYTHONPATH=.pep517-build` | — |
+| ClamAV inside the sandbox | reached over `flatpak-spawn --host` and the clamd socket; verified in CI at build level; a full on-desktop run of the packaged app remains a post-1.0 follow-up | run the packaged app on a host with ClamAV |
+| Restoring a quarantined file to the host | **OPEN (residual)**: `--filesystem=host:ro` is read-only, so restoring to an arbitrary host path needs a portal or a narrower writable path | decide the restore policy post-1.0 |
+| The `v1.0.0` tag referenced by the release manifest | **CLOSED**: tag `v1.0.0` → `745e1e7`, built green on run `38975655153` | — (adding `commit:` alongside the tag is recommended hardening for Flathub) |
 
 ---
 

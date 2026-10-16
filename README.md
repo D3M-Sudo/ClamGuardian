@@ -1,11 +1,18 @@
 # ClamGuardian
 
 [![CI](https://github.com/D3M-Sudo/ClamGuardian/actions/workflows/ci.yml/badge.svg)](https://github.com/D3M-Sudo/ClamGuardian/actions/workflows/ci.yml)
+[![Release Gate](https://github.com/D3M-Sudo/ClamGuardian/actions/workflows/release-gate.yml/badge.svg)](https://github.com/D3M-Sudo/ClamGuardian/actions/workflows/release-gate.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
 [![Code style: ruff](https://img.shields.io/badge/lint-ruff-261230.svg)](https://github.com/astral-sh/ruff)
 
 ClamGuardian is a Linux-first security framework built around ClamAV. It provides an asynchronous AV abstraction, encrypted quarantine, scan profiles, a persisted scan history, and native GObject event signalling, suitable for GTK4/Libadwaita applications and headless integrations.
+
+> **v1.0.0 released** (2026-10-16, tag `v1.0.0` @ `745e1e7`): the release gate is
+> closed — both Flatpak manifests build offline against `org.gnome.Platform//51`,
+> AppStream validates, real ClamAV scans (clean + EICAR via `clamscan` and `clamd`)
+> and the GTK smoke test pass in CI. See `docs/RELEASE-GATE-1.0.md` for the
+> evidence and `docs/ROADMAP.md` for what comes after 1.0.
 
 ## Architecture
 
@@ -42,6 +49,22 @@ QuarantineVault ---> AES-256-GCM encrypted records
 - **Python 3.11+:** typed, packaged with Hatchling, and tested by pytest.
 
 ## Installation
+
+### Flatpak (recommended desktop install, v1.0.0)
+
+Download the installable bundle from the Release Gate run on the `v1.0.0` tag
+(`ClamGuardian-v1.0.0-linux-x86_64.flatpak`, ~4.7 MB):
+
+```bash
+flatpak install --user ClamGuardian-v1.0.0-linux-x86_64.flatpak
+```
+
+Prerequisites on the host: a working ClamAV installation (`clamscan`,
+`freshclam`, optionally the `clamd` daemon) — the sandbox reaches it through
+`flatpak-spawn --host` and the `clamd` UNIX socket — and the GNOME Platform 51
+runtime (installed automatically from Flathub on first run).
+
+### From source
 
 Core dependencies are intentionally minimal (`cryptography`, `aiohttp`): PyGObject lives in the optional `[gtk]` extra, so headless machines can install and test the framework without building GTK bindings. A `uv.lock` is provided for reproducible environments.
 
@@ -239,6 +262,17 @@ mypy clamguardian
 ```
 
 GitHub Actions (`.github/workflows/ci.yml`) triggers on every pull request and on pushes to `main`, `feature` and `development`. The `test` job installs the GTK/PyGObject system dependencies the package needs and runs `ruff check .`, `mypy clamguardian` and `pytest` on Python 3.11, 3.12 and 3.13. A separate `audit` job verifies that `uv.lock` matches `pyproject.toml` (`uv lock --check`) and runs `pip-audit --strict` against the pinned runtime dependency set exported from the lockfile; see `docs/M6-CI-GATE-REPORT.md`.
+
+A second workflow, `.github/workflows/release-gate.yml`, is the automated 1.0
+release gate. It runs on pushes to `feature` and on `v*` tags and has 7 jobs:
+`preflight` (branch/HEAD/clean-tree check), `appstream` (`appstreamcli
+validate`), `clamav` (fresh DB, clean + EICAR via `clamscan` and `clamdscan`),
+`gtk-smoke` (UI construction + database pages under Xvfb), `flatpak-local`
+(real offline build of the working-tree manifest against `org.gnome.Platform//51`
++ installable `.flatpak` bundle), `flatpak-release` (same for the tag-pinned
+release manifest, only on tags), and `gate` (fails unless every required job
+succeeded, and uploads `gate-evidence.txt`). The local bundle is kept 14 days,
+the release bundle 90 days. Evidence: `docs/RELEASE-GATE-1.0.md`.
 
 ## Branching model
 
