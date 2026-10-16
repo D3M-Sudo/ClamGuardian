@@ -159,7 +159,10 @@ else:
             footer.append(cancel)
             footer.append(add_button)
 
-            view = Adw.ToolbarView(top_bar=Adw.HeaderBar(), content=scrolled, bottom_bar=footer)
+            view = Adw.ToolbarView()
+            view.add_top_bar(Adw.HeaderBar())
+            view.set_content(scrolled)
+            view.add_bottom_bar(footer)
             self.set_child(view)
 
 
@@ -327,7 +330,10 @@ else:
             self._empty_status.set_child(empty_button)
 
             self._toast_overlay.set_child(self._list_container)
-            self.set_child(Adw.ToolbarView(top_bar=header, content=self._toast_overlay))
+            toolbar = Adw.ToolbarView()
+            toolbar.add_top_bar(header)
+            toolbar.set_content(self._toast_overlay)
+            self.set_child(toolbar)
 
             self._install_status_callback()
             self.rebuild_list()

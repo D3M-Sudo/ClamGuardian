@@ -61,14 +61,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clamav clamav-daemon
       - name: Update virus database
-        run: sudo freshclam
+        run: |
+          sudo pkill -x freshclam || true
+          sudo freshclam --stdout || sudo freshclam --log-verbose --log=/tmp/freshclam-ci.log || cat /tmp/freshclam-ci.log
       - name: Clean scan via clamscan
         run: |
           printf 'clean file content\n' > /tmp/clean.txt
           clamscan /tmp/clean.txt
       - name: EICAR detection via clamscan
         run: |
-          printf 'X5O!P%%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*\\n' > /tmp/eicar.txt
+          printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > /tmp/eicar.txt
           clamscan /tmp/eicar.txt || test $? -eq 1
       - name: Start clamd daemon
         run: |
@@ -83,7 +85,7 @@ jobs:
           clamdscan /tmp/clean2.txt
       - name: EICAR detection via clamdscan
         run: |
-          printf 'X5O!P%%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*\\n' > /tmp/eicar2.txt
+          printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > /tmp/eicar2.txt
           clamdscan /tmp/eicar2.txt || test $? -eq 1
 
   gtk-smoke:
@@ -114,11 +116,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
       - name: Add Flathub remote
-        run: flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        run: flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
       - name: Install GNOME Platform 51
-        run: flatpak install flathub ${{ env.FLATPAK_RUNTIME }} -y
+        run: flatpak install --user flathub ${{ env.FLATPAK_RUNTIME }} -y
       - name: Install GNOME SDK 51
-        run: flatpak install flathub ${{ env.FLATPAK_SDK }} -y
+        run: flatpak install --user flathub ${{ env.FLATPAK_SDK }} -y
       - name: Build local manifest (working tree)
         run: flatpak-builder build-dir-local packaging/flatpak/io.github.clamguardian.ClamGuardian.local.yml
 
@@ -135,11 +137,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
       - name: Add Flathub remote
-        run: flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        run: flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
       - name: Install GNOME Platform 51
-        run: flatpak install flathub ${{ env.FLATPAK_RUNTIME }} -y
+        run: flatpak install --user flathub ${{ env.FLATPAK_RUNTIME }} -y
       - name: Install GNOME SDK 51
-        run: flatpak install flathub ${{ env.FLATPAK_SDK }} -y
+        run: flatpak install --user flathub ${{ env.FLATPAK_SDK }} -y
       - name: Build release manifest (pinned to tag)
         run: flatpak-builder build-dir-release packaging/flatpak/io.github.clamguardian.ClamGuardian.yml
 
