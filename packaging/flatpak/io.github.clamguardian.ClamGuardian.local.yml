@@ -4,7 +4,7 @@
 # directory for the differences and for the open release-gate items.
 app-id: io.github.clamguardian.ClamGuardian
 runtime: org.gnome.Platform
-runtime-version: '46'
+runtime-version: '51'
 sdk: org.gnome.Sdk
 command: clamguardian
 finish-args:
@@ -30,6 +30,7 @@ modules:
   - name: clamguardian
     buildsystem: simple
     build-commands:
+      - pip3 install hatchling>=1.25
       - pip install --no-deps --prefix=/app .
       - install -Dm644 data/io.github.clamguardian.ClamGuardian.desktop /app/share/applications/io.github.clamguardian.ClamGuardian.desktop
       - install -Dm644 data/io.github.clamguardian.ClamGuardian.metainfo.xml /app/share/metainfo/io.github.clamguardian.ClamGuardian.metainfo.xml

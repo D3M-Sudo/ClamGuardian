@@ -69,12 +69,14 @@ jobs:
       - name: EICAR detection via clamscan
         run: |
           printf 'X5O!P%%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*\\n' > /tmp/eicar.txt
-          clamscan /tmp/eicar.txt
+          clamscan /tmp/eicar.txt || test $? -eq 1
       - name: Start clamd daemon
         run: |
           sudo mkdir -p /var/run/clamav
           sudo chown clamav:clamav /var/run/clamav
           sudo clamd
+          for i in $(seq 1 10); do [ -S /var/run/clamav/clamd.ctl ] && exit 0; sleep 1; done
+          echo "::error::clamd socket not available" && exit 1
       - name: Clean scan via clamdscan
         run: |
           printf 'clean file content\\n' > /tmp/clean2.txt
@@ -82,7 +84,7 @@ jobs:
       - name: EICAR detection via clamdscan
         run: |
           printf 'X5O!P%%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*\\n' > /tmp/eicar2.txt
-          clamdscan /tmp/eicar2.txt
+          clamdscan /tmp/eicar2.txt || test $? -eq 1
 
   gtk-smoke:
     name: GTK smoke test
@@ -95,14 +97,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgirepository-2.0-dev gir1.2-gtk-4.0 gir1.2-adw-1 libcairo2-dev pkg-config python3-dev xvfb xauth
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
-      - name: Install clamguardian with GTK extra
-        run: python -m pip install '.[gtk]'
+      - name: Install clamguardian with GTK extra (system Python, GI typelib visible)
+        run: python3 -m pip install --break-system-packages '.[gtk]'
       - name: Construct GTK UI and database pages (headless via Xvfb)
-        run: xvfb-run -a python -c "from clamguardian.ui import build_database_navigation; from clamguardian.databases import DatabaseManager; import tempfile; db_dir = tempfile.mkdtemp(prefix='clamguardian-test-'); state_file = tempfile.mktemp(suffix='.json', prefix='clamguardian-state-'); manager = DatabaseManager(db_dir, state_file); view = build_database_navigation(manager); print('GTK UI construction OK — database pages reachable')"
+        run: xvfb-run -a python3 -c "from clamguardian.ui import build_database_navigation; from clamguardian.databases import DatabaseManager; import tempfile; db_dir = tempfile.mkdtemp(prefix='clamguardian-test-'); state_file = tempfile.mktemp(suffix='.json', prefix='clamguardian-state-'); manager = DatabaseManager(db_dir, state_file); view = build_database_navigation(manager); print('GTK UI construction OK — database pages reachable')"
 
   flatpak-local:
     name: Flatpak build — local manifest
