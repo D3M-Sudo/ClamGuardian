@@ -45,7 +45,7 @@ modules:
       - PYTHONPATH=.pep517-build pip3 install --no-build-isolation --no-deps --no-index --prefix=/app .
       # Dipendenze runtime (cryptography, aiohttp + transitive): tutte elencate
       # esplicitamente come wheel locali, così pip non cerca la rete.
-      - pip3 install --no-index --no-deps --prefix=/app ./cryptography-50.0.1-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl ./cffi-2.1.1-cp312-cp312-manylinux2014_x86_64.whl ./aiohttp-3.14.3-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl ./aiosignal-1.4.0-py3-none-any.whl ./charset_normalizer-3.5.1-py3-none-any.whl ./frozenlist-1.8.0-py3-none-any.whl ./multidict-6.9.1-py3-none-any.whl ./yarl-1.24.5-py3-none-any.whl ./attrs-26.1.0-py3-none-any.whl ./idna-3.19-py3-none-any.whl
+      - pip3 install --no-index --no-deps --prefix=/app ./cryptography-50.0.1-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl ./cffi-2.1.1-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl ./aiohttp-3.14.3-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl ./aiosignal-1.4.0-py3-none-any.whl ./charset_normalizer-3.5.1-py3-none-any.whl ./frozenlist-1.8.0-py3-none-any.whl ./multidict-6.9.1-py3-none-any.whl ./yarl-1.24.5-py3-none-any.whl ./attrs-26.1.0-py3-none-any.whl ./idna-3.19-py3-none-any.whl
       - install -Dm644 data/io.github.clamguardian.ClamGuardian.desktop /app/share/applications/io.github.clamguardian.ClamGuardian.desktop
       - install -Dm644 data/io.github.clamguardian.ClamGuardian.metainfo.xml /app/share/metainfo/io.github.clamguardian.ClamGuardian.metainfo.xml
       - install -Dm644 data/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg /app/share/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg
@@ -72,7 +72,7 @@ modules:
         url: https://files.pythonhosted.org/packages/57/26/e6d4fc8512a51a5f9ee7bfdbfb853bce1197087df40c9ad993ad370b846f/cryptography-50.0.1-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
         sha256: ff838d62ec1bfce4f9ba7fa16f4a7b554cd8d0c299e6be37502161a660c84eef
       - type: file
-        url: https://files.pythonhosted.org/packages/b1/db/dceb9dd5b231e1da801793f8acc9f3c52a7e1afe40bb1aae37e02b0faad5/cffi-2.1.1-cp312-cp312-manylinux2014_x86_64.whl
+        url: https://files.pythonhosted.org/packages/e9/02/4e7d553a7ac4b4238b38b3c1b80d486e9d4436f8d2acbf87a0997fe3f402/cffi-2.1.1-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
         sha256: b0431303acaea1089ad4b3e9ce4e6518193def1118d4073ca848635ee4ea2e96
       - type: file
         url: https://files.pythonhosted.org/packages/d5/b7/1da684a04175473fa4cddbf9a2f572e79514c3fd27a74597f43057d4f3da/aiohttp-3.14.3-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl

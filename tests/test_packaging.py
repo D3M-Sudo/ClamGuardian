@@ -271,6 +271,96 @@ def test_vendored_file_sources_end_with_declared_filename() -> None:
     assert problems == [], "; ".join(problems)
 
 
+# Binary wheels must target the Python of the Flatpak runtime. The
+# org.gnome.Sdk//51 sandbox runs Python 3.14, so a compiled (non-pure) wheel
+# is only usable if tagged cp314 (exact) or abi3 (forward compatible); a cp312
+# wheel 404s or refuses to install inside the sandbox. Vendored pure-Python
+# wheels (py3-none-any) are exempt.
+_RUNTIME_PYTHON_TAG = "cp314"
+_FORWARD_COMPAT_TAGS = ("abi3",)
+
+
+def _vendored_wheel_filenames(manifest: dict) -> list[str]:
+    module = _clamguardian_module(manifest)
+    names: list[str] = []
+    for source in module["sources"]:
+        if source.get("type") != "file":
+            continue
+        filename = source["url"].rsplit("/", 1)[-1]
+        if filename.endswith(".whl"):
+            names.append(filename)
+    return names
+
+
+def test_binary_wheels_match_runtime_python() -> None:
+    """Nessuna wheel compilata per un Python diverso da quello del runtime.
+
+    Lo sha256 o la versione da soli non bastano (cp312 vs cp314 hanno la
+    stessa versione in uv.lock): qui si validano i tag piattaforma.
+    """
+    offenders: list[str] = []
+
+    for manifest_name in MANIFESTS:
+        for filename in _vendored_wheel_filenames(_manifest(manifest_name)):
+            if filename.endswith("-py3-none-any.whl"):
+                continue
+            tags = filename.removesuffix(".whl").split("-")
+            if not any(_RUNTIME_PYTHON_TAG in tag or tag in _FORWARD_COMPAT_TAGS for tag in tags):
+                offenders.append(f"{manifest_name}: {filename!r}")
+
+    assert offenders == [], (
+        "vendored wheels not installable on the Flatpak runtime "
+        f"(expected {_RUNTIME_PYTHON_TAG} or abi3 tags): " + "; ".join(offenders)
+    )
+
+
+def test_release_and_local_manifests_stay_in_sync() -> None:
+    """Le fonti vendorizzate dei due manifest devono essere identiche.
+
+    Ogni fix applicato al manifest locale (es. un re-pin di piattaforma)
+    deve arrivare anche al manifest di release, che la CI scarica solo sui
+    tag: una divergenza silenziosa produce un 404 o un build rotto solo alla
+    release. Le uniche differenze ammesse sono la sorgente dell'app
+    (`type: git` pinnata al tag vs `type: dir` del working tree).
+    """
+    release = _clamguardian_module(_manifest(f"{APP_ID}.yml"))
+    local = _clamguardian_module(_manifest(f"{APP_ID}.local.yml"))
+
+    def file_entries(module: dict) -> dict[str, str]:
+        return {
+            source["url"].rsplit("/", 1)[-1]: source.get("sha256", "")
+            for source in module["sources"]
+            if source.get("type") == "file"
+        }
+
+    release_files, local_files = file_entries(release), file_entries(local)
+    only_local = sorted(set(local_files) - set(release_files))
+    only_release = sorted(set(release_files) - set(local_files))
+    sha_diff = sorted(
+        name
+        for name in set(local_files) & set(release_files)
+        if local_files[name] != release_files[name]
+    )
+
+    assert only_local == [] and only_release == [] and sha_diff == [], (
+        f"manifest wheel sources diverged (fix applicato a uno solo dei due): "
+        f"solo in local={only_local}, solo in release={only_release}, "
+        f"sha diversi={sha_diff}"
+    )
+
+    def installed_wheels(module: dict) -> set[str]:
+        text = "\n".join(module.get("build-commands", []))
+        wheels: set[str] = set()
+        for token in text.replace("\n", " ").split():
+            if token.startswith("./") and token.endswith(".whl"):
+                wheels.add(token[2:])
+        return wheels
+
+    assert installed_wheels(local) == installed_wheels(release), (
+        "le wheel installate dai build-commands differiscono tra i due manifest"
+    )
+
+
 def test_flatpak_finish_args_cover_what_the_code_needs() -> None:
     manifest = _manifest(f"{APP_ID}.yml")
     finish_args = set(manifest["finish-args"])

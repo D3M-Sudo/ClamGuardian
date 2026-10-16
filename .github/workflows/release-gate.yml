@@ -164,13 +164,25 @@ jobs:
 
   gate:
     name: Release gate summary
-    needs: [preflight, appstream, clamav, gtk-smoke, flatpak-local]
+    needs: [preflight, appstream, clamav, gtk-smoke, flatpak-local, flatpak-release]
+    # always(): must also run when flatpak-release failed on a tag push, so the
+    # evidence reports the real outcome instead of staying silent. !cancelled():
+    # do not run if the whole run was cancelled by a newer push (concurrency).
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
       - name: Collect evidence
         run: |
+          gate_failed=0
+          check () {  # $1 = needs.<job>.result, $2 = label
+            case "$1" in
+              success) echo "  $2: OK" ;;
+              skipped) echo "  $2: SKIPPED (not required on this ref)" ;;
+              *) echo "  $2: FAILED ($1)"; gate_failed=1 ;;
+            esac
+          }
           {
             echo "ClamGuardian 1.0 — Release Gate Evidence"
             echo "============================================="
@@ -180,17 +192,21 @@ jobs:
             echo "Date:     $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
             echo ""
             echo "Gate results (scaletta punti 1–7):"
-            echo "  1. Preflight (branch/HEAD/working tree, sola lettura): OK"
-            echo "  2. Runtime Flatpak (GNOME 46 → 51, SDK, build offline): vedi flatpak-local"
-            echo "  3. Flatpak build manifest locale: OK"
-            echo "  4. AppStream validation (metainfo): OK"
-            echo "  5. ClamAV reale (clamscan + clamdscan, pulito + EICAR): OK"
-            echo "  6. GTK su desktop reale (UI + pagine database): OK"
+            check "${{ needs.preflight.result }}" "1. Preflight (branch/HEAD/working tree, sola lettura)"
+            check "${{ needs.flatpak-local.result }}" "2+3. Flatpak build manifest locale (runtime 51, offline) + bundle"
+            check "${{ needs.appstream.result }}" "4. AppStream validation (metainfo)"
+            check "${{ needs.clamav.result }}" "5. ClamAV reale (clamscan + clamdscan, pulito + EICAR)"
+            check "${{ needs.gtk-smoke.result }}" "6. GTK smoke (UI + pagine database)"
             echo ""
             echo "Ref corrente:  ${{ github.ref }} (${{ github.ref_type }})"
-            echo "Flatpak build manifest di release: job flatpak-release (solo su tag v*/dispatch)"
+            echo "Flatpak build manifest di release (job flatpak-release): ${{ needs.flatpak-release.result }}"
             echo ""
             echo "Punti 8–10: in attesa di autorizzazione esplicita."
+            if [ "$gate_failed" -ne 0 ]; then
+              echo ""
+              echo "::error::Release gate FAILED — uno o più job richiesti non hanno superato i controlli"
+              exit 1
+            fi
           } > gate-evidence.txt
       - name: Upload evidence artifact
         uses: actions/upload-artifact@v4
