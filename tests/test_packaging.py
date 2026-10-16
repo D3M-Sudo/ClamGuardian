@@ -239,6 +239,38 @@ def test_vendored_runtime_wheels_match_uv_lock() -> None:
     )
 
 
+def test_vendored_file_sources_end_with_declared_filename() -> None:
+    """Ogni source `type: file` deve terminare con il filename usato in build.
+
+    L'URL di files.pythonhosted.org contiene un path hash (`packages/xx/yy/…`)
+    che cambia a ogni release: riusare il path di una versione precedente
+    produce un 404 solo in CI (flatpak-builder lo scopre scaricando). Questo
+    test lega URL e filename dichiarato nel `build-commands`, cosicché un path
+    riciclato venga rilevato in locale prima del push.
+    """
+    problems: list[str] = []
+
+    for manifest_name in MANIFESTS:
+        module = _clamguardian_module(_manifest(manifest_name))
+        build_text = "\n".join(module.get("build-commands", []))
+        for source in module["sources"]:
+            if source.get("type") != "file":
+                continue
+            url: str = source["url"]
+            filename = url.rsplit("/", 1)[-1]
+            if not url.endswith("/" + filename) or not filename:
+                problems.append(f"{manifest_name}: malformed url {url!r}")
+                continue
+            if not filename.endswith(".whl"):
+                continue
+            if filename not in build_text:
+                problems.append(
+                    f"{manifest_name}: {filename!r} vendored but never installed by build-commands"
+                )
+
+    assert problems == [], "; ".join(problems)
+
+
 def test_flatpak_finish_args_cover_what_the_code_needs() -> None:
     manifest = _manifest(f"{APP_ID}.yml")
     finish_args = set(manifest["finish-args"])
