@@ -143,11 +143,16 @@ def test_flatpak_manifest_identity_and_integration(manifest_name: str) -> None:
         assert installed in commands, f"{manifest_name} does not install {installed}"
     # Build offline: nessun download da PyPI durante i build-commands.
     assert "--no-index" in commands, f"{manifest_name} build-commands may attempt network downloads"
-    assert "pip3 install --no-index --no-deps ./hatchling" in commands, (
-        f"{manifest_name} must install hatchling from a local wheel"
-    )
     assert "--no-build-isolation" in commands, (
         f"{manifest_name} must avoid build isolation (it would re-download hatchling)"
+    )
+    hatchling_cmds = [c for c in module["build-commands"] if "hatchling" in c]
+    assert hatchling_cmds, f"{manifest_name} must install hatchling during build"
+    assert any("--no-index" in c and "./" in c for c in hatchling_cmds), (
+        f"{manifest_name} must install hatchling from a local wheel, not from PyPI"
+    )
+    assert not any("hatchling>=" in c for c in module["build-commands"]), (
+        f"{manifest_name} must not attempt to download hatchling from PyPI"
     )
     # Ogni source tipo file deve essere pinned con sha256 (riproducibilità Flathub).
     for source in module["sources"]:
