@@ -107,14 +107,13 @@ CSS).
 
 ### Phase 2 — Scan page
 
-- `ui/scan_page.py`: protection-status banner, target chooser
-  (folder/file/home), profile dropdown, large Scan button, in-flight state
-  (indeterminate progress + elapsed timer + threat counter) via
-  `ShieldTaskController` signals, Cancel, result card (clean / infected with
-  threat `ActionRow` list / error), history recording via `record_scan`.
-- Optional: `scan-progress` signal on `ShieldTaskController` if engine progress
-  parsing proves practical.
-- Estimate: ~300–350 lines + tests.
+- Status: **COMPLETED** — implemented `clamguardian/ui/scan_page.py` with
+  target chooser (folder/file/home), profile dropdown, Scan/Cancel buttons,
+  in-flight banner (indeterminate progress + elapsed timer + threat counter)
+  wired to `ShieldTaskController` signals, result card (clean / infected with
+  threat `ActionRow` list / error / cancelled), history recording via
+  `record_scan`; integrated into `MainWindow` shell and the GTK smoke job in
+  `.github/workflows/release-gate.yml`. Gate green (ruff/mypy/pytest).
 
 ### Phase 3 — History + Quarantine pages
 
@@ -153,14 +152,13 @@ Gate per phase: ruff + mypy + pytest green, CI smoke green, commit to `feature`
 
 ## 7. Next Session Procedure
 
-Phase 1 (Foundations + Diagnostics) is complete. Next: **Phase 2 — Scan page**
-(protection-status banner, target chooser, profile dropdown, Scan button,
-in-flight state, Cancel, result card).
+Phases 1–2 (Foundations + Diagnostics, Scan page) are complete. Next: **Phase 3 — History + Quarantine pages**
+(`ui/history_page.py` with filtered history, detail dialog, purge; `ui/quarantine_page.py` with vault
+entries, restore/delete, key management via Secret Service with `0600` file fallback).
 
 1. Verify baseline (branch `feature`, SHAs of all tips, clean tree, CI green).
 2. Re-read this handoff and `docs/ROADMAP.md` (Desktop UI phase).
-3. Implement Phase 2 with `ui/scan_page.py` wired to `ShieldTaskController`
-   signals and `record_scan`, then tests.
+3. Implement Phase 3 with `ui/history_page.py` and `ui/quarantine_page.py`, then tests.
 4. Follow the repo working rules (`docs/ROADMAP.md` § Working Rules): no
    commit/push/merge/tag/PR without explicit authorization.
 

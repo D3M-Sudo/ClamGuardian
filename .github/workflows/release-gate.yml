@@ -124,6 +124,15 @@ jobs:
           assert page.checks, "diagnostics page must render at least one check"
           assert window.toast_overlay is not None
 
+          # Phase D2: scan page constructs cleanly and starts idle.
+          from clamguardian.ui.controller import ShieldTaskController
+          from clamguardian.ui.scan_page import ScanPage
+
+          controller = ShieldTaskController()
+          scan_page = ScanPage(controller)
+          assert scan_page.root is not None
+          assert not scan_page.in_flight
+
           print("GTK UI construction OK — database pages, app shell, diagnostics page")
           PYEOF
 

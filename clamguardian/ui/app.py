@@ -22,8 +22,12 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from ..core.base import ScanResult
 from ..core.diagnostics import CheckResult, critical_missing, run_dependency_checks
+from ..history.backend import SqliteHistoryStore, default_history_db_path
+from .controller import ShieldTaskController
 from .database_pages import GTK_AVAILABLE
+from .scan_page import ScanPage
 
 if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
     import gi
@@ -48,8 +52,6 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
 
     #: Placeholder descriptions for the pages that arrive in later phases.
     PLACEHOLDER_DESCRIPTIONS: dict[str, str] = {
-        "scan": "The scan page lands with desktop phase D2: target chooser, "
-        "profiles, live progress and results.",
         "history": "The history page lands with desktop phase D3: filtered "
         "scan history with details and purge.",
         "quarantine": "The quarantine page lands with desktop phase D3: "
@@ -99,6 +101,8 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             *,
             checks: Sequence[CheckResult] | None = None,
             manager: DatabaseManager | None = None,
+            controller: ShieldTaskController | None = None,
+            history_store: SqliteHistoryStore | None = None,
         ) -> None:
             super().__init__(
                 application=application,
@@ -108,6 +112,14 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             )
             self._checks: list[CheckResult] = list(
                 checks if checks is not None else run_dependency_checks()
+            )
+            self._scan_controller = (
+                controller if controller is not None else ShieldTaskController()
+            )
+            self._history_store = (
+                history_store
+                if history_store is not None
+                else SqliteHistoryStore(default_history_db_path())
             )
 
             self._stack = Gtk.Stack(vexpand=True, hexpand=True)
@@ -192,6 +204,10 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
         def _build_page(self, page_id: str, manager: DatabaseManager | None) -> Gtk.Widget:
             icons = {entry_id: icon for entry_id, _label, icon in SIDEBAR_ENTRIES}
             labels = {entry_id: label for entry_id, label, _icon in SIDEBAR_ENTRIES}
+            if page_id == "scan":
+                page = ScanPage(self._scan_controller, record_scan=self._store_scan_result)
+                self._pages[page_id] = page.root
+                return page.root
             if page_id == "databases":
                 page = AntivirusDatabasesPage(manager or _default_database_manager())
                 self._pages[page_id] = page
@@ -220,11 +236,21 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
 
         def _on_activate(self, _app: Adw.Application) -> None:
             if self._window is None:
-                self._window = MainWindow(self)
+                manager = _default_database_manager()
+                self._window = MainWindow(
+                    self,
+                    manager=manager,
+                    controller=ShieldTaskController(),
+                    history_store=SqliteHistoryStore(default_history_db_path()),
+                )
                 self._window.present()
                 missing = critical_missing(self._window._checks)
                 if missing:
                     self._window.show_diagnostics(missing)
+
+        async def _store_scan_result(self, result: ScanResult) -> None:
+            """Persist *result* to the history store off the GTK loop."""
+            await self._history_store.record_scan(result)
 
     def run_ui(argv: Sequence[str] | None = None) -> int:
         """Run the GTK application main loop; returns the exit status."""
