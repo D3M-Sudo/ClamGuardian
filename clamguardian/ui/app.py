@@ -24,9 +24,14 @@ from pathlib import Path
 
 from ..core.base import ScanResult
 from ..core.diagnostics import CheckResult, critical_missing, run_dependency_checks
+from ..core.quarantine import QuarantineVault
 from ..history.backend import SqliteHistoryStore, default_history_db_path
 from .controller import ShieldTaskController
 from .database_pages import GTK_AVAILABLE
+from .diagnostics_page import DiagnosticsPage
+from .history_page import HistoryPage
+from .quarantine_key import QuarantineKeyManager
+from .quarantine_page import QuarantinePage
 from .scan_page import ScanPage
 
 if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
@@ -52,10 +57,11 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
 
     #: Placeholder descriptions for the pages that arrive in later phases.
     PLACEHOLDER_DESCRIPTIONS: dict[str, str] = {
-        "history": "The history page lands with desktop phase D3: filtered "
-        "scan history with details and purge.",
-        "quarantine": "The quarantine page lands with desktop phase D3: "
-        "encrypted vault entries with restore and delete.",
+        "scan": "The scan page lands with desktop phase D2: target chooser, "
+        "profile dropdown, in-flight state and result cards.",
+        "databases": "Third-party signature databases managed through the app-data "
+        "directory.",
+        "diagnostics": "Dependency status and per-distro remediation guides.",
     }
 
     def _alert_dialog(heading: str, body: str) -> Adw.Window:
@@ -103,6 +109,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             manager: DatabaseManager | None = None,
             controller: ShieldTaskController | None = None,
             history_store: SqliteHistoryStore | None = None,
+            key_manager: QuarantineKeyManager | None = None,
         ) -> None:
             super().__init__(
                 application=application,
@@ -120,6 +127,13 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 history_store
                 if history_store is not None
                 else SqliteHistoryStore(default_history_db_path())
+            )
+            self._key_manager = (
+                key_manager if key_manager is not None else QuarantineKeyManager(default_history_db_path())
+            )
+            self._vault = QuarantineVault(
+                self._key_manager.directory,
+                self._key_manager.load_or_create(),
             )
 
             self._stack = Gtk.Stack(vexpand=True, hexpand=True)
@@ -214,6 +228,14 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 return page
             if page_id == "diagnostics":
                 page = DiagnosticsPage(self._checks)
+                self._pages[page_id] = page.root
+                return page.root
+            if page_id == "history":
+                page = HistoryPage(self._history_store)
+                self._pages[page_id] = page.root
+                return page.root
+            if page_id == "quarantine":
+                page = QuarantinePage(self._vault, key_manager=self._key_manager)
                 self._pages[page_id] = page.root
                 return page.root
             placeholder = Adw.StatusPage(
