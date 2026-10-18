@@ -169,8 +169,8 @@ The desktop app wraps the same core in a native GTK4/Libadwaita interface:
 
 - **Scan page** (Phase D2) — pick a target, choose a profile, see the result
 - **Diagnostics page** (Phase D1) — dependency checks with per-distro remedies, presented at first run when a critical dependency is missing
-- **History page** (Phase D3) — every scan recorded with profile, SHA-256 (single files) and timing *(placeholder until D3)*
-- **Quarantine page** (Phase D3) — encrypted detections with restore *(placeholder until D3)*
+- **History page** (Phase D3) — filtered list with purge, profile and SHA-256 per scan, detail dialog
+- **Quarantine page** (Phase D3) — encrypted detections with restore, delete, key management
 - **Antivirus Databases page** — official signatures (owned by `freshclam`) plus manageable third-party sources (see below)
 
 The UI is import-safe on headless systems: without PyGObject the GTK pages simply cannot be instantiated, so the test suite runs anywhere.

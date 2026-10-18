@@ -12,7 +12,6 @@ import os
 import pytest
 
 import clamguardian.ui.quarantine_page as quarantine_page_module
-from clamguardian.core.quarantine import QuarantineVault
 
 #: Widget construction needs an actual display *and* a working GTK backend.
 HAS_DISPLAY = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))

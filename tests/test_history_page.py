@@ -8,8 +8,7 @@ in the release gate for Xvfb coverage).
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 
 import pytest
 
@@ -65,8 +64,8 @@ def _record(
         "engine": "clamscan",
         "profile_id": "default",
         "files_scanned": 1,
-        "started_at": datetime.fromtimestamp(started, tz=timezone.utc),
-        "finished_at": datetime.fromtimestamp(started + 10, tz=timezone.utc),
+        "started_at": datetime.fromtimestamp(started, tz=UTC),
+        "finished_at": datetime.fromtimestamp(started + 10, tz=UTC),
     }
 
 

@@ -117,23 +117,15 @@ CSS).
 
 ### Phase 3 — History + Quarantine pages
 
-- `ui/history_page.py`: `list_scans` with status filter and limit, detail
-  dialog, purge with `AlertDialog` confirmation.
-- `ui/quarantine_page.py`: `list_entries`, restore (destination dialog) and
-  delete with confirmation; **key management**: generated on first use, stored
-  via Secret Service (libsecret available in the GNOME runtime) with `0600`
-  file fallback in app-data; Flatpak sandbox behaviour verified.
-- Estimate: ~450–550 lines + tests.
+- **Status: COMPLETED (`5dbd74c`)** — implemented `clamguardian/ui/history_page.py` (status-filter list with limit, detail dialog, purge with `AlertDialog` confirmation) and `clamguardian/ui/quarantine_page.py` (entry list with restore/delete, key management via Secret Service with `0600` file fallback). Plus `tests/test_history_page.py` and `tests/test_quarantine_page.py`. Gate green (ruff/mypy/pytest).
 
 ### Phase 4 — Polish + release readiness
 
-- Accent CSS provider + bundled `data/style.css`, About dialog (AppStream
-  metainfo exists), optional desktop notifications via portal, light settings
-  (default profile).
-- README "Desktop app" section corrected to describe the real pages;
-  `docs/design/desktop-ui.md` design note; desktop validation checklist
-  updated; smoke test extended to all pages; visual validation under Xvfb.
-- Estimate: ~200 lines + docs.
+- **Status: NOT STARTED** — plan of record: accent CSS provider + bundled
+  `data/style.css`, About dialog (AppStream metainfo exists), optional desktop
+  notifications via portal, light settings (default profile). README "Desktop
+  app" section correction; desktop validation checklist update; smoke test
+  extended to all pages.
 
 Gate per phase: ruff + mypy + pytest green, CI smoke green, commit to `feature`
 (none of this runs without the maintainer's go-ahead per session). After Phase
@@ -152,13 +144,11 @@ Gate per phase: ruff + mypy + pytest green, CI smoke green, commit to `feature`
 
 ## 7. Next Session Procedure
 
-Phases 1–2 (Foundations + Diagnostics, Scan page) are complete. Next: **Phase 3 — History + Quarantine pages**
-(`ui/history_page.py` with filtered history, detail dialog, purge; `ui/quarantine_page.py` with vault
-entries, restore/delete, key management via Secret Service with `0600` file fallback).
+Phase 3 (History + Quarantine pages) is **COMPLETED** on `feature` (`5dbd74c`).
 
 1. Verify baseline (branch `feature`, SHAs of all tips, clean tree, CI green).
 2. Re-read this handoff and `docs/ROADMAP.md` (Desktop UI phase).
-3. Implement Phase 3 with `ui/history_page.py` and `ui/quarantine_page.py`, then tests.
+3. Continue with **Phase 4 — Polish + release readiness** (accent CSS, About dialog, desktop validation checklist update, smoke test extension to all pages).
 4. Follow the repo working rules (`docs/ROADMAP.md` § Working Rules): no
    commit/push/merge/tag/PR without explicit authorization.
 
