@@ -31,6 +31,7 @@ from typing import IO, TYPE_CHECKING
 
 from .. import __version__
 from ..core.base import BaseAVEngine, ScanResult
+from ..core.diagnostics import CheckResult, critical_missing, run_dependency_checks
 from ..core.errors import ClamGuardianError, ProfileError
 from ..core.profiles import DEFAULT_PROFILE, DEFAULT_REGISTRY, ScanProfile
 from ..core.runner import ScanTaskRunner
@@ -46,6 +47,7 @@ from ..history import (
 )
 from .exit_codes import (
     EXIT_CANCELLED,
+    EXIT_DOCTOR_FAILED,
     EXIT_ENGINE_ERROR,
     EXIT_INFECTED,
     EXIT_OK,
@@ -54,6 +56,8 @@ from .exit_codes import (
 )
 from .output import (
     cancelled_payload,
+    doctor_to_payload,
+    format_doctor,
     format_history_list,
     format_history_record,
     format_human,
@@ -100,7 +104,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="ClamGuardian — ClamAV security framework command-line interface.",
         epilog=(
             "Exit codes: 0 clean/ok, 1 threats detected, 2 usage error, "
-            "3 engine/runtime error, 4 timeout, 5 cancelled (Ctrl+C)."
+            "3 engine/runtime error, 4 timeout, 5 cancelled (Ctrl+C), "
+            "6 diagnostics: critical dependencies missing."
         ),
     )
     parser.add_argument("--version", action="version", version=f"ClamGuardian {__version__}")
@@ -226,6 +231,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     history_purge.set_defaults(func=_cmd_history_purge)
 
+    doctor_cmd = sub.add_parser(
+        "doctor",
+        help="check that the system is ready to scan",
+        description=(
+            "Run the ClamGuardian dependency diagnostics: ClamAV binaries, "
+            "clamd daemon, signature databases and execution environment, "
+            "with per-distro remedies for anything that needs attention."
+        ),
+    )
+    doctor_cmd.add_argument(
+        "--json",
+        action="store_true",
+        help="emit the diagnostics report as JSON on stdout",
+    )
+    doctor_cmd.set_defaults(func=_cmd_doctor)
+
+    ui_cmd = sub.add_parser(
+        "ui",
+        help="launch the GTK4/Libadwaita desktop application",
+        description=(
+            "Launch the ClamGuardian desktop application. Requires PyGObject "
+            "with GTK 4 and Libadwaita (install the 'gtk' extra: "
+            "pip install 'clamguardian[gtk]')."
+        ),
+    )
+    ui_cmd.set_defaults(func=_cmd_ui)
+
     return parser
 
 
@@ -233,6 +265,37 @@ def _cmd_version(args: argparse.Namespace, streams: _Streams) -> int:
     del args
     print(f"ClamGuardian {__version__}", file=streams.out)
     return EXIT_OK
+
+
+def _cmd_doctor(args: argparse.Namespace, streams: _Streams) -> int:
+    """Run the Core dependency diagnostics and report readiness to scan."""
+    results: list[CheckResult] = run_dependency_checks()
+    if args.json:
+        print(json.dumps(doctor_to_payload(results)), file=streams.out)
+    else:
+        print(format_doctor(results), file=streams.out)
+    # Exit 6 only for *critical* gaps (clamscan / signature databases):
+    # warnings (daemon stopped, stale databases) are reported but never
+    # block scripting workflows.
+    return EXIT_DOCTOR_FAILED if critical_missing(results) else EXIT_OK
+
+
+def _cmd_ui(args: argparse.Namespace, streams: _Streams) -> int:
+    """Launch the GTK4/Libadwaita desktop application (lazy import)."""
+    del args
+    from ..ui import GTK_AVAILABLE
+
+    if not GTK_AVAILABLE:
+        print(
+            "error: GTK 4 / Libadwaita is not available; install PyGObject "
+            "with the 'gtk' extra (pip install 'clamguardian[gtk]') or your "
+            "distribution's gir1.2-gtk-4.0 / gir1.2-adw-1 packages",
+            file=streams.err,
+        )
+        return EXIT_ENGINE_ERROR
+    from ..ui.app import run_ui
+
+    return EXIT_OK if run_ui() == 0 else EXIT_ENGINE_ERROR
 
 
 async def _history_list(

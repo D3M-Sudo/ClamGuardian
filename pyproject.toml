@@ -75,7 +75,11 @@ module = ["gi", "gi.repository.*", "aiohttp", "cryptography.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# Dual implementation module: GTK page classes are conditionally defined
+# Dual implementation modules: GTK classes are conditionally defined
 # (real widgets or headless import-safety shims), which mypy cannot model.
-module = "clamguardian.ui.database_pages"
-disable_error_code = ["attr-defined", "no-redef", "misc"]
+module = [
+    "clamguardian.ui.database_pages",
+    "clamguardian.ui.diagnostics_page",
+    "clamguardian.ui.app",
+]
+disable_error_code = ["attr-defined", "no-redef", "misc", "assignment"]

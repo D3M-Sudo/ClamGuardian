@@ -12,10 +12,13 @@ from __future__ import annotations
 from typing import Any
 
 from ..core.base import ScanResult
+from ..core.diagnostics import CheckResult, CheckStatus, summarize
 from ..core.profiles import ScanProfile
 from ..history.models import HistoryRecord, encode_timestamp
 
 __all__ = [
+    "doctor_to_payload",
+    "format_doctor",
     "format_history_list",
     "format_history_record",
     "format_human",
@@ -24,6 +27,13 @@ __all__ = [
     "history_record_to_payload",
     "result_to_payload",
 ]
+
+#: Human-readable tags for the ``doctor`` report, one per status.
+DOCTOR_TAGS: dict[CheckStatus, str] = {
+    CheckStatus.OK: "OK",
+    CheckStatus.WARNING: "WARN",
+    CheckStatus.MISSING: "MISSING",
+}
 
 
 def result_to_payload(result: ScanResult, profile_id: str) -> dict[str, Any]:
@@ -176,3 +186,54 @@ def format_profiles(profiles: tuple[ScanProfile, ...]) -> str:
             line += f" — {profile.description}"
         lines.append(line)
     return "\n".join(lines)
+
+
+def format_doctor(results: list[CheckResult]) -> str:
+    """Render the dependency checks as a human-readable report.
+
+    Produces one aligned line per check plus, for anything that is not OK,
+    the per-distro remedies; the trailing summary states whether the machine
+    is ready to scan. Nothing here re-runs or re-interprets the checks.
+    """
+    lines = ["ClamGuardian diagnostics:"]
+    width = max((len(result.label) for result in results), default=0)
+    for result in results:
+        tag = DOCTOR_TAGS[result.status]
+        lines.append(f"  [{tag:^7}] {result.label:<{width}}  {result.detail}")
+        if result.status is not CheckStatus.OK and result.remedies:
+            for family, command in result.remedies.items():
+                lines.append(f"      {family:<6}  {command}")
+    counts = summarize(results)
+    lines.append("")
+    lines.append(f"{counts['ok']} ok, {counts['warning']} warning(s), {counts['missing']} missing.")
+    if any(result.critical and result.status is not CheckStatus.OK for result in results):
+        lines.append("Critical dependencies need attention: scanning will not work until fixed.")
+    else:
+        lines.append("Ready to scan.")
+    return "\n".join(lines)
+
+
+def doctor_to_payload(results: list[CheckResult]) -> dict[str, Any]:
+    """Serialize the diagnostics into a deterministic JSON contract.
+
+    Guaranteed keys, always present, in this exact order: ``checks``,
+    ``summary``, ``healthy``. Each check object carries ``id``, ``label``,
+    ``status``, ``detail``, ``critical``, ``remedies`` in that order.
+    """
+    return {
+        "checks": [
+            {
+                "id": result.id,
+                "label": result.label,
+                "status": result.status.value,
+                "detail": result.detail,
+                "critical": result.critical,
+                "remedies": dict(result.remedies),
+            }
+            for result in results
+        ],
+        "summary": summarize(results),
+        "healthy": not any(
+            result.critical and result.status is not CheckStatus.OK for result in results
+        ),
+    }

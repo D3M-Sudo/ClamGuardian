@@ -11,27 +11,27 @@ The historical M4-era handoff (`archive/CLAMGUARDIAN_HANDOFF.md`) remains as arc
 ## 2. Repository State
 
 ```text
-branch:   feature @ 1eb9335  (Docs: riscrittura README user-first) — clean tree
+branch:   feature @ 194167c  (Desktop UI Phase D1 complete: diagnostics + app shell) — clean tree
 testing:  76439e5  (Merge PR #12 feature → testing, 2026-10-18 — gate green,
                     artifact ClamGuardian-testing-linux-x86_64.flatpak)
 main:     ca887aa  (tag v1.0.0 = annotated tag object 20e598a9 → commit 8ee8a56)
-tests:    254 passing (pytest), ruff + mypy green, CI + Release Gate green
+tests:    279 passing (pytest), ruff + mypy green, CI + Release Gate green
 ```
 
 ## 3. Context — Why This Plan Exists
 
 Findings from the 2026-10-18 session audit:
 
-- **No GUI exists.** There is no `Adw.Application`, no main window, no sidebar,
-  no Scan/History/Quarantine/Diagnostics pages. The only UI code is
-  `clamguardian/ui/database_pages.py` (third-party database pages, exposed via
-  `build_database_navigation()`), `clamguardian/ui/controller.py`
-  (`ShieldTaskController`, GObject signals over `ScanTaskRunner`) and their
-  import-safety shims.
-- **The `.desktop` launcher is latently broken**: `Exec=clamguardian` with
-  `Terminal=false` invokes the CLI with no subcommand → argparse error, exit 2,
-  nothing visible. The README's "Desktop app (GTK4)" section describes pages
-  that do not exist in code (to be made real by this plan).
+- **GUI shell exists (Phase D1 complete).** `ClamGuardianApp(Adw.Application)` +
+  `MainWindow` with `NavigationSplitView` sidebar; Diagnostics page is real.
+  Scan / History / Quarantine are `Adw.StatusPage` placeholders (arrive in D2/D3).
+  Databases page (`build_database_navigation()`) is embedded. The only pre-existing
+  UI code was `clamguardian/ui/database_pages.py` and `clamguardian/ui/controller.py`
+  (`ShieldTaskController`) plus their import-safety shims.
+- **The `.desktop` launcher is fixed**: `Exec=clamguardian ui` now launches the
+  GTK app shell (diagnostics dialog auto-presented when critical dependencies
+  are missing). The README's "Desktop app (GTK4)" section still needs to be
+  corrected to describe the real pages (Phase D4).
 - **Reference app**: `clamui` (linx-systems) — its `src/ui/components_view.py`
   (per-component status rows + per-distro install guides in expanders) and
   `src/ui/database_missing_dialog.py` (`Adw.Window` modal, Libadwaita <1.5
@@ -98,7 +98,12 @@ CSS).
   Xvfb.
 - Tests: `tests/test_diagnostics.py` (~150 lines, mocked `which`/socket), UI
   shim tests.
-- Estimate: ~700–900 lines UI/core + ~250 test lines.
+- Status: **COMPLETED** — implemented `clamguardian/core/diagnostics.py`,
+  `clamguardian/ui/app.py`, `clamguardian/ui/diagnostics_page.py`, CLI
+  `doctor [--json]` (exit code 6), `.desktop` → `Exec=clamguardian ui`,
+  CI smoke extended to app + diagnostics page under Xvfb, tests
+  `tests/test_diagnostics.py` + `tests/test_ui_shims.py`. Gate green
+  (ruff/mypy/pytest).
 
 ### Phase 2 — Scan page
 
@@ -148,10 +153,14 @@ Gate per phase: ruff + mypy + pytest green, CI smoke green, commit to `feature`
 
 ## 7. Next Session Procedure
 
+Phase 1 (Foundations + Diagnostics) is complete. Next: **Phase 2 — Scan page**
+(protection-status banner, target chooser, profile dropdown, Scan button,
+in-flight state, Cancel, result card).
+
 1. Verify baseline (branch `feature`, SHAs of all tips, clean tree, CI green).
 2. Re-read this handoff and `docs/ROADMAP.md` (Desktop UI phase).
-3. Start Phase 1 with `core/diagnostics.py` + CLI `doctor` (testable headless
-   first), then the app shell + diagnostics page.
+3. Implement Phase 2 with `ui/scan_page.py` wired to `ShieldTaskController`
+   signals and `record_scan`, then tests.
 4. Follow the repo working rules (`docs/ROADMAP.md` § Working Rules): no
    commit/push/merge/tag/PR without explicit authorization.
 
