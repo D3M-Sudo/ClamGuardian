@@ -284,7 +284,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             widget: Gtk.Widget = self._root
             while getattr(widget, "get_parent", lambda: None)() is not None:
                 widget = widget.get_parent()
-            return widget  # type: ignore[return-value]
+            return widget
 
         def _on_purge_clicked(self, _button: Gtk.Button) -> None:
             if hasattr(Adw, "AlertDialog"):

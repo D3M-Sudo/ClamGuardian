@@ -81,5 +81,7 @@ module = [
     "clamguardian.ui.database_pages",
     "clamguardian.ui.diagnostics_page",
     "clamguardian.ui.app",
+    "clamguardian.ui.history_page",
+    "clamguardian.ui.quarantine_page",
 ]
 disable_error_code = ["attr-defined", "no-redef", "misc", "assignment"]

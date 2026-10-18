@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from ..core.quarantine import QuarantineVault
+from ..core.quarantine import _KEY_SIZE, QuarantineVault
 
 #: Per-run quarantine key file name inside the app-data directory.
 KEY_FILE_NAME = "quarantine-key"
@@ -109,7 +109,7 @@ class QuarantineKeyManager:
             key = bytes.fromhex(raw.decode("ascii").strip())
         except (OSError, ValueError):  # corrupted or unreadable file
             return None
-        if len(key) != QuarantineVault._KEY_SIZE:
+        if len(key) != _KEY_SIZE:
             return None
         return key
 

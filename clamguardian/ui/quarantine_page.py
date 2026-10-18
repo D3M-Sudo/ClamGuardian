@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..core.quarantine import QuarantineEntry, QuarantineVault
@@ -185,7 +186,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     self._show_error("Restore failed", str(error))
                 self._load_entries()
 
-            run_async(self._vault.restore(item_id, destination), _done)
+            run_async(self._vault.restore(item_id, Path(destination)), _done)
 
         def _show_ok(self, heading: str, body: str) -> None:
             dialog = Adw.AlertDialog(heading=heading, body=body)
@@ -225,7 +226,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             widget: Gtk.Widget = self._root
             while getattr(widget, "get_parent", lambda: None)() is not None:
                 widget = widget.get_parent()
-            return widget  # type: ignore[return-value]
+            return widget
 
         def _on_delete_clicked(self, _button: Gtk.Button) -> None:
             if self._selection is None:
@@ -259,7 +260,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 if error is None:
                     self._load_entries()
 
-            run_async(self._vault.delete(item_id), _done)
+            run_async(self._vault.delete(item_id), _done)  # type: ignore[func-returns-value]
 
 else:
 
