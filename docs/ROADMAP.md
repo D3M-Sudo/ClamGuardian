@@ -1,6 +1,6 @@
 # ClamGuardian Implementation Roadmap
 
-*Last updated: 2026-10-18 — baseline `v1.0.0` released. Future versions are planning targets, not promised releases or dates.*
+*Last updated: 2026-10-18 — baseline `v1.0.0` released; Desktop Application (GTK4) plan approved (Phases 1–4, see handoff). Future versions are planning targets, not promised releases or dates.*
 
 This document outlines the authoritative development roadmap for ClamGuardian, tracking completed milestones, in-progress targets, and future architectural phases.
 
@@ -26,6 +26,8 @@ Phase 9: 1.0 Release Gate [COMPLETED 2026-10-16 — tag v1.0.0 @ 8ee8a56, instal
     ↓
 1.0.x: Stabilization [CURRENT - documentation, desktop validation, Flatpak restore]
     ↓
+Desktop Application (GTK4/Libadwaita) [APPROVED 2026-10-18 - Phases D1..D4, not started]
+    ↓
 Phase 10: 1.1 USB Auto-Scan [DEFERRED - out of 1.0 scope]
 Phase 11: Threat Intelligence Integration [DEFERRED - out of 1.0 scope]
 Phase 12: 2.x-A Event-Driven Monitoring [DEFERRED - out of 1.0 scope]
@@ -43,6 +45,7 @@ Future versions are planning targets, not implemented releases or promised dates
 |---|---|---|
 | **Completed** | `v1.0.0` | Green release gate, bundle produced, promotions documented |
 | **Current** | `1.0.x` | Coherent documentation; recorded manual desktop test; Flatpak restore verified |
+| **Approved — next** | Desktop Application (GTK4) | Phases D1–D4: diagnostics + app shell, Scan page, History + Quarantine, polish (see `project/HANDOFF-2026-10-18-DESKTOP-UI.md`) |
 | **Minor release** | `v1.1.0` | Integrated USB Auto-Scan, target safety, tests and dedicated gate |
 | **Minor release** | `v1.2.0` | VirusTotal lookup over SHA-256, opt-in, rate limiting, privacy and tests |
 | **Major release** | `v2.0.0` | Reliable realtime after P1 remediation and independent audit |
@@ -149,6 +152,17 @@ Future versions are planning targets, not implemented releases or promised dates
 - **Gate:** no critical regressions; tests, audit and packaging green. Ship a patch only if actual fixes are needed.
 - **Dependencies:** 1.0 Release Gate.
 
+### Desktop Application (GTK4/Libadwaita)
+
+- **Status:** APPROVED 2026-10-18 — not started. Plan of record: `project/HANDOFF-2026-10-18-DESKTOP-UI.md` (core inventory, constraints, estimates).
+- **Reason:** the repository currently has no `Adw.Application`, no main window and no Scan/History/Quarantine/Diagnostics pages; the `.desktop` launcher invokes the CLI headlessly and shows nothing. The maintainer approved building the complete desktop application on the existing UI-ready core (engine, `ShieldTaskController`, profiles, history store, quarantine vault, database pages), styled after the Malwarebytes layout mapped to Libadwaita.
+- **Phase D1 — Foundations + Diagnostics:** headless `core/diagnostics.py` (`run_dependency_checks()` with per-distro remedies, Flatpak-aware binary lookup), CLI `clamguardian doctor [--json]`, `Adw.Application` shell with `NavigationSplitView` sidebar, Diagnostics page (status cards + install guides in expanders), startup auto-check when critical dependencies are missing, `clamguardian ui` entry point + `.desktop`/Flatpak fix, CI smoke extension.
+- **Phase D2 — Scan page:** target chooser, profile dropdown, scan button, in-flight state (timer + threat counter), cancel, result cards, history recording; optional engine progress signal.
+- **Phase D3 — History + Quarantine pages:** filtered history with purge, quarantine list with restore/delete, key management (Secret Service with `0600` file fallback).
+- **Phase D4 — Polish:** accent CSS, About dialog, optional notifications, README/desktop-docs realignment, desktop validation checklist update.
+- **Gate per phase:** ruff + mypy + pytest green, CI smoke green, commit to `feature`; commits/pushes per the standing authorization rule.
+- **Exit criterion:** installable Flatpak presenting all five pages, diagnostics dialog blocking-on-missing-dependencies at first run, desktop validation recorded.
+
 ### Phase 10: 1.1 USB Auto-Scan
 - **Status:** DEFERRED (out of 1.0 scope)
 - **Scope:** Device/mount detection, target validation, task runner scan triggering for removable media.
@@ -197,11 +211,12 @@ Future versions are planning targets, not implemented releases or promised dates
 
 1. **Now:** `1.0.x` documentation realignment.
 2. **Then:** manual desktop test and Flatpak restore verification.
-3. **After:** `1.1.0` USB Auto-Scan.
-4. **Then:** `1.2.0` Threat Intelligence.
-5. **Only after remediation and audit:** `2.0.0` realtime.
-6. **After 2.0 stability:** `2.1.x` access prevention.
-7. **Last, and only if needed:** `2.2.x` privileged service/IPC.
+3. **Next:** Desktop Application (GTK4) — Phases D1–D4, starting with D1 (diagnostics + app shell). Plan of record: `project/HANDOFF-2026-10-18-DESKTOP-UI.md`.
+4. **After:** `1.1.0` USB Auto-Scan.
+5. **Then:** `1.2.0` Threat Intelligence.
+6. **Only after remediation and audit:** `2.0.0` realtime.
+7. **After 2.0 stability:** `2.1.x` access prevention.
+8. **Last, and only if needed:** `2.2.x` privileged service/IPC.
 
 This order keeps the project sustainable for a single maintainer and avoids prematurely turning ClamGuardian into an overly broad EDR.
 
