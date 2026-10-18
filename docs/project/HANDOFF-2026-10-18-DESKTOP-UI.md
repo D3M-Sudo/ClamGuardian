@@ -6,7 +6,7 @@
 desktop application** (Phases 1–4), approved by the maintainer but **not yet
 implemented**. Implementation starts next session from this document.
 
-The historical M4-era handoff (`CLAMGUARDIAN_HANDOFF.md`) remains as archive.
+The historical M4-era handoff (`archive/CLAMGUARDIAN_HANDOFF.md`) remains as archive.
 
 ## 2. Repository State
 
