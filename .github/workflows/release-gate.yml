@@ -6,7 +6,7 @@ on:
     tags: ['v*']
     paths-ignore: ['docs/**', '**/*.md']
   pull_request:
-    branches: [feature]
+    branches: [feature, testing]
   workflow_dispatch:
 
 concurrency:
@@ -127,9 +127,12 @@ jobs:
       - name: Bundle local build as installable .flatpak
         run: flatpak build-bundle flatpak-repo io.github.clamguardian.ClamGuardian.flatpak io.github.clamguardian.ClamGuardian
       - name: Upload local Flatpak bundle
+        # Named after the branch under test: on the feature → testing
+        # promotion PR this artifact is the testable build for the testing
+        # branch (same local manifest, same offline GNOME 51 build).
         uses: actions/upload-artifact@v4
         with:
-          name: ClamGuardian-feature-linux-x86_64.flatpak
+          name: ${{ (github.event_name == 'pull_request' && github.base_ref == 'testing' && 'ClamGuardian-testing-linux-x86_64.flatpak') || 'ClamGuardian-feature-linux-x86_64.flatpak' }}
           path: io.github.clamguardian.ClamGuardian.flatpak
           retention-days: 14
 

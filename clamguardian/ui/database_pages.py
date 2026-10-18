@@ -263,9 +263,10 @@ else:
             return self._source.id
 
         def set_status(self, status: DatabaseStatus, last_error: str | None = None) -> None:
+            # Only the label is updated here: the single error dialog for a
+            # failed update is shown by ``on_update_finished`` (U-02), so the
+            # same failure never produces two stacked modals.
             self._refresh_status(status)
-            if status is DatabaseStatus.ERROR and last_error:
-                self._page.show_error("Update error", last_error)
 
         def _refresh_status(self, status: DatabaseStatus | None = None) -> None:
             if status is None:
@@ -276,12 +277,22 @@ else:
             self._status_label.set_text(STATUS_LABELS.get(status, str(status).capitalize()))
 
         def _on_enabled_toggled(self, _switch: Gtk.Switch, state: bool) -> bool:
-            self._manager.set_enabled(self._source.id, state)
+            try:
+                self._manager.set_enabled(self._source.id, state)
+            except Exception as exc:  # noqa: BLE001 - keep the switch truthful
+                self._page.show_error("Toggle failed", str(exc))
+                _switch.set_active(not state)
+                return True
             self._page.schedule_refresh()
             return False
 
         def _on_auto_update_toggled(self, _switch: Gtk.Switch, state: bool) -> bool:
-            self._manager.set_auto_update(self._source.id, state)
+            try:
+                self._manager.set_auto_update(self._source.id, state)
+            except Exception as exc:  # noqa: BLE001 - keep the switch truthful
+                self._page.show_error("Toggle failed", str(exc))
+                _switch.set_active(not state)
+                return True
             self._page.schedule_refresh()
             return False
 
