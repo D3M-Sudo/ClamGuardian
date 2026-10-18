@@ -141,6 +141,11 @@ Future versions are planning targets, not implemented releases or promised dates
 - **M3 — Quarantine restore verification in Flatpak:** the core exposes `QuarantineVault.restore()`, but restoring to arbitrary host paths must be verified inside the sandbox, since `--filesystem=host:ro` may restrict writes. Reproduce the case in the installed app, define the supported destinations, and — only if needed — evaluate a file portal or narrowly scoped writable permissions. Do not broaden Flatpak permissions indiscriminately.
 - **M3 goal:** restore tested and documented without needlessly weakening the sandbox; if the supported paths already work, record the evidence without superfluous changes.
 - **M4 — Dependency and manifest maintenance:** CI, lockfile and offline manifests.
+- **Promotion testing:** opening the `feature → testing` promotion PR runs the Release Gate
+  workflow, whose `flatpak-local` job uploads an installable test bundle
+  (`ClamGuardian-testing-linux-x86_64.flatpak`, 14-day retention). Install and exercise it
+  on the host per `docs/validation/DESKTOP-TEST-1.0.md` before merging, so `testing` is
+  validated before any further promotion or tag.
 - **Gate:** no critical regressions; tests, audit and packaging green. Ship a patch only if actual fixes are needed.
 - **Dependencies:** 1.0 Release Gate.
 
