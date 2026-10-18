@@ -52,8 +52,8 @@ def format_timestamp(value: datetime) -> str:
     return value.strftime("%Y-%m-%d %H:%M")
 
 
-if TYPE_CHECKING:
-    from .controller import ShieldTaskController
+if TYPE_CHECKING:  # pragma: no cover
+    pass
 
 
 if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
@@ -61,7 +61,12 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
     class QuarantinePage:
         """List encrypted vault entries with restore and delete."""
 
-        def __init__(self, vault: QuarantineVault, *, key_manager: QuarantineKeyManager | None = None) -> None:
+        def __init__(
+            self,
+            vault: QuarantineVault,
+            *,
+            key_manager: QuarantineKeyManager | None = None,
+        ) -> None:
             self._vault = vault
             self._key_manager = key_manager
             self._entries: list[QuarantineEntry] = []
@@ -169,17 +174,16 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
 
             from .database_pages import run_async
 
+            destination = self._pick_destination()
+            if destination is None:
+                return
+
             def _done(result: object, error: Exception | None) -> None:
-                destination = _pick_destination()
-                if destination is None:
-                    return
-                try:
-                    restored = self._vault.restore(item_id, destination)
-                    self._show_ok(f"Restored", str(restored))
-                    self._load_entries()
-                except Exception as exc:  # noqa: BLE001 - surface any failure
-                    self._show_error("Restore failed", str(exc))
-                    self._load_entries()
+                if error is None:
+                    self._show_ok("Restored", str(result))
+                else:
+                    self._show_error("Restore failed", str(error))
+                self._load_entries()
 
             run_async(self._vault.restore(item_id, destination), _done)
 
@@ -189,6 +193,26 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             window = self._top_level()
             if window is not None:
                 dialog.present(window)
+
+        @staticmethod
+        def _pick_destination() -> str | None:
+            """Ask the user for a restore destination (folder chooser)."""
+            from gi.repository import Gtk
+
+            dialog = Gtk.FileChooserNative.new(
+                "Select restore destination",
+                None,
+                Gtk.FileChooserAction.SELECT_FOLDER,
+                ("Cancel", Gtk.ResponseType.CANCEL),
+                ("Select", Gtk.ResponseType.ACCEPT),
+            )
+            dialog.set_default_size(600, 400)
+            response = dialog.run()
+            destination = None
+            if response == Gtk.ResponseType.ACCEPT:
+                destination = dialog.get_filename()
+            dialog.destroy()
+            return destination
 
         def _show_error(self, heading: str, body: str) -> None:
             dialog = Adw.AlertDialog(heading=heading, body=body)

@@ -12,7 +12,7 @@ the shim pattern of :mod:`clamguardian.ui.database_pages`.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -77,7 +77,7 @@ def format_timestamp(value: datetime) -> str:
 
 
 if TYPE_CHECKING:
-    from .controller import ShieldTaskController
+    pass
 
 
 if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject

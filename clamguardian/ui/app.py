@@ -129,7 +129,9 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 else SqliteHistoryStore(default_history_db_path())
             )
             self._key_manager = (
-                key_manager if key_manager is not None else QuarantineKeyManager(default_history_db_path())
+                key_manager
+                if key_manager is not None
+                else QuarantineKeyManager(default_history_db_path())
             )
             self._vault = QuarantineVault(
                 self._key_manager.directory,
