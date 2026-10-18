@@ -1,6 +1,6 @@
 # ClamGuardian Implementation Roadmap
 
-*Last updated: 2026-10-18 — baseline `v1.0.0` released; Desktop Application (GTK4) Phase D1 (foundations + diagnostics) implemented on `feature` (local gate green: ruff, mypy, 279 tests; CI smoke extended, not yet run). Phases D1–D4 approved (see handoff). Future versions are planning targets, not promised releases or dates.*
+*Last updated: 2026-10-18 — baseline `v1.0.0` released; Desktop Application (GTK4) Phases D1 (foundations + diagnostics) and D2 (Scan page) implemented on `feature` (gate green: ruff, mypy, 280 tests; CI smoke extended). Phases D1–D4 approved (see handoff). Future versions are planning targets, not promised releases or dates.*
 
 This document outlines the authoritative development roadmap for ClamGuardian, tracking completed milestones, in-progress targets, and future architectural phases.
 
@@ -26,7 +26,7 @@ Phase 9: 1.0 Release Gate [COMPLETED 2026-10-16 — tag v1.0.0 @ 8ee8a56, instal
     ↓
 1.0.x: Stabilization [CURRENT - documentation, desktop validation, Flatpak restore]
     ↓
-Desktop Application (GTK4/Libadwaita) [APPROVED 2026-10-18 - Phases D1..D4, not started]
+Desktop Application (GTK4/Libadwaita) [APPROVED 2026-10-18 - Phases D1..D2 implemented on `feature`; D3–D4 pending]
     ↓
 Phase 10: 1.1 USB Auto-Scan [DEFERRED - out of 1.0 scope]
 Phase 11: Threat Intelligence Integration [DEFERRED - out of 1.0 scope]
@@ -45,8 +45,8 @@ Future versions are planning targets, not implemented releases or promised dates
 |---|---|---|
 | **Completed** | `v1.0.0` | Green release gate, bundle produced, promotions documented |
 | **Current** | `1.0.x` | Coherent documentation; recorded manual desktop test; Flatpak restore verified |
-| **In progress** | Desktop App — Phase D1 (foundations + diagnostics) | Implemented on `feature` (2026-10-18): doctor CLI, app shell, Diagnostics page, `.desktop` fix; closure = CI smoke + maintainer click-through |
-| **Approved — next** | Desktop App — Phases D2–D4 | D2 Scan page; D3 History + Quarantine + key management; D4 polish (see `project/HANDOFF-2026-10-18-DESKTOP-UI.md`) |
+| **Implemented** | Desktop App — Phases D1 + D2 | Foundations + diagnostics (doctor CLI, app shell, Diagnostics page, `.desktop` fix) and Scan page (target chooser, profiles, in-flight banner, result card, history recording) — committed on `feature`, CI smoke extended |
+| **Approved — next** | Desktop App — Phases D3–D4 | D3 History + Quarantine + key management; D4 polish (see `project/HANDOFF-2026-10-18-DESKTOP-UI.md`) |
 | **Minor release** | `v1.1.0` | Integrated USB Auto-Scan, target safety, tests and dedicated gate |
 | **Minor release** | `v1.2.0` | VirusTotal lookup over SHA-256, opt-in, rate limiting, privacy and tests |
 | **Major release** | `v2.0.0` | Reliable realtime after P1 remediation and independent audit |
@@ -212,7 +212,7 @@ Future versions are planning targets, not implemented releases or promised dates
 
 1. **Now:** `1.0.x` documentation realignment.
 2. **Then:** manual desktop test and Flatpak restore verification.
-3. **Current:** Desktop Application (GTK4) — Phase D1 implemented (uncommitted on `feature`); closure via CI smoke + click-through, then continue with D2 (Scan page). Plan of record: `project/HANDOFF-2026-10-18-DESKTOP-UI.md`.
+3. **Current:** Desktop Application (GTK4) — Phases D1 + D2 implemented and committed on `feature`; closure via CI smoke + click-through, then continue with D3 (History + Quarantine). Plan of record: `project/HANDOFF-2026-10-18-DESKTOP-UI.md`.
 4. **After:** `1.1.0` USB Auto-Scan.
 5. **Then:** `1.2.0` Threat Intelligence.
 6. **Only after remediation and audit:** `2.0.0` realtime.
