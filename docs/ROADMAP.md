@@ -93,51 +93,51 @@ Future versions are planning targets, not implemented releases or promised dates
 - **Status:** COMPLETED
 - **Scope:** Ensure scan profile information (`profile_id`, `profile_snapshot`) flows deterministically from Scan Request → ScanProfile → ScanTaskRunner → Engine → ScanResult → History.
 - **Dependencies:** M4-B history layer.
-- **Evidence:** `docs/M4-FINAL-REPORT.md` (fixes `81ea321`, `88a57a6`).
+- **Evidence:** `docs/reports/M4-FINAL-REPORT.md` (fixes `81ea321`, `88a57a6`).
 
 ### Phase 2: M4 Content Hash Model
 - **Status:** COMPLETED
 - **Scope:** Compute SHA-256 for single-file scan artifacts (`sha256=<digest>`); set `sha256=None` for directory scans.
 - **Dependencies:** Phase 1.
-- **Evidence:** `docs/M4-FINAL-REPORT.md`; digest now recorded on both engine backends.
+- **Evidence:** `docs/reports/M4-FINAL-REPORT.md`; digest now recorded on both engine backends.
 
 ### Phase 3: M4 Security Test Gap Closure
 - **Status:** COMPLETED
 - **Scope:** Audit and add comprehensive tests for Quarantine (ciphertext, corrupted auth, path traversal, TOCTOU), Database updates (checksum mismatch, rollback), Engine (Flatpak host execution), and Filesystem (special files, symlinks, FIFOs, sockets, devices).
 - **Dependencies:** Phase 2.
-- **Evidence:** `docs/M4-FINAL-REPORT.md`; provider-level digest enforcement tests added. Database digest optionality is an M5 item (see report, section 5).
+- **Evidence:** `docs/reports/M4-FINAL-REPORT.md`; provider-level digest enforcement tests added. Database digest optionality is an M5 item (see report, section 5).
 
 ### Phase 4: M4 Finalization & Report
 - **Status:** COMPLETED
 - **Scope:** Verify Core/Engine/History boundary isolation, run full quality gates, produce M4 Report.
 - **Dependencies:** Phase 3.
-- **Evidence:** `docs/M4-FINAL-REPORT.md`; boundaries verified, quality gates green (203 passed / 2 skipped, ruff, mypy on 26 source files).
+- **Evidence:** `docs/reports/M4-FINAL-REPORT.md`; boundaries verified, quality gates green (203 passed / 2 skipped, ruff, mypy on 26 source files).
 
 ### Phase 5 & 6: M5 Security Hardening & P2 Evaluation
 - **Status:** COMPLETED
 - **Scope:** Quarantine streaming/chunked AES-256-GCM encryption, database download integrity, explicit scan target validation (handling special files/symlinks), host execution hardening, intelligence trust boundaries, P2 evaluation.
 - **Dependencies:** Phase 4.
-- **Evidence:** `docs/M5-HARDENING-REPORT.md`; fixes `3394f86`, `192695c`, `d1a5cb3`, `b21e320`.
+- **Evidence:** `docs/reports/M5-HARDENING-REPORT.md`; fixes `3394f86`, `192695c`, `d1a5cb3`, `b21e320`.
 
 ### Phase 7: M6 CI & Quality Gates
 - **Status:** COMPLETED
 - **Scope:** Integrate `mypy` and `pip-audit` into GitHub Actions CI pipeline.
 - **Dependencies:** Phase 5 & 6.
-- **Evidence:** `docs/M6-CI-GATE-REPORT.md`; dedicated `audit` job on the pinned lockfile (`uv lock --check` + `pip-audit --strict -r`), `test` job on Python 3.11/3.12/3.13. **Closed by execution:** CI run `38493461942` on `9832b4d` — `audit` job green (`pip-audit --strict`: "No known vulnerabilities found"), `test` green on 3.11/3.12/3.13 (247 tests each).
+- **Evidence:** `docs/reports/M6-CI-GATE-REPORT.md`; dedicated `audit` job on the pinned lockfile (`uv lock --check` + `pip-audit --strict -r`), `test` job on Python 3.11/3.12/3.13. **Closed by execution:** CI run `38493461942` on `9832b4d` — `audit` job green (`pip-audit --strict`: "No known vulnerabilities found"), `test` green on 3.11/3.12/3.13 (247 tests each).
 
 ### Phase 8 & 9: M7 Packaging & 1.0 Release Gate
 - **Status:** COMPLETED (both) — 2026-10-16
 - **Scope:** Desktop metadata, icon, Flatpak manifest, 1.0 release readiness audit & gate.
 - **Dependencies:** Phase 7.
-- **Evidence:** `docs/M7-PACKAGING-REPORT.md`; `tests/test_packaging.py` (16 tests); wheel built, installed and run end to end; Release Gate CI (`.github/workflows/release-gate.yml`) — 7 jobs on the final tag run `38977065253` (`v1.0.0` @ `8ee8a56`; an earlier green tag run `38975655153` validated `745e1e7`): preflight, GNOME 51 offline Flatpak build (local manifest), AppStream validation, real ClamAV (clamscan + clamd, clean + EICAR), GTK smoke, release-manifest build pinned to the tag, and gate summary — all green. Deliverable: `ClamGuardian-v1.0.0-linux-x86_64.flatpak` (installable bundle, ~4.7 MB). The first tag run failed on a `cffi` cp312 wheel left in the release manifest only (404 on first-ever download of those sources); the fix (`cffi` cp314 in both manifests) shipped in `745e1e7` with two guard tests (manifest parity + runtime platform tags), then the tag was re-pointed to the fixed commit and finally to the release docs commit `8ee8a56`, each position re-validated by a green tag run.
-- The checklist, the per-gate evidence and the procedure for each gate live in **`docs/RELEASE-GATE-1.0.md`**.
+- **Evidence:** `docs/reports/M7-PACKAGING-REPORT.md`; `tests/test_packaging.py` (16 tests); wheel built, installed and run end to end; Release Gate CI (`.github/workflows/release-gate.yml`) — 7 jobs on the final tag run `38977065253` (`v1.0.0` @ `8ee8a56`; an earlier green tag run `38975655153` validated `745e1e7`): preflight, GNOME 51 offline Flatpak build (local manifest), AppStream validation, real ClamAV (clamscan + clamd, clean + EICAR), GTK smoke, release-manifest build pinned to the tag, and gate summary — all green. Deliverable: `ClamGuardian-v1.0.0-linux-x86_64.flatpak` (installable bundle, ~4.7 MB). The first tag run failed on a `cffi` cp312 wheel left in the release manifest only (404 on first-ever download of those sources); the fix (`cffi` cp314 in both manifests) shipped in `745e1e7` with two guard tests (manifest parity + runtime platform tags), then the tag was re-pointed to the fixed commit and finally to the release docs commit `8ee8a56`, each position re-validated by a green tag run.
+- The checklist, the per-gate evidence and the procedure for each gate live in **`docs/reports/RELEASE-GATE-1.0.md`**.
 
 ### 1.0.x: Post-Release Stabilization
 - **Status:** CURRENT
-- **M1 — Documentation realignment:** verified in this branch: `docs/ROADMAP.md` and `docs/RELEASE-GATE-1.0.md` record tag `v1.0.0` @ `8ee8a56` with the final tag run `38977065253`, while on `origin/main` `docs/ROADMAP.md` still cites `745e1e7` (verified via `git show origin/main:docs/ROADMAP.md`). Realign `README.md`, `docs/ROADMAP.md`, `docs/RELEASE-GATE-1.0.md` and packaging through the normal protected flow `feature → testing → development → main`, never with direct edits to `main`. Prerequisite: compare the current SHAs of all branch tips.
+- **M1 — Documentation realignment:** verified in this branch: `docs/ROADMAP.md` and `docs/reports/RELEASE-GATE-1.0.md` record tag `v1.0.0` @ `8ee8a56` with the final tag run `38977065253`, while on `origin/main` `docs/ROADMAP.md` still cites `745e1e7` (verified via `git show origin/main:docs/ROADMAP.md`). Realign `README.md`, `docs/ROADMAP.md`, `docs/reports/RELEASE-GATE-1.0.md` and packaging through the normal protected flow `feature → testing → development → main`, never with direct edits to `main`. Prerequisite: compare the current SHAs of all branch tips.
 - **M1 goal:** all production documents cite the same tag, commit and evidence run.
 - **M2 — Manual test on a real desktop:** the CI GTK smoke test passed (Xvfb); a click-through on a real desktop remains a recommended follow-up, not a release blocker. Verify Flatpak launch, GTK pages, host ClamAV access, clean/EICAR scan in a controlled environment, results/history and database update.
-- **M2 goal:** repeatable checklist with environment and outcomes recorded.
+- **M2 goal:** repeatable checklist with environment and outcomes recorded. Test template: `docs/validation/DESKTOP-TEST-1.0.md`.
 - **M3 — Quarantine restore verification in Flatpak:** the core exposes `QuarantineVault.restore()`, but restoring to arbitrary host paths must be verified inside the sandbox, since `--filesystem=host:ro` may restrict writes. Reproduce the case in the installed app, define the supported destinations, and — only if needed — evaluate a file portal or narrowly scoped writable permissions. Do not broaden Flatpak permissions indiscriminately.
 - **M3 goal:** restore tested and documented without needlessly weakening the sandbox; if the supported paths already work, record the evidence without superfluous changes.
 - **M4 — Dependency and manifest maintenance:** CI, lockfile and offline manifests.

@@ -40,7 +40,7 @@
 | 9 | **`appstreamcli validate` on the metainfo** | ✅ **VERIFIED** | final tag run `38977065253`, job `AppStream validation` green |
 | 10 | **Scan with a real ClamAV (not a stub)** | ✅ **VERIFIED** | final tag run `38977065253`, job `Real ClamAV scan (clamscan + clamd)`: clean + EICAR detected via both backends |
 | 11 | **GTK verification on a desktop session** | ✅ **VERIFIED (CI smoke)** | final tag run `38977065253`, job `GTK smoke test`: UI construction + database pages under Xvfb; a manual click-through on a real desktop remains a recommended — not blocking — follow-up |
-| 12 | Documentation coherent with the artefacts | ✅ **VERIFIED** | this document, `docs/ROADMAP.md` (Phase 9 COMPLETED), `packaging/flatpak/README.md` |
+| 12 | Documentation coherent with the artefacts | ✅ **VERIFIED** | this document, `../ROADMAP.md` (Phase 9 COMPLETED), `packaging/flatpak/README.md` |
 | 13 | `v1.0.0` tag created and manifest pinned | ✅ **DONE** | tag `v1.0.0` → `8ee8a56` (`20e598a`), release manifest pinned to the tag; bundle artifact `ClamGuardian-v1.0.0-linux-x86_64.flatpak` (~4.7 MB) from final tag run `38977065253` |
 
 ---
@@ -139,9 +139,9 @@ aiohttp 3.14.3   multidict 6.9.1   cryptography 50.0.1
 
 ### 2.6 Documentation
 
-`docs/M6-CI-GATE-REPORT.md` (Phase 7 closed by execution, Phase 9 called out as
-open), `docs/ROADMAP.md` (Phase 7 evidence, Phase 9 remaining list, Phase 11
-note), `docs/M4-FINAL-REPORT.md` and `docs/M5-HARDENING-REPORT.md` (scope-split
+`docs/reports/M6-CI-GATE-REPORT.md` (Phase 7 closed by execution, Phase 9 called out as
+open), `../ROADMAP.md` (Phase 7 evidence, Phase 9 remaining list, Phase 11
+note), `docs/reports/M4-FINAL-REPORT.md` and `docs/reports/M5-HARDENING-REPORT.md` (scope-split
 statements), `README.md` (CI paragraph and PyGObject requirement) are consistent
 with the code and with the CI evidence. References to the deleted service
 branches point at the annotated tag `audit/pr5-2026-10-12`.

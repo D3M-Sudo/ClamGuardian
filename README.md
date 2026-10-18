@@ -11,7 +11,7 @@ ClamGuardian is a Linux-first security framework built around ClamAV. It provide
 > **v1.0.0 released** (2026-10-16, tag `v1.0.0` @ `8ee8a56`): the release gate is
 > closed — both Flatpak manifests build offline against `org.gnome.Platform//51`,
 > AppStream validates, real ClamAV scans (clean + EICAR via `clamscan` and `clamd`)
-> and the GTK smoke test pass in CI. See `docs/RELEASE-GATE-1.0.md` for the
+> and the GTK smoke test pass in CI. See `docs/reports/RELEASE-GATE-1.0.md` for the
 > evidence and `docs/ROADMAP.md` for what comes after 1.0.
 
 ## Architecture
@@ -261,7 +261,7 @@ ruff check .
 mypy clamguardian
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) triggers on every pull request and on pushes to `main`, `feature` and `development`. The `test` job installs the GTK/PyGObject system dependencies the package needs and runs `ruff check .`, `mypy clamguardian` and `pytest` on Python 3.11, 3.12 and 3.13. A separate `audit` job verifies that `uv.lock` matches `pyproject.toml` (`uv lock --check`) and runs `pip-audit --strict` against the pinned runtime dependency set exported from the lockfile; see `docs/M6-CI-GATE-REPORT.md`.
+GitHub Actions (`.github/workflows/ci.yml`) triggers on every pull request and on pushes to `main`, `feature` and `development`. The `test` job installs the GTK/PyGObject system dependencies the package needs and runs `ruff check .`, `mypy clamguardian` and `pytest` on Python 3.11, 3.12 and 3.13. A separate `audit` job verifies that `uv.lock` matches `pyproject.toml` (`uv lock --check`) and runs `pip-audit --strict` against the pinned runtime dependency set exported from the lockfile; see `docs/reports/M6-CI-GATE-REPORT.md`.
 
 A second workflow, `.github/workflows/release-gate.yml`, is the automated 1.0
 release gate. It runs on pushes to `feature` and on `v*` tags and has 7 jobs:
@@ -272,7 +272,7 @@ validate`), `clamav` (fresh DB, clean + EICAR via `clamscan` and `clamdscan`),
 + installable `.flatpak` bundle), `flatpak-release` (same for the tag-pinned
 release manifest, only on tags), and `gate` (fails unless every required job
 succeeded, and uploads `gate-evidence.txt`). The local bundle is kept 14 days,
-the release bundle 90 days. Evidence: `docs/RELEASE-GATE-1.0.md`.
+the release bundle 90 days. Evidence: `docs/reports/RELEASE-GATE-1.0.md`.
 
 ## Branching model
 
