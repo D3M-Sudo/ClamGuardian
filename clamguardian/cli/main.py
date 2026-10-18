@@ -41,6 +41,8 @@ from ..history import (
     HistoryStore,
     SqliteHistoryStore,
     decode_timestamp,
+    is_valid_status,
+    valid_statuses,
 )
 from .exit_codes import (
     EXIT_CANCELLED,
@@ -261,7 +263,24 @@ def _open_history_store(streams: _Streams) -> HistoryStore | None:
         return None
 
 
+def _check_history_status(status: str | None, streams: _Streams) -> bool:
+    """Validate an optional ``--status`` filter against the persisted states."""
+    if status is not None and not is_valid_status(status):
+        print(
+            f"error: unknown status: {status!r} "
+            f"(expected one of: {', '.join(valid_statuses())})",
+            file=streams.err,
+        )
+        return False
+    return True
+
+
 def _cmd_history_list(args: argparse.Namespace, streams: _Streams) -> int:
+    if not _check_history_status(args.status, streams):
+        return EXIT_USAGE
+    if args.limit is not None and args.limit <= 0:
+        print("error: --limit must be a positive integer", file=streams.err)
+        return EXIT_USAGE
     store = _open_history_store(streams)
     if store is None:
         return EXIT_ENGINE_ERROR
@@ -318,6 +337,8 @@ async def _history_purge(
 def _cmd_history_purge(args: argparse.Namespace, streams: _Streams) -> int:
     before = _parse_history_timestamp(args.before, streams)
     if args.before is not None and before is None:
+        return EXIT_USAGE
+    if not _check_history_status(args.status, streams):
         return EXIT_USAGE
     if before is None and args.status is None:
         print(
@@ -510,7 +531,9 @@ def _cmd_scan(args: argparse.Namespace, streams: _Streams) -> int:
         return EXIT_USAGE
     target = _validate_target(args.path, streams)
     if target is None:
-        return EXIT_ENGINE_ERROR
+        # A missing/unreadable path is the caller's usage error, not an
+        # engine failure (U-04): keep exit 2 vs 3 distinguishable.
+        return EXIT_USAGE
     return _run_scan(_default_engine(), target, profile, args, streams)
 
 

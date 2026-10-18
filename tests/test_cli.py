@@ -270,7 +270,7 @@ def test_unknown_profile_is_usage_error(tmp_path, cli):
 
 def test_missing_target_file(cli):
     harness = cli(FakeEngine())
-    assert harness("scan", "/nonexistent/path/for/clamguardian") == 3
+    assert harness("scan", "/nonexistent/path/for/clamguardian") == 2
     assert "does not exist" in harness.err.getvalue()
 
 
@@ -789,6 +789,30 @@ def test_history_purge_no_match_with_past_before(cli) -> None:
     text = harness.out.getvalue()
     assert "0 record" in text
     assert len(recorder._stored) == 1
+
+
+def test_history_purge_unknown_status_is_usage_error(cli) -> None:
+    """U-06: an invented ``--status`` is a usage error (exit 2), not a traceback."""
+    recorder = FakeRecorder()
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "purge", "--status", "nope") == 2
+    assert "unknown status" in harness.err.getvalue()
+
+
+def test_history_list_unknown_status_is_usage_error(cli) -> None:
+    """U-06: ``history list --status nope`` is a usage error (exit 2)."""
+    recorder = FakeRecorder()
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "list", "--status", "nope") == 2
+    assert "unknown status" in harness.err.getvalue()
+
+
+def test_history_list_non_positive_limit_is_usage_error(cli) -> None:
+    """U-06: ``history list --limit 0`` is a usage error (exit 2)."""
+    recorder = FakeRecorder()
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "list", "--limit", "0") == 2
+    assert "--limit must be a positive integer" in harness.err.getvalue()
 
 
 def test_history_purge_status_filter(cli) -> None:
