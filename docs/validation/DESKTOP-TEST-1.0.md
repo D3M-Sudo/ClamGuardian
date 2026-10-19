@@ -5,7 +5,9 @@ real desktop) and **M3** (quarantine-restore verification inside the Flatpak san
 
 - **Status:** TEMPLATE — copy it per test session (e.g. `validation/DESKTOP-TEST-1.0-<YYYY-MM-DD>.md`)
   or fill the per-step tables below.
-- **Scope:** `v1.0.0` @ `8ee8a56`, installable bundle `ClamGuardian-v1.0.0-linux-x86_64.flatpak`.
+- **Scope:** `v1.0.0` @ `8ee8a56` release evidence, plus the desktop phase D4
+  (`feature` branch) for the UI sections §§3, 10. Record the exact commit
+  under test in §1; the D4 UI is not part of the `v1.0.0` tag.
 - **Prerequisites:** the CI GTK smoke test passed under Xvfb; this checklist covers the
   recommended on-desktop click-through, which was **not** a release blocker.
 
@@ -23,7 +25,7 @@ real desktop) and **M3** (quarantine-restore verification inside the Flatpak san
 | `flatpak --version` | _x.y.z_ |
 | Host `clamscan --version` | _e.g. ClamAV x.y.z_ |
 | Host `clamd` running | _yes / no (systemctl status clamav-daemon)_ |
-| Tag/commit under test | `v1.0.0` @ `8ee8a56` |
+| Tag/commit under test | `v1.0.0` @ `8ee8a56` (release) + D4 commit on `feature` (UI sections) |
 | Bundle file | `ClamGuardian-v1.0.0-linux-x86_64.flatpak` (~4.7 MB) |
 | Bundle SHA-256 | _record the digest of the installed bundle_ |
 | ClamAV definitions date | _e.g. freshclam log date_ |
@@ -49,10 +51,16 @@ Open each page and confirm it renders and reacts (no traceback, no frozen UI).
 
 | # | Page | Expected | Outcome | Notes / evidence |
 |---|---|---|---|---|
-| 3.1 | Scan page | Profile selector shows `quick`, `home`, `full`, `custom`; target picker opens | | |
-| 3.2 | History page | Opens; empty on first run; later shows recorded scans | | |
-| 3.3 | Quarantine page | Opens; shows items after §6; restore action available | | |
-| 3.4 | Settings / database page | Database version/age displayed; update action available | | |
+| 3.1 | Scan page | Default profile matches Settings (`quick` on a fresh install); target picker opens; threat rows offer **Quarantine** | | |
+| 3.2 | History page | Opens and refreshes after a scan; filters, limit and purge work; detail dialog shows profile and SHA-256 | | |
+| 3.3 | Quarantine page | Lists entries with name, size, date and original path; detail view offers Restore/Delete; Refresh works | | |
+| 3.4 | Databases page | Database version/age displayed; update action available; third-party management opens | | |
+| 3.5 | Diagnostics page | Global banner state matches the environment; per-distro remedies expand | | |
+| 3.6 | Settings page | Default profile, notifications and theme persist after restart | | |
+| 3.7 | About dialog | Version, license, website and issue tracker correct; opens from the menu and Settings | | |
+| 3.8 | Window chrome | Sidebar and content header bars, page title follows navigation, menu and `Ctrl+Q`/`F1` work | | |
+| 3.9 | Theme | Follows system by default; Light/Dark apply immediately; accent stylesheet renders on GNOME 46 and 51 | | |
+| 3.10 | Notifications | With the setting enabled, a background scan completion shows a notification without file names/paths; disabled setting sends none | | |
 
 ---
 
@@ -150,6 +158,7 @@ purpose). The app runs with `--filesystem=host:ro` plus the writable
 | M3 | Restore tested and documented without weakening the sandbox | _yes / no_ | §8, incl. the 8.5 matrix |
 | M3-alt | If supported paths already work, evidence recorded with no superfluous changes | _yes / no / N/A_ | |
 | Gate | No critical regressions; tests, audit and packaging still green | _yes / no_ | CI run(s): _record_ |
+| D4 | All six pages reachable; Settings/About/notifications/theme behave as in §3.6–3.10 | _yes / no_ | this file, §3 |
 
 **Known limits / follow-ups:** _list anything deferred._
 

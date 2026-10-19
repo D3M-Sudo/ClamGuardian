@@ -167,13 +167,21 @@ zombies, no orphans.
 
 The desktop app wraps the same core in a native GTK4/Libadwaita interface:
 
-- **Scan page** (Phase D2) — pick a target, choose a profile, see the result
-- **Diagnostics page** (Phase D1) — dependency checks with per-distro remedies, presented at first run when a critical dependency is missing
-- **History page** (Phase D3) — filtered list with purge, profile and SHA-256 per scan, detail dialog
-- **Quarantine page** (Phase D3) — encrypted detections with restore, delete, key management
-- **Antivirus Databases page** — official signatures (owned by `freshclam`) plus manageable third-party sources (see below)
+- **Scan** — pick a target and a profile, follow the in-flight state and review the result; detected files can be moved to the encrypted quarantine directly from the threat list
+- **History** — filtered list with purge, profile and SHA-256 per scan, detail dialog
+- **Quarantine** — encrypted detections with detail view, restore and delete
+- **Databases** — official signatures (owned by `freshclam`) plus manageable third-party sources (see below)
+- **Diagnostics** — dependency checks with per-distro remedies, presented at first run when a critical dependency is missing
+- **Settings** — default scan profile, desktop notifications and system/light/dark theme, plus the About dialog
 
-The UI is import-safe on headless systems: without PyGObject the GTK pages simply cannot be instantiated, so the test suite runs anywhere.
+Scan-completion notifications are opt-in and content-free: they report the
+status and the number of files/threats, never file names or paths. The app
+follows the system theme by default and ships a small accent stylesheet; no
+colour is forced on the user. Quarantine, history and settings live in the
+application-data directory, both outside and inside the Flatpak sandbox.
+
+The UI is import-safe on headless systems: without PyGObject the GTK pages
+simply cannot be instantiated, so the test suite runs anywhere.
 
 ```python
 from clamguardian.ui import build_database_navigation

@@ -26,6 +26,7 @@ from .diagnostics_page import (
     banner_content,
     status_icon,
 )
+from .settings_page import SettingsPage
 
 try:
     from .app import ClamGuardianApp, MainWindow, run_ui
@@ -50,6 +51,7 @@ __all__ = [
     "DiagnosticsPage",
     "MainWindow",
     "ShieldTaskController",
+    "SettingsPage",
     "ThirdPartyDatabaseRow",
     "ThirdPartyDatabasesPage",
     "banner_content",

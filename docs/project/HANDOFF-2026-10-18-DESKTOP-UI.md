@@ -10,6 +10,8 @@ The historical M4-era handoff (`archive/CLAMGUARDIAN_HANDOFF.md`) remains as arc
 
 ## 2. Repository State
 
+At handoff creation (2026-10-18):
+
 ```text
 branch:   feature @ 194167c  (Desktop UI Phase D1 complete: diagnostics + app shell) — clean tree
 testing:  76439e5  (Merge PR #12 feature → testing, 2026-10-18 — gate green,
@@ -17,6 +19,11 @@ testing:  76439e5  (Merge PR #12 feature → testing, 2026-10-18 — gate green,
 main:     ca887aa  (tag v1.0.0 = annotated tag object 20e598a9 → commit 8ee8a56)
 tests:    279 passing (pytest), ruff + mypy green, CI + Release Gate green
 ```
+
+D4 update (2026-10-19): Phase 4 implemented on the working branch
+`cline/q41cvf1r`, on top of `feature` @ `a097265` (the CI Xvfb commit that
+followed `194167c`). The working tree is clean and the local gate is green;
+the commits are promoted to `feature` only after explicit authorization.
 
 ## 3. Context — Why This Plan Exists
 
@@ -121,11 +128,31 @@ CSS).
 
 ### Phase 4 — Polish + release readiness
 
-- **Status: NOT STARTED** — plan of record: accent CSS provider + bundled
-  `data/style.css`, About dialog (AppStream metainfo exists), optional desktop
-  notifications via portal, light settings (default profile). README "Desktop
-  app" section correction; desktop validation checklist update; smoke test
-  extended to all pages.
+- **Status: COMPLETED** — implemented:
+  - `clamguardian/core/settings.py` (JSON settings store: default profile,
+    notifications, colour scheme; atomic `0600` writes) and
+    `clamguardian/ui/settings_page.py` (Settings page + About row);
+  - `clamguardian/ui/style.css` + `clamguardian/ui/theme.py` (packaged
+    stylesheet, accent/status classes, colour-scheme application);
+  - window chrome in `clamguardian/ui/app.py` (`Adw.ToolbarView` +
+    `Adw.HeaderBar` for both panes, page title, main menu, `F1`/`Ctrl+Q`),
+    `clamguardian/ui/about.py` (`Adw.AboutDialog` with Gtk fallback);
+  - `clamguardian/ui/dialogs.py` (single `Adw.AlertDialog`/`MessageDialog`
+    compatibility helper) adopted by the shell, Scan and Quarantine pages;
+  - `clamguardian/ui/notifications.py` (opt-in, content-free scan-completion
+    notifications) wired in `MainWindow`;
+  - **Quarantine correctness + ingest**: History and Quarantine now populate
+    their lists (the D3 `_done` callbacks discarded the results), restore and
+    delete wrap the synchronous vault calls, the folder picker uses
+    `Gtk.FileDialog` (no GTK3 `run()`), and detected files can be quarantined
+    directly from the Scan result threat list;
+  - page refresh on navigation (`MainWindow.show_page`), real target in the
+    cancelled result, removal of the dead placeholder branch;
+  - README, `docs/ROADMAP.md`, this handoff and the desktop validation
+    checklist updated; GTK smoke extended to every page, Settings, the
+    stylesheet and About.
+- Gate: ruff + mypy + pytest green locally (headless); GTK widget tests and
+  the Xvfb smoke run in CI. No version bump in D4.
 
 Gate per phase: ruff + mypy + pytest green, CI smoke green, commit to `feature`
 (none of this runs without the maintainer's go-ahead per session). After Phase
@@ -144,11 +171,16 @@ Gate per phase: ruff + mypy + pytest green, CI smoke green, commit to `feature`
 
 ## 7. Next Session Procedure
 
-Phase 3 (History + Quarantine pages) is **COMPLETED** on `feature` (`5dbd74c`).
+Phases 1–4 are **COMPLETED** on the D4 working branch (see `git log`; D4 is
+committed on top of `a097265`).
 
-1. Verify baseline (branch `feature`, SHAs of all tips, clean tree, CI green).
+1. Verify baseline (branch, SHAs of all tips, clean tree, CI green).
 2. Re-read this handoff and `docs/ROADMAP.md` (Desktop UI phase).
-3. Continue with **Phase 4 — Polish + release readiness** (accent CSS, About dialog, desktop validation checklist update, smoke test extension to all pages).
-4. Follow the repo working rules (`docs/ROADMAP.md` § Working Rules): no
+3. Run the manual desktop validation in
+   `docs/validation/DESKTOP-TEST-1.0.md` §§1–3 and 8 (D4 pages included).
+4. Once the validation is recorded, promote the D4 commits from the working
+   branch to `feature` with explicit maintainer authorization, then open the
+   `feature → testing` promotion PR.
+5. Follow the repo working rules (`docs/ROADMAP.md` § Working Rules): no
    commit/push/merge/tag/PR without explicit authorization.
 
