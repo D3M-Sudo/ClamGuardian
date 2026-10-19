@@ -143,7 +143,7 @@ CSS).
     `clamguardian/ui/about.py` (`Adw.AboutDialog` with Gtk fallback);
   - `clamguardian/ui/dialogs.py` (single `Adw.AlertDialog`/`MessageDialog`
     compatibility helper) adopted by the shell, Scan and Quarantine pages;
-  - `clamguardian/ui/notifications.py` (opt-in, content-free scan-completion
+  - `clamguardian/ui/notifications.py` (configurable, content-free scan-completion
     notifications) wired in `MainWindow`;
   - **Quarantine correctness + ingest**: History and Quarantine now populate
     their lists (the D3 `_done` callbacks discarded the results), restore and

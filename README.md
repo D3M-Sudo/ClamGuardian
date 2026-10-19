@@ -174,11 +174,12 @@ The desktop app wraps the same core in a native GTK4/Libadwaita interface:
 - **Diagnostics** — dependency checks with per-distro remedies, presented at first run when a critical dependency is missing
 - **Settings** — default scan profile, desktop notifications and system/light/dark theme, plus the About dialog
 
-Scan-completion notifications are opt-in and content-free: they report the
-status and the number of files/threats, never file names or paths. The app
-follows the system theme by default and ships a small accent stylesheet; no
-colour is forced on the user. Quarantine, history and settings live in the
-application-data directory, both outside and inside the Flatpak sandbox.
+Scan-completion notifications can be disabled in Settings and are content-free:
+they report the status and the number of files/threats, never file names or
+paths. The app follows the system theme by default and ships a small accent
+stylesheet; no colour is forced on the user. Quarantine, history and settings
+live in the application-data directory, both outside and inside the Flatpak
+sandbox.
 
 The UI is import-safe on headless systems: without PyGObject the GTK pages
 simply cannot be instantiated, so the test suite runs anywhere.
