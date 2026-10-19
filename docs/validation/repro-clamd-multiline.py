@@ -9,13 +9,13 @@ Run from the repository root::
 
     PYTHONPATH=. python3 docs/validation/repro-clamd-multiline.py
 
-Expected output on the audited code (bug present)::
+Expected output before the fix (kept in the audit report)::
 
-    status: clean | threats: ()
-    clean flag: True | engine: clamd
+    status: clean | threats ()
 
-Expected output after the remediation: ``status: infected`` with the ``FOUND``
-line in ``threats``.
+Expected output on the current code: ``status: infected`` with the ``FOUND``
+line in ``threats``, and ``_scan_socket`` rejecting the newline target instead
+of writing ``SHUTDOWN`` to the clamd command channel.
 """
 
 from __future__ import annotations
@@ -98,9 +98,14 @@ async def main() -> None:
         server = await start_fake_clamd(socket_path, captured)
         async with server:
             engine = ClamAVEngine(socket_path=socket_path, command_timeout=5)
-            await engine._scan_socket(injected, DEFAULT_PROFILE)
-        print("\n=== CASE 2: newline injection into the clamd command channel ===")
-        print("bytes received by fake clamd:", captured[0] if captured else None)
+            try:
+                await engine._scan_socket(injected, DEFAULT_PROFILE)
+            except ValueError as exc:
+                print("\n=== CASE 2: newline injection into the clamd command channel ===")
+                print("rejected:", exc)
+            else:
+                print("\n=== CASE 2: newline injection into the clamd command channel ===")
+                print("bytes received by fake clamd:", captured[0] if captured else None)
 
 
 if __name__ == "__main__":

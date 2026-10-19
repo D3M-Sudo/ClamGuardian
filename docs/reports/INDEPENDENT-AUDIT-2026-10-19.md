@@ -488,3 +488,28 @@ Output atteso **dopo la remediation**: `status: infected`, `threats` contenente 
 ---
 
 *Report prodotto da audit indipendente su evidenze strumentali. Nessuna modifica al codice applicativo è stata effettuata: le remediation sono proposte e devono passare da test di regressione e review.*
+
+---
+
+## 8. Addendum — stato della remediation (2026-10-19)
+
+I fix sono stati implementati sul branch `cline/fhyn2bmx` e proposti con PR verso `feature`. Ogni voce chiusa ha un test di regressione dedicato.
+
+| Finding | Stato | Evidenza |
+|---|---|---|
+| AUD-01 | **Corretto** | Lettura fino a EOF con cap 8 MiB; `test_clamd_directory_scan_reads_every_result_line` |
+| AUD-02 | **Corretto** | `Secret.Schema` + attributi + 6 argomenti; test con `gi.repository.Secret` finto |
+| AUD-03 | **Corretto** | Scrittura atomica `mkstemp`/`fchmod`/`fsync`/`replace`, fail-closed su chiave corrotta; 2 test |
+| AUD-04 | **Corretto** | Rifiuto `NUL`/`\n`/`\r` in `scan()` e in `_scan_socket()`; test end-to-end |
+| AUD-05 | **Corretto** | `permissions: contents: read` su entrambi i workflow, action pinnate a SHA |
+| AUD-07 | **Corretto** | Job CI `runtime-python` su Python 3.14 headless |
+| AUD-08 | **Corretto** | Restore accetta solo path assoluti senza componenti `..`; test |
+| AUD-09 | **Corretto** | Rifiuto symlink in quarantena e directory vault symlink; test |
+| AUD-10 | **Corretto** | `chmod` solo sulla directory creata; test |
+| AUD-12 | **Corretto** | Escaping C0/DEL in output umano e storico; test |
+| AUD-13 | **Parziale** | Pinnati `ruff`, `mypy`, `pytest`, `pytest-asyncio`, `pyyaml`; apt resta non pinnato |
+| AUD-14 | **Parziale** | Ambiente sanificato per `flatpak-spawn --host` + test; zombie e lock `0666` sono igiene dell'ambiente |
+| AUD-06 | **Non applicabile al repo** | Porte dell'infrastruttura di sessione: intervento di rete, non di codice |
+| AUD-11 | **Rinviato** | VirusTotal non cablato: cablaggio o rimozione è una decisione di prodotto |
+
+Residuo dichiarato: AUD-11 e la parte apt di AUD-13 restano aperti; nessun finding P1/P2 rimane senza fix o mitigazione.
