@@ -81,6 +81,43 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 return
             container.remove(child)
 
+    def _button_row(title: str, icon_name: str) -> Gtk.Widget:
+        """Build an activatable button row across Libadwaita versions.
+
+        ``Adw.ButtonRow`` landed in Libadwaita 1.6; older runtimes (e.g. the
+        Libadwaita 1.5 shipped by Ubuntu 24.04) fall back to an activatable
+        ``Adw.ActionRow`` with a prefix icon. Both expose ``activated``.
+        """
+        if hasattr(Adw, "ButtonRow"):
+            row = Adw.ButtonRow(title=title)
+            row.set_icon_name(icon_name)
+            return row
+        row = Adw.ActionRow(title=title, activatable=True)
+        row.add_prefix(Gtk.Image(icon_name=icon_name))
+        return row
+
+    class _LabelRow:
+        """Two-line label row across Libadwaita versions.
+
+        ``Adw.LabelRow`` and its ``set_title_subtitle`` helper arrived in
+        Libadwaita 1.6; older runtimes get the equivalent ``Adw.ActionRow``
+        plus ``set_subtitle``.
+        """
+
+        def __init__(self, title: str) -> None:
+            self.widget = (
+                Adw.LabelRow(title=title)
+                if hasattr(Adw, "LabelRow")
+                else Adw.ActionRow(title=title)
+            )
+
+        def set_title_subtitle(self, subtitle: str) -> None:
+            """Set the secondary line shown under the row title."""
+            if hasattr(self.widget, "set_title_subtitle"):
+                self.widget.set_title_subtitle(subtitle)
+            else:
+                self.widget.set_subtitle(subtitle)
+
     def _alert_dialog(heading: str, body: str) -> Adw.Dialog:
         """Build a modal alert, compatible with Libadwaita < 1.5.
 
@@ -137,13 +174,13 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             self._progress.set_show_text(True)
             self._progress.set_text("Scanning…")
             self._progress.pulse()
-            self._elapsed_row = Adw.LabelRow(title="Elapsed")
+            self._elapsed_row = _LabelRow("Elapsed")
             self._elapsed_row.set_title_subtitle("0s")
-            self._threats_row = Adw.LabelRow(title="Threats")
+            self._threats_row = _LabelRow("Threats")
             self._threats_row.set_title_subtitle("0")
             self._inflight_group.add(self._progress)
-            self._inflight_group.add(self._elapsed_row)
-            self._inflight_group.add(self._threats_row)
+            self._inflight_group.add(self._elapsed_row.widget)
+            self._inflight_group.add(self._threats_row.widget)
             self._inflight_group.set_visible(False)
             self._root.append(self._inflight_group)
 
@@ -181,17 +218,15 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
 
         # -- internals -----------------------------------------------------
 
-        def _build_scan_button(self, group: Adw.PreferencesGroup) -> Adw.ButtonRow:
-            button = Adw.ButtonRow(title="Scan")
-            button.set_icon_name("system-run-symbolic")
+        def _build_scan_button(self, group: Adw.PreferencesGroup) -> Gtk.Widget:
+            button = _button_row("Scan", "system-run-symbolic")
             button.add_css_class("suggested-action")
             button.connect("activated", self._on_scan_clicked)
             group.add(button)
             return button
 
-        def _build_cancel_button(self) -> Adw.ButtonRow:
-            button = Adw.ButtonRow(title="Cancel")
-            button.set_icon_name("process-stop-symbolic")
+        def _build_cancel_button(self) -> Gtk.Widget:
+            button = _button_row("Cancel", "process-stop-symbolic")
             button.set_visible(False)
             button.connect("activated", self._on_cancel_clicked)
             return button
@@ -219,7 +254,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             row.set_activatable(False)
             return row
 
-        def _on_scan_clicked(self, _button: Adw.ButtonRow) -> None:
+        def _on_scan_clicked(self, _button: Gtk.Widget) -> None:
             target_text = self._target_row.get_text().strip()
             if not target_text:
                 self._show_error("Target is required", "Enter a file or folder to scan.")
@@ -355,7 +390,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 widget = widget.get_parent()
             return widget
 
-        def _on_cancel_clicked(self, _button: Adw.ButtonRow) -> None:
+        def _on_cancel_clicked(self, _button: Gtk.Widget) -> None:
             self._controller.cancel_all()
 
 
