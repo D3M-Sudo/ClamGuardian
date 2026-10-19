@@ -29,3 +29,9 @@ def test_state_icons_cover_quarantine_states() -> None:
 def test_quarantine_page_shim_raises_headless() -> None:
     with pytest.raises(RuntimeError, match="PyGObject"):
         quarantine_page_module.QuarantinePage(None)  # type: ignore[arg-type]
+
+
+def test_format_size_units() -> None:
+    assert quarantine_page_module.format_size(512) == "512 B"
+    assert quarantine_page_module.format_size(2048) == "2.0 KiB"
+    assert quarantine_page_module.format_size(3 * 1024 * 1024) == "3.0 MiB"

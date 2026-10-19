@@ -70,6 +70,30 @@ def test_banner_content_critical_failure_is_actionable() -> None:
     assert "Scanning will not work" in description
 
 
+def test_banner_status_is_the_worst_state() -> None:
+    assert (
+        diagnostics_module.banner_status(
+            [_result(CheckStatus.OK, critical=True)]
+        )
+        is CheckStatus.OK
+    )
+    assert (
+        diagnostics_module.banner_status(
+            [_result(CheckStatus.WARNING), _result(CheckStatus.OK)]
+        )
+        is CheckStatus.WARNING
+    )
+    assert (
+        diagnostics_module.banner_status(
+            [
+                _result(CheckStatus.WARNING),
+                _result(CheckStatus.MISSING, critical=True),
+            ]
+        )
+        is CheckStatus.MISSING
+    )
+
+
 @pytest.mark.skipif(
     diagnostics_module.GTK_AVAILABLE, reason="headless shim only without PyGObject"
 )

@@ -49,6 +49,13 @@ FAMILY_LABELS: dict[str, str] = {
     "arch": "Arch Linux",
 }
 
+#: CSS class per global banner state (see ``clamguardian/ui/style.css``).
+BANNER_CSS_CLASSES: dict[CheckStatus, str] = {
+    CheckStatus.OK: "cg-banner-ok",
+    CheckStatus.WARNING: "cg-banner-warning",
+    CheckStatus.MISSING: "cg-banner-error",
+}
+
 
 def status_icon(status: CheckStatus) -> str:
     """Return the symbolic icon name for *status*."""
@@ -62,16 +69,17 @@ def banner_content(results: Sequence[CheckResult]) -> tuple[str, str, str]:
     failures lead with an actionable title, warnings are surfaced but never
     dressed up as failures, and a fully healthy system says so.
     """
+    status = banner_status(results)
     missing = critical_missing(results)
     counts = summarize(results)
-    if missing:
+    if status is CheckStatus.MISSING:
         names = ", ".join(result.label for result in missing)
         return (
             STATUS_ICONS[CheckStatus.MISSING],
             "Action needed",
             f"Critical dependencies are missing: {names}. Scanning will not work until fixed.",
         )
-    if counts["warning"]:
+    if status is CheckStatus.WARNING:
         warning_count = counts["warning"]
         return (
             STATUS_ICONS[CheckStatus.WARNING],
@@ -84,6 +92,15 @@ def banner_content(results: Sequence[CheckResult]) -> tuple[str, str, str]:
         "Ready to scan",
         "All ClamGuardian dependencies were found on this system.",
     )
+
+
+def banner_status(results: Sequence[CheckResult]) -> CheckStatus:
+    """Return the worst state across *results* (missing > warning > ok)."""
+    if critical_missing(results):
+        return CheckStatus.MISSING
+    if summarize(results)["warning"]:
+        return CheckStatus.WARNING
+    return CheckStatus.OK
 
 
 if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
@@ -144,6 +161,10 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             self._banner.set_icon_name(icon)
             self._banner.set_title(GLib.markup_escape_text(title))
             self._banner.set_description(GLib.markup_escape_text(description))
+            self._banner.add_css_class("cg-status-banner")
+            for css_class in BANNER_CSS_CLASSES.values():
+                self._banner.remove_css_class(css_class)
+            self._banner.add_css_class(BANNER_CSS_CLASSES[banner_status(self._checks)])
 
             # PreferencesPage.remove() only accepts groups, so a re-render
             # swaps in a fresh page instead of mutating children in place.
@@ -203,10 +224,12 @@ else:
 
 
 __all__ = [
+    "BANNER_CSS_CLASSES",
     "FAMILY_LABELS",
     "GTK_AVAILABLE",
     "STATUS_ICONS",
     "DiagnosticsPage",
     "banner_content",
+    "banner_status",
     "status_icon",
 ]

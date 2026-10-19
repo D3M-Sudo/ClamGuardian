@@ -78,10 +78,15 @@ ignore_missing_imports = true
 # Dual implementation modules: GTK classes are conditionally defined
 # (real widgets or headless import-safety shims), which mypy cannot model.
 module = [
+    "clamguardian.ui.about",
     "clamguardian.ui.database_pages",
+    "clamguardian.ui.dialogs",
     "clamguardian.ui.diagnostics_page",
     "clamguardian.ui.app",
     "clamguardian.ui.history_page",
+    "clamguardian.ui.notifications",
     "clamguardian.ui.quarantine_page",
+    "clamguardian.ui.settings_page",
+    "clamguardian.ui.theme",
 ]
 disable_error_code = ["attr-defined", "no-redef", "misc", "assignment"]

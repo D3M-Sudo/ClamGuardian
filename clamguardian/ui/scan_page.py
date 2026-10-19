@@ -19,6 +19,10 @@ from typing import TYPE_CHECKING
 
 from ..core.base import ScanResult, ScanStatus
 from ..core.profiles import DEFAULT_REGISTRY, ScanProfile, resolve_profile
+from ..core.settings import DEFAULT_PROFILE_ID, profile_index
+
+if TYPE_CHECKING:
+    from ..core.quarantine import QuarantineEntry
 
 try:  # pragma: no cover - exercised only on systems with PyGObject
     import gi
@@ -43,6 +47,27 @@ SCOPE_OPTIONS: tuple[tuple[str, bool, str], ...] = (
 
 #: Elapsed-time refresh interval (seconds).
 _TICK_INTERVAL_SECONDS = 1
+
+#: Suffix of a canonical ClamAV detection line.
+_DETECTION_SUFFIX = " FOUND"
+
+
+def parse_detection(line: str) -> tuple[Path | None, str]:
+    """Split a ClamAV ``<path>: <signature> FOUND`` line.
+
+    Returns ``(path, signature)``.  Only the *last* ``": "`` separator is
+    used, because file paths may themselves contain ``": "``.  If the line
+    does not follow the canonical format, returns ``(None, line)`` so callers
+    can still display it.
+    """
+    stripped = line.strip()
+    if not stripped.endswith(_DETECTION_SUFFIX):
+        return None, stripped
+    payload = stripped[: -len(_DETECTION_SUFFIX)]
+    path_text, separator, signature = payload.rpartition(": ")
+    if not separator or not path_text:
+        return None, stripped
+    return Path(path_text), signature.strip()
 
 
 def _active_profile_id(combo: Adw.ComboRow) -> str | None:
@@ -118,22 +143,6 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             else:
                 self.widget.set_subtitle(subtitle)
 
-    def _alert_dialog(heading: str, body: str) -> Adw.Dialog:
-        """Build a modal alert, compatible with Libadwaita < 1.5.
-
-        Mirrors the helper in :mod:`clamguardian.ui.app` so this module never
-        reaches into private names of another module.
-        """
-        if hasattr(Adw, "AlertDialog"):
-            dialog = Adw.AlertDialog(heading=heading, body=body)
-            dialog.add_response("ok", "OK")
-            return dialog
-        dialog = Adw.MessageDialog(heading=heading, body=body)
-        dialog.add_response("ok", "OK")
-        dialog.set_default_response("ok")
-        dialog.set_close_response("ok")
-        return dialog
-
     class ScanPage:
         """Target chooser, profile dropdown, Scan/Cancel and result card."""
 
@@ -142,13 +151,19 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             controller: ShieldTaskController,
             *,
             record_scan: Callable[[ScanResult], Awaitable[None]] | None = None,
+            quarantine: Callable[[Path], Awaitable[QuarantineEntry]] | None = None,
+            on_quarantined: Callable[[], None] | None = None,
+            default_profile_id: str | None = DEFAULT_PROFILE_ID,
         ) -> None:
             self._controller = controller
             self._record_scan = record_scan
+            self._quarantine = quarantine
+            self._on_quarantined = on_quarantined
             self._in_flight = False
             self._elapsed = 0.0
             self._timer_id: int | None = None
             self._result: ScanResult | None = None
+            self._target: Path | None = None
 
             self._root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
             self._root.set_vexpand(True)
@@ -161,7 +176,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             self._scan_button = self._build_scan_button(scan_group)
             self._target_row = self._build_target_row()
             self._scope_row = self._build_scope_row()
-            self._profile_row = self._build_profile_row()
+            self._profile_row = self._build_profile_row(default_profile_id)
 
             scan_group.add(self._target_row)
             scan_group.add(self._scope_row)
@@ -215,11 +230,16 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             """The most recent scan result, or ``None`` before the first scan."""
             return self._result
 
+        def set_default_profile(self, profile_id: str | None) -> None:
+            """Update the preselected profile (called when settings change)."""
+            self._profile_row.set_selected(profile_index(profile_id or DEFAULT_PROFILE_ID))
+
         # -- internals -----------------------------------------------------
 
         def _build_scan_button(self, group: Adw.PreferencesGroup) -> Gtk.Widget:
             button = _button_row("Scan", "system-run-symbolic")
             button.add_css_class("suggested-action")
+            button.add_css_class("cg-scan-button")
             button.connect("activated", self._on_scan_clicked)
             group.add(button)
             return button
@@ -251,11 +271,11 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             row.set_selected(0)
             return row
 
-        def _build_profile_row(self) -> Adw.ComboRow:
+        def _build_profile_row(self, default_profile_id: str | None) -> Adw.ComboRow:
             profiles = DEFAULT_REGISTRY.list()
             model = Gtk.StringList.new([profile.name for profile in profiles])
             row = Adw.ComboRow(title="Profile", model=model)
-            row.set_selected(0)
+            row.set_selected(profile_index(default_profile_id or DEFAULT_PROFILE_ID))
             row.set_activatable(False)
             return row
 
@@ -278,6 +298,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
         ) -> None:
             self._in_flight = True
             self._elapsed = 0.0
+            self._target = target
             self._result = None
             self._result_group.set_visible(False)
             _remove_all_children(self._threats_list)
@@ -318,20 +339,85 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
         def _on_threat_detected(
             self, _controller: object, _target: str, threat: str
         ) -> None:
-            row = Adw.ActionRow(title=GLib.markup_escape_text(threat))
+            path, signature = parse_detection(threat)
+            if path is not None:
+                title = path.name or str(path)
+                subtitle = f"{signature}  ·  {path}" if signature else str(path)
+            else:
+                title, subtitle = threat, ""
+            row = Adw.ActionRow(
+                title=GLib.markup_escape_text(title),
+                subtitle=GLib.markup_escape_text(subtitle),
+            )
+            row.add_css_class("cg-threat-row")
             row.set_icon_name("dialog-error-symbolic")
             row.set_activatable(False)
+            if (
+                path is not None
+                and self._quarantine is not None
+                and path.is_file()
+            ):
+                button = Gtk.Button(label="Quarantine")
+                button.add_css_class("destructive-action")
+                button.set_valign(Gtk.Align.CENTER)
+                button.connect("clicked", self._on_quarantine_clicked, path)
+                row.add_suffix(button)
             self._threats_list.add(row)
+
+        def _on_quarantine_clicked(self, button: Gtk.Button, path: Path) -> None:
+            if self._quarantine is None:
+                return
+            from .dialogs import alert_dialog, top_level_window
+
+            dialog = alert_dialog(
+                "Quarantine file?",
+                (
+                    f"{path}\n\n"
+                    "The file will be encrypted into the quarantine vault and the "
+                    "original will be removed from its current location."
+                ),
+                responses=(("cancel", "Cancel"), ("quarantine", "Quarantine")),
+                default_response="cancel",
+                close_response="cancel",
+            )
+            dialog.connect("response", self._on_quarantine_confirmed, button, path)
+            window = top_level_window(self._root)
+            if window is not None:
+                dialog.present(window)
+
+        def _on_quarantine_confirmed(
+            self,
+            _dialog: object,
+            response: str,
+            button: Gtk.Button,
+            path: Path,
+        ) -> None:
+            if response != "quarantine" or self._quarantine is None:
+                return
+            from .database_pages import run_async
+
+            button.set_sensitive(False)
+            button.set_label("Quarantining…")
+
+            def _done(_result: object, error: Exception | None) -> None:
+                if error is not None:
+                    button.set_label("Quarantine")
+                    button.set_sensitive(True)
+                    self._show_error("Quarantine failed", str(error))
+                    return
+                button.set_label("Quarantined")
+                button.set_sensitive(False)
+                if self._on_quarantined is not None:
+                    self._on_quarantined()
+
+            run_async(self._quarantine(path), _done)
 
         def _on_scan_finished(self, _controller: object, result: ScanResult) -> None:
             self._finish(result)
 
         def _on_scan_cancelled(self, _controller: object, _target_label: str) -> None:
-            self._finish(
-                ScanResult.cancelled(
-                    str(Path.home())
-                )  # target label only; path not carried by the signal
-            )
+            target = self._target or Path.home()
+            self._finish(ScanResult.cancelled(str(target)))
 
         def _finish(self, result: ScanResult) -> None:
             self._in_flight = False
@@ -381,19 +467,22 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     description=result.error
                     or f"Scan ended with status {result.status.value}.",
                 )
+            self._result_status.add_css_class("cg-status-banner")
+            banner_class = {
+                ScanStatus.CLEAN: "cg-banner-ok",
+                ScanStatus.INFECTED: "cg-banner-error",
+                ScanStatus.CANCELLED: "cg-banner-warning",
+            }.get(result.status, "cg-banner-error")
+            self._result_status.add_css_class(banner_class)
             self._result_group.add(self._result_status)
 
         def _show_error(self, heading: str, body: str) -> None:
-            dialog = _alert_dialog(heading, body)
-            window = self._top_level()
+            from .dialogs import alert_dialog, top_level_window
+
+            dialog = alert_dialog(heading, body)
+            window = top_level_window(self._root)
             if window is not None:
                 dialog.present(window)
-
-        def _top_level(self) -> Gtk.Window | None:
-            widget: Gtk.Widget = self._root
-            while getattr(widget, "get_parent", lambda: None)() is not None:
-                widget = widget.get_parent()
-            return widget
 
         def _on_cancel_clicked(self, _button: Gtk.Widget) -> None:
             self._controller.cancel_all()
@@ -414,4 +503,4 @@ else:
     ScanPage = _ScanPageShim  # type: ignore[assignment, misc]
 
 
-__all__ = ["GTK_AVAILABLE", "ScanPage", "SCOPE_OPTIONS"]
+__all__ = ["GTK_AVAILABLE", "SCOPE_OPTIONS", "ScanPage", "parse_detection"]

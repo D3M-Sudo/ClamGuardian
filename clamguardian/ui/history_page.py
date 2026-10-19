@@ -75,6 +75,11 @@ def format_timestamp(value: datetime) -> str:
     return value.strftime("%Y-%m-%d %H:%M")
 
 
+def _as_records(result: object) -> list:
+    """Coerce an async callback payload into a list of records."""
+    return list(result) if isinstance(result, (list, tuple)) else []
+
+
 if TYPE_CHECKING:
     pass
 
@@ -136,8 +141,9 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             # -- initial load ----------------------------------------------
             from .database_pages import run_async
 
-            def _done(_result: object, error: Exception | None) -> None:
+            def _done(result: object, error: Exception | None) -> None:
                 if error is None:
+                    self._records = _as_records(result)
                     self._render()
 
             run_async(self._load_records(), _done)
@@ -148,6 +154,17 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
         def root(self) -> Gtk.Widget:
             """The top-level widget to embed into the application shell."""
             return self._root
+
+        def refresh(self) -> None:
+            """Reload the list from the store (called when the page is shown)."""
+            from .database_pages import run_async
+
+            def _done(result: object, error: Exception | None) -> None:
+                if error is None:
+                    self._records = _as_records(result)
+                    self._render()
+
+            run_async(self._load_records(), _done)
 
         # -- internals -----------------------------------------------------
 
@@ -217,8 +234,9 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 self._status_filter = None
             from .database_pages import run_async
 
-            def _done(_result: object, error: Exception | None) -> None:
+            def _done(result: object, error: Exception | None) -> None:
                 if error is None:
+                    self._records = _as_records(result)
                     self._render()
 
             run_async(self._load_records(), _done)
@@ -232,8 +250,9 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 self._limit = limits[index]
             from .database_pages import run_async
 
-            def _done(_result: object, error: Exception | None) -> None:
+            def _done(result: object, error: Exception | None) -> None:
                 if error is None:
+                    self._records = _as_records(result)
                     self._render()
 
             run_async(self._load_records(), _done)
@@ -342,7 +361,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             def _done(_result: object, error: Exception | None) -> None:
                 self._detail_dialog = None
                 if error is None:
-                    self._render()
+                    self.refresh()
 
             run_async(self._history_store.clear_history(), _done)
 

@@ -2,19 +2,20 @@
 
 The page lists encrypted vault entries from a
 :class:`~clamguardian.core.quarantine.QuarantineVault`, providing restore to an
-arbitrary destination and delete. Each record is rendered under the control of
-the injected vault, so the UI stays testable and layer-isolated.
+arbitrary destination and delete.  Every vault call is synchronous by design
+(the ciphertext is streamed in chunks); the page wraps those calls in a
+coroutine so they run off the GTK main loop through ``run_async``.
 
-The module is import-safe on headless systems without PyGObject, following the
-shim pattern of :mod:`clamguardian.ui.database_pages`.
+The module is import-safe on headless systems without PyGObject, following
+the shim pattern of :mod:`clamguardian.ui.database_pages`.
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from ..core.quarantine import QuarantineEntry, QuarantineVault
 from .quarantine_key import QuarantineKeyManager
@@ -53,8 +54,20 @@ def format_timestamp(value: datetime) -> str:
     return value.strftime("%Y-%m-%d %H:%M")
 
 
-if TYPE_CHECKING:  # pragma: no cover
-    pass
+def format_size(size: int) -> str:
+    """Format a byte count for a row subtitle."""
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f} KiB"
+    return f"{size / 1024 / 1024:.1f} MiB"
+
+
+def _as_entries(result: object) -> list[QuarantineEntry]:
+    """Coerce an async callback payload into a list of vault entries."""
+    if not isinstance(result, (list, tuple)):
+        return []
+    return [entry for entry in result if isinstance(entry, QuarantineEntry)]
 
 
 if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
@@ -69,198 +82,296 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             key_manager: QuarantineKeyManager | None = None,
         ) -> None:
             self._vault = vault
+            # Kept for API compatibility with the shell; the vault already
+            # owns the key it was constructed with, so restore/delete do not
+            # need the manager.
             self._key_manager = key_manager
             self._entries: list[QuarantineEntry] = []
             self._rows: dict[str, Adw.ActionRow] = {}
-            self._selection: str | None = None
-            self._detail_dialog: Adw.Dialog | Adw.MessageDialog | None = None
+            self._detail_dialog: object | None = None
 
             self._root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
             self._root.set_vexpand(True)
             self._root.set_hexpand(True)
 
-            # -- Quarantine card -------------------------------------------
-            group = Adw.PreferencesGroup(title="Quarantine")
-            group.set_margin_start(12)
-            group.set_margin_end(12)
-            group.set_margin_top(8)
-            group.set_margin_bottom(8)
+            self._group = Adw.PreferencesGroup(title="Quarantine")
+            self._group.set_margin_start(12)
+            self._group.set_margin_end(12)
+            self._group.set_margin_top(8)
+            self._group.set_margin_bottom(8)
 
-            purge_button = Gtk.Button(label="Delete selected")
-            purge_button.add_css_class("flat")
-            purge_button.set_visible(False)
-            purge_button.connect("clicked", self._on_delete_clicked)
-            group.set_header_suffix(purge_button)
+            refresh_button = Gtk.Button(label="Refresh")
+            refresh_button.add_css_class("flat")
+            refresh_button.connect("clicked", self._on_refresh_clicked)
+            self._group.set_header_suffix(refresh_button)
 
-            self._state_row = Gtk.Label(label="")
-            group.add(self._state_row)
-            self._empty_page = Adw.StatusPage(
-                icon_name="emblem-system-symbolic",
-                title="Quarantine is empty",
-                description="Drag and drop files on the Scan page to quarantine them.",
+            self._summary_row = Adw.ActionRow(
+                title="Encrypted vault",
+                subtitle="Loading…",
+                activatable=False,
             )
-            group.add(self._empty_page)
+            self._summary_row.add_prefix(
+                Gtk.Image(icon_name="channel-secure-symbolic")
+            )
+            self._group.add(self._summary_row)
 
-            self._root.append(group)
+            self._empty_page = Adw.StatusPage(
+                icon_name="channel-secure-symbolic",
+                title="Quarantine is empty",
+                description=(
+                    "Quarantine a detected file from the Scan page to see it here."
+                ),
+            )
             self._empty_page.set_visible(False)
+            self._group.add(self._empty_page)
 
-            # -- initial load ----------------------------------------------
-            from .database_pages import run_async
+            self._root.append(self._group)
+            self.refresh()
 
-            def _done(_result: object, error: Exception | None) -> None:
-                if error is None:
-                    self._render()
-                elif isinstance(error, ValueError):
-                    self._state_row.set_label(f"Error: {error}")
-                    self._state_row.set_visible(True)
-
-            run_async(self._load_entries(), _done)
-
-        # -- public API --------------------------------------------------
+        # -- public API ----------------------------------------------------
 
         @property
         def root(self) -> Gtk.Widget:
             """The top-level widget to embed into the application shell."""
             return self._root
 
-        # -- internals ---------------------------------------------------
+        @property
+        def entries(self) -> tuple[QuarantineEntry, ...]:
+            """The entries currently displayed."""
+            return tuple(self._entries)
 
-        def _load_entries(self) -> list[QuarantineEntry]:
-            return list(self._vault.list_entries())
+        def refresh(self) -> None:
+            """Reload the vault list off the GTK loop."""
+            from .database_pages import run_async
+
+            async def _load() -> list[QuarantineEntry]:
+                return list(self._vault.list_entries())
+
+            def _done(result: object, error: Exception | None) -> None:
+                if error is not None:
+                    self._summary_row.set_subtitle(f"Could not read the vault: {error}")
+                    return
+                self._entries = _as_entries(result)
+                self._render()
+
+            run_async(_load(), _done)
+
+        # -- rendering -----------------------------------------------------
 
         def _render(self) -> None:
-            purge_button = self._root.get_parent()  # placeholder for header suffix
-            self._empty_page.set_visible(not self._entries)
-            purge_button.set_visible(bool(self._selection))
-            self._state_row.set_visible(False)
-
-            for row in list(self._rows.values()):
-                self._root.remove(row)
+            for row in self._rows.values():
+                self._group.remove(row)
             self._rows = {}
-            self._selection = None
+
+            self._summary_row.set_subtitle(
+                f"{len(self._entries)} encrypted record(s)"
+                if self._entries
+                else "No quarantined files"
+            )
+            self._empty_page.set_visible(not self._entries)
 
             for entry in self._entries:
                 row = self._build_record_row(entry)
-                self._root.append(row)
+                self._group.add(row)
                 self._rows[entry.item_id] = row
 
-        def _build_record_row(self, entry: QuarantineEntry) -> Adw.ActionRow:
-            icon = Gtk.Image(icon_name="quarantine-symbolic")
-            icon.set_valign(Gtk.Align.CENTER)
+            # PreferencesGroup.add appends: keep the empty state last.
+            self._group.remove(self._empty_page)
+            self._group.add(self._empty_page)
 
+        def _build_record_row(self, entry: QuarantineEntry) -> Adw.ActionRow:
             created = datetime.fromtimestamp(entry.created_at)
             subtitle = (
-                f"{GLib.markup_escape_text(entry.original_name)}  ·  "
-                f"{entry.size / 1024 / 1024:.1f} MiB  ·  "
-                f"{format_timestamp(created)}"
+                f"{format_size(entry.size)}  ·  {format_timestamp(created)}  ·  "
+                f"{entry.original_path}"
             )
-
             row = Adw.ActionRow(
                 title=GLib.markup_escape_text(entry.original_name),
                 subtitle=GLib.markup_escape_text(subtitle),
             )
-            row.add_suffix(icon)
+            row.add_prefix(Gtk.Image(icon_name="channel-secure-symbolic"))
+            row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
             row.set_activatable(True)
-            row.connect("activated", self._on_entry_activated, entry.item_id)
+            row.connect("activated", self._on_entry_activated, entry)
             return row
 
-        def _on_entry_activated(self, _row: Adw.ActionRow, _record: object, item_id: str) -> None:
-            self._selection = item_id
-            self._restore(item_id)
+        def _on_entry_activated(self, _row: Adw.ActionRow, entry: QuarantineEntry) -> None:
+            self._show_details(entry)
 
-        def _restore(self, item_id: str) -> None:
-            if self._key_manager is None:
-                self._show_error("Quarantine key missing", "No key manager is available.")
-                return
+        # -- detail / restore / delete -------------------------------------
 
-            from .database_pages import run_async
+        def _show_details(self, entry: QuarantineEntry) -> None:
+            from .dialogs import alert_dialog, top_level_window
 
-            destination = self._pick_destination()
-            if destination is None:
-                return
-
-            def _done(result: object, error: Exception | None) -> None:
-                if error is None:
-                    self._show_ok("Restored", str(result))
-                else:
-                    self._show_error("Restore failed", str(error))
-                self._load_entries()
-
-            run_async(self._vault.restore(item_id, Path(destination)), _done)
-
-        def _show_ok(self, heading: str, body: str) -> None:
-            dialog = Adw.AlertDialog(heading=heading, body=body)
-            dialog.add_response("ok", "OK")
-            window = self._top_level()
-            if window is not None:
-                dialog.present(window)
-
-        @staticmethod
-        def _pick_destination() -> str | None:
-            """Ask the user for a restore destination (folder chooser)."""
-            from gi.repository import Gtk
-
-            dialog = Gtk.FileChooserNative.new(
-                "Select restore destination",
-                None,
-                Gtk.FileChooserAction.SELECT_FOLDER,
-                ("Cancel", Gtk.ResponseType.CANCEL),
-                ("Select", Gtk.ResponseType.ACCEPT),
+            self._close_detail()
+            created = datetime.fromtimestamp(entry.created_at)
+            body = "\n".join(
+                [
+                    f"Original path: {GLib.markup_escape_text(entry.original_path)}",
+                    f"Size: {format_size(entry.size)}",
+                    f"Quarantined: {format_timestamp(created)}",
+                    "",
+                    "Restoring writes the file back to a folder you choose. "
+                    "Deleting removes the encrypted record permanently.",
+                ]
             )
-            dialog.set_default_size(600, 400)
-            response = dialog.run()
-            destination = None
-            if response == Gtk.ResponseType.ACCEPT:
-                destination = dialog.get_filename()
-            dialog.destroy()
-            return destination
-
-        def _show_error(self, heading: str, body: str) -> None:
-            dialog = Adw.AlertDialog(heading=heading, body=body)
-            dialog.add_response("ok", "OK")
-            window = self._top_level()
+            dialog = alert_dialog(
+                "Quarantined file",
+                body,
+                responses=(
+                    ("close", "Close"),
+                    ("restore", "Restore"),
+                    ("delete", "Delete"),
+                ),
+                default_response="close",
+                close_response="close",
+            )
+            dialog.connect("response", self._on_detail_response, entry)
+            self._detail_dialog = dialog
+            window = top_level_window(self._root)
             if window is not None:
                 dialog.present(window)
 
-        def _top_level(self) -> Gtk.Window | None:
-            widget: Gtk.Widget = self._root
-            while getattr(widget, "get_parent", lambda: None)() is not None:
-                widget = widget.get_parent()
-            return widget
+        def _on_detail_response(
+            self, _dialog: object, response: str, entry: QuarantineEntry
+        ) -> None:
+            self._detail_dialog = None
+            if response == "restore":
+                self._choose_destination(entry)
+            elif response == "delete":
+                self._confirm_delete(entry)
 
-        def _on_delete_clicked(self, _button: Gtk.Button) -> None:
-            if self._selection is None:
+        def _choose_destination(self, entry: QuarantineEntry) -> None:
+            """Ask for a folder and restore *entry* there."""
+
+            def _restore_to(destination: Path | None) -> None:
+                if destination is None:
+                    return
+                from .database_pages import run_async
+
+                async def _restore() -> Path:
+                    return self._vault.restore(entry.item_id, destination)
+
+                def _done(result: object, error: Exception | None) -> None:
+                    if error is not None:
+                        self._show_error("Restore failed", str(error))
+                        return
+                    self._show_info("Restored", str(result))
+                    self.refresh()
+
+                run_async(_restore(), _done)
+
+            self._pick_destination(_restore_to)
+
+        def _pick_destination(self, on_selected) -> None:
+            """Ask for a folder asynchronously (no GTK3 ``run()``)."""
+            window = self._top_level()
+
+            if hasattr(Gtk, "FileDialog"):
+                dialog = Gtk.FileDialog(title="Select restore destination")
+
+                def _done(source: Gtk.FileDialog, result: object) -> None:
+                    try:
+                        folder = source.select_folder_finish(result)
+                    except GLib.Error:
+                        return
+                    path = folder.get_path() if folder is not None else None
+                    on_selected(Path(path) if path else None)
+
+                dialog.select_folder(window, None, _done)
                 return
-            item_id = self._selection
-            dialog = Adw.AlertDialog(
-                heading="Delete quarantine entry",
-                body=(
-                    "This will permanently remove the encrypted record and cannot "
+
+            if hasattr(Gtk, "FileChooserNative"):  # pragma: no cover - older GTK4
+                chooser = Gtk.FileChooserNative.new(
+                    "Select restore destination",
+                    window,
+                    Gtk.FileChooserAction.SELECT_FOLDER,
+                    "Select",
+                    "Cancel",
+                )
+
+                def _response(dialog: object, response: int) -> None:
+                    filename = (
+                        dialog.get_filename()
+                        if response == Gtk.ResponseType.ACCEPT
+                        else None
+                    )
+                    dialog.destroy()
+                    on_selected(Path(filename) if filename else None)
+
+                chooser.connect("response", _response)
+                chooser.show()
+                return
+
+            self._show_error(  # pragma: no cover - very old GTK4
+                "No folder picker available",
+                "This GTK version does not provide a folder chooser.",
+            )
+
+        def _confirm_delete(self, entry: QuarantineEntry) -> None:
+            from .dialogs import alert_dialog, top_level_window
+
+            dialog = alert_dialog(
+                "Delete quarantine entry",
+                (
+                    f"{GLib.markup_escape_text(entry.original_name)}\n\n"
+                    "This permanently removes the encrypted record and cannot "
                     "be undone. Continue?"
                 ),
+                responses=(("cancel", "Cancel"), ("delete", "Delete")),
+                default_response="cancel",
+                close_response="cancel",
             )
-            dialog.add_response("cancel", "Cancel")
-            dialog.add_response("delete", "Delete")
-            dialog.set_default_response("cancel")
-            dialog.set_close_response("cancel")
-            dialog.connect("response", self._on_delete_confirmed, item_id)
-            self._detail_dialog = dialog
-            top = self._top_level()
-            if top is not None:
-                dialog.present(top)
+            dialog.connect("response", self._on_delete_confirmed, entry)
+            window = top_level_window(self._root)
+            if window is not None:
+                dialog.present(window)
 
-        def _on_delete_confirmed(self, _dialog: object, response: str, item_id: str) -> None:
+        def _on_delete_confirmed(
+            self, _dialog: object, response: str, entry: QuarantineEntry
+        ) -> None:
             if response != "delete":
-                self._detail_dialog = None
                 return
             from .database_pages import run_async
 
-            def _done(_result: object, error: Exception | None) -> None:
-                self._detail_dialog = None
-                if error is None:
-                    self._load_entries()
+            async def _delete() -> None:
+                self._vault.delete(entry.item_id)
 
-            run_async(self._vault.delete(item_id), _done)  # type: ignore[func-returns-value]
+            def _done(_result: object, error: Exception | None) -> None:
+                if error is not None:
+                    self._show_error("Delete failed", str(error))
+                    return
+                self.refresh()
+
+            run_async(_delete(), _done)
+
+        # -- helpers -------------------------------------------------------
+
+        def _on_refresh_clicked(self, _button: Gtk.Button) -> None:
+            self.refresh()
+
+        def _close_detail(self) -> None:
+            if self._detail_dialog is None:
+                return
+            with contextlib.suppress(Exception):
+                self._detail_dialog.close()
+            self._detail_dialog = None
+
+        def _show_info(self, heading: str, body: str) -> None:
+            from .dialogs import alert_dialog, top_level_window
+
+            dialog = alert_dialog(heading, body)
+            window = top_level_window(self._root)
+            if window is not None:
+                dialog.present(window)
+
+        def _show_error(self, heading: str, body: str) -> None:
+            self._show_info(heading, body)
+
+        def _top_level(self) -> Gtk.Window | None:
+            from .dialogs import top_level_window
+
+            return top_level_window(self._root)
 
 else:
 
@@ -268,11 +379,18 @@ else:
         """Import-safety shim used on headless systems without PyGObject."""
 
         def __init__(self, *args: object, **kwargs: object) -> None:
-                del args, kwargs
-                raise RuntimeError(
+            del args, kwargs
+            raise RuntimeError(
                 "QuarantinePage requires PyGObject with GTK 4 and Libadwaita; "
-                    "install the 'gtk' extra or use `clamguardian doctor` instead"
-                )
+                "install the 'gtk' extra or use `clamguardian doctor` instead"
+            )
 
 
-__all__ = ["GTK_AVAILABLE", "QuarantinePage", "STATE_ICONS", "STATE_LABELS", "format_timestamp"]
+__all__ = [
+    "GTK_AVAILABLE",
+    "QuarantinePage",
+    "STATE_ICONS",
+    "STATE_LABELS",
+    "format_size",
+    "format_timestamp",
+]

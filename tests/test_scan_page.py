@@ -61,6 +61,33 @@ def test_module_exposes_boolean_gtk_flag() -> None:
     assert isinstance(scan_page_module.GTK_AVAILABLE, bool)
 
 
+def test_parse_detection_splits_path_and_signature() -> None:
+    path, signature = scan_page_module.parse_detection(
+        "/tmp/eicar.com.txt: Eicar-Test-Signature FOUND"
+    )
+    assert path == Path("/tmp/eicar.com.txt")
+    assert signature == "Eicar-Test-Signature"
+
+
+def test_parse_detection_handles_colons_in_the_path() -> None:
+    path, signature = scan_page_module.parse_detection(
+        "/tmp/a: b/file.txt: Win.Trojan.Agent FOUND"
+    )
+    assert path == Path("/tmp/a: b/file.txt")
+    assert signature == "Win.Trojan.Agent"
+
+
+def test_parse_detection_rejects_non_canonical_lines() -> None:
+    assert scan_page_module.parse_detection("clean.txt: OK") == (
+        None,
+        "clean.txt: OK",
+    )
+    assert scan_page_module.parse_detection("Eicar-Test-Signature FOUND") == (
+        None,
+        "Eicar-Test-Signature FOUND",
+    )
+
+
 @pytest.mark.skipif(
     scan_page_module.GTK_AVAILABLE, reason="headless shim only without PyGObject"
 )
