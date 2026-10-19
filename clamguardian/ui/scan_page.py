@@ -238,7 +238,9 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 row.set_icon_name("folder-symbolic")
             else:
                 row.add_prefix(Gtk.Image(icon_name="folder-symbolic"))
-            row.set_placeholder_text("e.g. /home/user/Documents")
+            # Adw.EntryRow shows its title as placeholder text; Gtk.Entry's
+            # set_placeholder_text() does not exist on it.
+            row.set_tooltip_text("e.g. /home/user/Documents")
             row.set_text(str(Path.home()))
             return row
 
