@@ -19,13 +19,17 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture(scope="module")
 def gtk_app():
-    """One registered application shared by the widget tests."""
+    """One registered application shared by the widget tests.
+
+    PyGObject does not expose ``Gio.Application.unregister()``, so the
+    application lives for the duration of the pytest process; no other test
+    module registers a ``ClamGuardianApp``.
+    """
     from clamguardian.ui.app import ClamGuardianApp
 
     app = ClamGuardianApp()
     assert app.register()
     yield app
-    app.unregister()
 
 
 def test_shell_exposes_every_page_and_switches_between_them(
