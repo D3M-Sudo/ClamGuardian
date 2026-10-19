@@ -166,11 +166,10 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             scan_group.add(self._target_row)
             scan_group.add(self._scope_row)
             scan_group.add(self._profile_row)
-            scan_group.add(self._scan_button)
             self._root.append(scan_group)
             # -- in-flight banner ------------------------------------------
             self._inflight_group = Adw.PreferencesGroup(title="Scan in progress")
-            self._progress = Adw.ProgressBar()
+            self._progress = Gtk.ProgressBar()
             self._progress.set_show_text(True)
             self._progress.set_text("Scanning…")
             self._progress.pulse()
