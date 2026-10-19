@@ -1,6 +1,6 @@
 # ClamGuardian Implementation Roadmap
 
-*Last updated: 2026-10-19 — baseline `v1.0.0` released; Desktop Application (GTK4) Phases D1–D4 implemented on `feature` (local gate: ruff, mypy, pytest; final CI run pending). Phase D4 adds Settings, About, notifications, theme, window chrome and quarantine wiring; docs updated (see handoff). Future versions are planning targets, not promised releases or dates.*
+*Last updated: 2026-10-19 — baseline `v1.0.0` released; Desktop Application (GTK4) Phases D1–D4 implemented on `feature` @ `44ca472` (CI green: ruff, mypy, pytest on 3.11/3.12/3.13; Release Gate green including GTK smoke and Flatpak local build). Phase D4 adds Settings, About, notifications, theme, window chrome and quarantine wiring; manual desktop validation pending. Future versions are planning targets, not promised releases or dates.*
 
 This document outlines the authoritative development roadmap for ClamGuardian, tracking completed milestones, in-progress targets, and future architectural phases.
 

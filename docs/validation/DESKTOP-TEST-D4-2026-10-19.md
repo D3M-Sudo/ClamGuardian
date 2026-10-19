@@ -21,7 +21,7 @@ records the D4 session.
 | Libadwaita version | _e.g. 1.5.0 / 1.9.x_ |
 | CPU / arch | _e.g. x86_64_ |
 | Install method | _Flatpak bundle / `pip install` from source_ |
-| Commit under test | `feature` @ _sha (git log -1)_ |
+| Commit under test | `feature` @ `44ca472` (D4 code; later docs-only commits do not change the UI) |
 | `flatpak --version` | _x.y.z_ |
 | Host `clamscan --version` | _e.g. ClamAV x.y.z_ |
 | Host `clamd` running | _yes / no_ |

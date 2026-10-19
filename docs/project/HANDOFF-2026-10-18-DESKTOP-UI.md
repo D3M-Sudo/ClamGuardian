@@ -22,9 +22,10 @@ tests:    279 passing (pytest), ruff + mypy green, CI + Release Gate green
 
 D4 update (2026-10-19): Phase 4 implemented on the working branch
 `cline/q41cvf1r`, on top of `feature` @ `a097265` (the CI Xvfb commit that
-followed `194167c`). The working tree is clean and the local gate is green;
-the commits are promoted to `feature` only after explicit authorization.
-The release-gate inline smoke update is attached as
+followed `194167c`), then fast-forwarded to `feature` @ `44ca472`. Local gate
+green; CI run 39187789150 green on Python 3.11/3.12/3.13; Release Gate run
+39187789165 green (GTK smoke, AppStream, ClamAV, Flatpak local build). The
+release-gate inline smoke update is attached as
 `docs/project/D4-release-gate.patch` (workflow files require a token with
 `workflows` permission); the new widget tests already run under Xvfb in the
 CI `test` job.
