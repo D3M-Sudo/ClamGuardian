@@ -117,6 +117,22 @@ class CheckResult:
 #: Injectable ``shutil.which``-compatible lookup used by the checks.
 WhichFunc = Callable[[str], str | None]
 
+#: Environment markers whose values must never reach a host subprocess.
+_SECRET_ENV_MARKERS = ("TOKEN", "SECRET", "PASSWORD", "API_KEY", "APIKEY", "CREDENTIAL")
+
+
+def _sanitized_environment() -> dict[str, str]:
+    """Inherit the environment without credential-bearing variables.
+
+    ``flatpak-spawn --host`` runs a host binary; there is no reason for it to
+    receive the desktop session's tokens or API keys.
+    """
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if not any(marker in key.upper() for marker in _SECRET_ENV_MARKERS)
+    }
+
 
 def _host_which(name: str) -> str | None:
     """Resolve *name* on the host through ``flatpak-spawn --host``.
@@ -132,6 +148,7 @@ def _host_which(name: str) -> str | None:
             text=True,
             timeout=10,
             check=False,
+            env=_sanitized_environment(),
         )
     except (OSError, subprocess.SubprocessError):
         return None

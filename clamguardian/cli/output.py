@@ -35,6 +35,21 @@ DOCTOR_TAGS: dict[CheckStatus, str] = {
     CheckStatus.MISSING: "MISSING",
 }
 
+#: C0 control characters (plus DEL) escaped before they reach a terminal.
+_CONTROL_TRANSLATION = str.maketrans(
+    {**{code: f"\\x{code:02x}" for code in range(0x20)}, 0x7F: "\\x7f"}
+)
+
+
+def _printable(value: object) -> str:
+    """Escape control characters so scan output cannot spoof the terminal.
+
+    Threat names and paths come from ClamAV output and from the filesystem: an
+    ESC byte in a filename could otherwise inject OSC sequences (hyperlinks,
+    clipboard writes) into the user's terminal.
+    """
+    return str(value).translate(_CONTROL_TRANSLATION)
+
 
 def result_to_payload(result: ScanResult, profile_id: str) -> dict[str, Any]:
     """Serialize *result* into the documented, deterministic JSON contract.
@@ -95,12 +110,12 @@ def format_human(result: ScanResult) -> str:
         lines.insert(1, f"Files scanned: {result.files_scanned}")
     if result.threats:
         threat_lines = ["Threat detected:"]
-        threat_lines.extend(f"  {threat}" for threat in result.threats)
+        threat_lines.extend(f"  {_printable(threat)}" for threat in result.threats)
         lines[1:1] = threat_lines
     if result.error:
-        lines.append(f"Error: {result.error}")
+        lines.append(f"Error: {_printable(result.error)}")
     for key, value in sorted(result.metadata.items()):
-        lines.append(f"{key}: {value}")
+        lines.append(f"{_printable(key)}: {_printable(value)}")
     return "\n".join(lines)
 
 
@@ -124,7 +139,7 @@ def format_history_list(records: list[HistoryRecord]) -> str:
         threats = str(len(record.threats)) if record.threats else "0"
         target = record.target if len(record.target) <= 30 else "…" + record.target[-29:]
         lines.append(
-            f"{started:<20} {record.status:<10} {target:<30} {threats:<10} "
+            f"{started:<20} {record.status:<10} {_printable(target):<30} {threats:<10} "
             f"{record.duration_seconds:>7.2f}s"
         )
     return "\n".join(lines)
@@ -135,7 +150,7 @@ def format_history_record(record: HistoryRecord) -> str:
     lines = [
         f"Scan: {record.id}",
         f"Status: {record.status.upper()}",
-        f"Target: {record.target}",
+        f"Target: {_printable(record.target)}",
         f"Engine: {record.engine}",
         f"Profile: {record.profile_id or '-'}",
         f"Started: {encode_timestamp(record.started_at)}",
@@ -146,12 +161,15 @@ def format_history_record(record: HistoryRecord) -> str:
     ]
     if record.threats:
         lines.append("Detections:")
-        lines.extend(f"  {threat}" for threat in record.threats)
+        lines.extend(f"  {_printable(threat)}" for threat in record.threats)
     if record.error:
-        lines.append(f"Error: {record.error}")
+        lines.append(f"Error: {_printable(record.error)}")
     if record.metadata:
         lines.append("Metadata:")
-        lines.extend(f"  {key}: {value}" for key, value in sorted(record.metadata.items()))
+        lines.extend(
+            f"  {_printable(key)}: {_printable(value)}"
+            for key, value in sorted(record.metadata.items())
+        )
     return "\n".join(lines)
 
 
