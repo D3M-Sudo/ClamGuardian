@@ -103,6 +103,8 @@ jobs:
       - name: Install clamguardian with GTK extra (system Python, GI typelib visible)
         run: python3 -m pip install --break-system-packages '.[gtk]'
       - name: Construct GTK UI, app shell and diagnostics page (headless via Xvfb)
+        env:
+          GTK_A11Y: none
         run: |
           xvfb-run -a python3 << 'PYEOF'
           import tempfile
@@ -118,7 +120,10 @@ jobs:
           view = build_database_navigation(manager)
 
           # Phase D1: application shell + diagnostics page construct cleanly.
+          # `register()` emits GApplication::startup, which GTK requires before
+          # any application window is created.
           app = ClamGuardianApp()
+          assert app.register()
           window = MainWindow(app, manager=manager)
           page = DiagnosticsPage()
           assert page.checks, "diagnostics page must render at least one check"

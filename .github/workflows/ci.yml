@@ -21,7 +21,7 @@ jobs:
       - name: Install GTK/PyGObject build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgirepository-2.0-dev gir1.2-gtk-4.0 gir1.2-adw-1 libcairo2-dev pkg-config python3-dev meson ninja-build
+          sudo apt-get install -y libgirepository-2.0-dev gir1.2-gtk-4.0 gir1.2-adw-1 libcairo2-dev pkg-config python3-dev meson ninja-build xvfb xauth
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
@@ -41,7 +41,12 @@ jobs:
       - name: Type Check
         run: mypy clamguardian
       - name: Test
-        run: pytest
+        # Widget-level tests construct real GTK objects, and GTK4 aborts the
+        # interpreter when no display is available. Xvfb gives them a
+        # headless X server so they run for real instead of being skipped.
+        env:
+          GTK_A11Y: none
+        run: xvfb-run -a pytest
 
   audit:
     name: Dependency audit (pinned runtime set)
