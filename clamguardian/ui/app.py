@@ -217,6 +217,10 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             if page_id:
                 self._stack.set_visible_child_name(page_id)
 
+        async def _store_scan_result(self, result: ScanResult) -> None:
+            """Persist *result* to the history store off the GTK loop."""
+            await self._history_store.record_scan(result)
+
         def _build_page(self, page_id: str, manager: DatabaseManager | None) -> Gtk.Widget:
             icons = {entry_id: icon for entry_id, _label, icon in SIDEBAR_ENTRIES}
             labels = {entry_id: label for entry_id, label, _icon in SIDEBAR_ENTRIES}
@@ -271,10 +275,6 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 missing = critical_missing(self._window._checks)
                 if missing:
                     self._window.show_diagnostics(missing)
-
-        async def _store_scan_result(self, result: ScanResult) -> None:
-            """Persist *result* to the history store off the GTK loop."""
-            await self._history_store.record_scan(result)
 
     def run_ui(argv: Sequence[str] | None = None) -> int:
         """Run the GTK application main loop; returns the exit status."""
