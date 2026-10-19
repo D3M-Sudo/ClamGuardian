@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 
 from ..core.quarantine import _KEY_SIZE, QuarantineVault
+from ..history.backend import default_history_db_path
 
 #: Per-run quarantine key file name inside the app-data directory.
 KEY_FILE_NAME = "quarantine-key"
@@ -25,6 +26,18 @@ KEY_FILE_NAME = "quarantine-key"
 KEY_FILE_MODE = 0o600
 #: App-data subdirectory that holds the quarantine vault and its key.
 QUARANTINE_DIR_NAME = "quarantine"
+
+
+def default_quarantine_dir() -> Path:
+    """Resolve the quarantine app-data directory.
+
+    The key and the vault live in ``<app-data>/quarantine``, i.e. a sibling
+    of ``history.db`` under the same XDG data directory. The result is always
+    a *directory*: :class:`QuarantineKeyManager` creates it on construction,
+    so passing the history database file path here would raise
+    :class:`FileExistsError`.
+    """
+    return default_history_db_path().parent / QUARANTINE_DIR_NAME
 
 
 class QuarantineKeyManager:

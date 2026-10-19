@@ -30,7 +30,7 @@ from .controller import ShieldTaskController
 from .database_pages import GTK_AVAILABLE
 from .diagnostics_page import DiagnosticsPage
 from .history_page import HistoryPage
-from .quarantine_key import QuarantineKeyManager
+from .quarantine_key import QuarantineKeyManager, default_quarantine_dir
 from .quarantine_page import QuarantinePage
 from .scan_page import ScanPage
 
@@ -131,7 +131,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             self._key_manager = (
                 key_manager
                 if key_manager is not None
-                else QuarantineKeyManager(default_history_db_path())
+                else QuarantineKeyManager(default_quarantine_dir())
             )
             self._vault = QuarantineVault(
                 self._key_manager.directory,

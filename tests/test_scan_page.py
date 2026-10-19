@@ -8,31 +8,14 @@ construction runs only when PyGObject and a display are available
 from __future__ import annotations
 
 import asyncio
-import os
 from pathlib import Path
 
 import pytest
+from _gtk_probe import gtk_works
 
 import clamguardian.ui.scan_page as scan_page_module
 from clamguardian.core.base import ScanResult, ScanStatus
 from clamguardian.core.profiles import ScanProfile
-
-#: Widget construction needs an actual display *and* a working GTK backend.
-HAS_DISPLAY = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
-
-
-def _gtk_works() -> bool:
-    """Return whether GTK widgets can actually be constructed in this env."""
-    if not scan_page_module.GTK_AVAILABLE:
-        return False
-    try:  # pragma: no cover - needs a real display/X server
-        from gi.repository import Adw, Gtk
-
-        Gtk.Box()
-        Adw.StatusPage()
-        return True
-    except Exception:  # noqa: BLE001 - any failure means "no usable GTK here"
-        return False
 
 
 class _StubController:
@@ -87,7 +70,7 @@ def test_scan_page_shim_raises_headless() -> None:
 
 
 @pytest.mark.skipif(
-    not _gtk_works(),
+    not gtk_works(),
     reason="requires PyGObject + display/Xvfb",
 )
 def test_scan_page_constructs_and_initial_state() -> None:
@@ -102,7 +85,7 @@ def test_scan_page_constructs_and_initial_state() -> None:
 
 
 @pytest.mark.skipif(
-    not _gtk_works(),
+    not gtk_works(),
     reason="requires PyGObject + display/Xvfb",
 )
 def test_scan_page_finish_records_result() -> None:

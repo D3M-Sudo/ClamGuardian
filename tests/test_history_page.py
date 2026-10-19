@@ -7,31 +7,14 @@ in the release gate for Xvfb coverage).
 
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
 
 import pytest
+from _gtk_probe import gtk_works
 
 import clamguardian.ui.history_page as history_page_module
 from clamguardian.core.base import ScanStatus
 from clamguardian.history.interface import HistoryStore
-
-#: Widget construction needs an actual display *and* a working GTK backend.
-HAS_DISPLAY = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
-
-
-def _gtk_works() -> bool:
-    """Return whether GTK widgets can actually be constructed in this env."""
-    if not history_page_module.GTK_AVAILABLE:
-        return False
-    try:  # pragma: no cover - needs a real display/X server
-        from gi.repository import Adw, Gtk
-
-        Gtk.Box()
-        Adw.StatusPage()
-        return True
-    except Exception:  # noqa: BLE001 - any failure means "no usable GTK here"
-        return False
 
 
 class _StubStore(HistoryStore):
@@ -91,7 +74,7 @@ def test_filter_options_exhaustive() -> None:
 
 @pytest.mark.asyncio
 async def test_page_list_renders_records() -> None:
-    if not _gtk_works():
+    if not gtk_works():
         pytest.skip("GTK not usable in this environment")
 
     store = _StubStore([_record()])

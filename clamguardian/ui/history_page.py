@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING
 
 from ..core.base import ScanStatus
 from ..history.interface import HistoryStore
-from .scan_page import _remove_all_children
 
 try:  # pragma: no cover - exercised only on systems with PyGObject
     import gi
@@ -81,6 +80,19 @@ if TYPE_CHECKING:
 
 
 if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
+
+    def _remove_all_children(container: Gtk.Widget) -> None:
+        """Remove every child from a Gtk/Adw container (defensive loop).
+
+        Mirrors the helper in :mod:`clamguardian.ui.scan_page` so this module
+        never reaches into private names of another module, and stays
+        importable on headless systems without PyGObject.
+        """
+        while True:
+            child = container.get_first_child()
+            if child is None:
+                return
+            container.remove(child)
 
     class HistoryPage:
         """List recorded scans with status filtering, detail dialogs and purge."""
