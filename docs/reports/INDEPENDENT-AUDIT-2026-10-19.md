@@ -488,10 +488,3 @@ Output atteso **dopo la remediation**: `status: infected`, `threats` contenente 
 ---
 
 *Report prodotto da audit indipendente su evidenze strumentali. Nessuna modifica al codice applicativo è stata effettuata: le remediation sono proposte e devono passare da test di regressione e review.*
-
-
-
-
-
-
-
