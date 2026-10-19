@@ -1,6 +1,6 @@
 """Widget-level tests for the application shell (Phase D4).
 
-These run only with PyGObject and a display; the Release Gate runs the whole
+These run only with PyGObject and a display; the CI test job runs the whole
 suite under Xvfb.  Without a display they are skipped and the pure-logic
 tests still cover the same contracts.
 """
@@ -17,18 +17,29 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_shell_exposes_every_page_and_switches_between_them(tmp_path: Path) -> None:
+@pytest.fixture(scope="module")
+def gtk_app():
+    """One registered application shared by the widget tests."""
+    from clamguardian.ui.app import ClamGuardianApp
+
+    app = ClamGuardianApp()
+    assert app.register()
+    yield app
+    app.unregister()
+
+
+def test_shell_exposes_every_page_and_switches_between_them(
+    gtk_app, tmp_path: Path
+) -> None:
     from clamguardian.core.settings import SettingsStore
     from clamguardian.databases import DatabaseManager
     from clamguardian.history.backend import SqliteHistoryStore
-    from clamguardian.ui.app import SIDEBAR_ENTRIES, ClamGuardianApp, MainWindow
+    from clamguardian.ui.app import SIDEBAR_ENTRIES, MainWindow
     from clamguardian.ui.quarantine_key import QuarantineKeyManager
 
-    app = ClamGuardianApp()
     try:
-        assert app.register()
         window = MainWindow(
-            app,
+            gtk_app,
             checks=[],
             manager=DatabaseManager(tmp_path / "databases", tmp_path / "state.json"),
             history_store=SqliteHistoryStore(tmp_path / "history.db"),
@@ -46,9 +57,9 @@ def test_shell_exposes_every_page_and_switches_between_them(tmp_path: Path) -> N
     window.destroy()
 
 
-def test_shell_applies_the_persisted_color_scheme(tmp_path: Path) -> None:
+def test_shell_applies_the_persisted_color_scheme(gtk_app, tmp_path: Path) -> None:
     from clamguardian.core.settings import AppSettings, SettingsStore
-    from clamguardian.ui.app import ClamGuardianApp, MainWindow
+    from clamguardian.ui.app import MainWindow
     from clamguardian.ui.quarantine_key import QuarantineKeyManager
 
     store = SettingsStore(tmp_path / "settings.json")
@@ -59,11 +70,9 @@ def test_shell_applies_the_persisted_color_scheme(tmp_path: Path) -> None:
             color_scheme="dark",
         )
     )
-    app = ClamGuardianApp()
     try:
-        assert app.register()
         window = MainWindow(
-            app,
+            gtk_app,
             checks=[],
             key_manager=QuarantineKeyManager(tmp_path / "quarantine"),
             settings_store=store,

@@ -52,6 +52,21 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
 
             self._build_scanning_group()
             self._build_notifications_group()
+            self._build_appearance_group()
+            self._build_about_group()
+
+        # -- public API ----------------------------------------------------
+
+        @property
+        def root(self) -> Gtk.Widget:
+            """The preferences page to embed into the application shell."""
+            return self._root
+
+        @property
+        def settings(self) -> AppSettings:
+            """The currently persisted settings."""
+            return self._settings
+
         # -- groups --------------------------------------------------------
 
         def _build_scanning_group(self) -> None:
@@ -178,18 +193,3 @@ else:
                 "SettingsPage requires PyGObject with GTK 4 and Libadwaita; "
                 "install the 'gtk' extra or edit settings.json directly"
             )
-
-            self._build_appearance_group()
-            self._build_about_group()
-
-        # -- public API ----------------------------------------------------
-
-        @property
-        def root(self) -> Gtk.Widget:
-            """The preferences page to embed into the application shell."""
-            return self._root
-
-        @property
-        def settings(self) -> AppSettings:
-            """The currently persisted settings."""
-            return self._settings
