@@ -295,7 +295,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 self._history_page.refresh()
             if self._settings.notifications_enabled and not self.is_active():
                 notify_scan_result(self.get_application(), result)
-            return GLib.SOURCE_REMOVE
+            return False
 
         async def _quarantine_file(self, path: Path) -> QuarantineEntry:
             return await asyncio.to_thread(self._vault.quarantine, path)

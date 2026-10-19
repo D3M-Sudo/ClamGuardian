@@ -185,7 +185,8 @@ committed on top of `a097265`).
 1. Verify baseline (branch, SHAs of all tips, clean tree, CI green).
 2. Re-read this handoff and `docs/ROADMAP.md` (Desktop UI phase).
 3. Run the manual desktop validation in
-   `docs/validation/DESKTOP-TEST-1.0.md` §§1–3 and 8 (D4 pages included).
+   `docs/validation/DESKTOP-TEST-D4-2026-10-19.md` (the D4 session record) and
+   `DESKTOP-TEST-1.0.md` §§1–3 and 8 (release evidence).
 4. Once the validation is recorded, promote the D4 commits from the working
    branch to `feature` with explicit maintainer authorization, then open the
    `feature → testing` promotion PR.
