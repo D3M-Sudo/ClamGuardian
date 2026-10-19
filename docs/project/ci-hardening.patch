@@ -1,0 +1,170 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 3143c5a..98e6929 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -17,13 +17,13 @@ jobs:
+         python-version: ["3.11", "3.12", "3.13"]
+     steps:
+       - name: Checkout
+-        uses: actions/checkout@v7
++        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+       - name: Install GTK/PyGObject build dependencies
+         run: |
+           sudo apt-get update
+           sudo apt-get install -y libgirepository-2.0-dev gir1.2-gtk-4.0 gir1.2-adw-1 libcairo2-dev pkg-config python3-dev meson ninja-build xvfb xauth
+       - name: Set up Python
+-        uses: actions/setup-python@v7
++        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+         with:
+           python-version: ${{ matrix.python-version }}
+           cache: pip
+@@ -35,7 +35,7 @@ jobs:
+         # workaround that used to make the old in-job audit pass. Dependency
+         # auditing now runs in the dedicated `audit` job below, against the
+         # pinned runtime dependency set.
+-        run: python -m pip install --upgrade pip && python -m pip install '.[test,gtk]' ruff
++        run: python -m pip install --upgrade pip && python -m pip install '.[test,gtk]' ruff==0.17.1 mypy==2.4.0 pytest==9.1.1 pytest-asyncio==1.4.0 pyyaml==6.0.3
+       - name: Lint
+         run: ruff check .
+       - name: Type Check
+@@ -53,9 +53,9 @@ jobs:
+     runs-on: ubuntu-latest
+     steps:
+       - name: Checkout
+-        uses: actions/checkout@v7
++        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+       - name: Set up Python
+-        uses: actions/setup-python@v7
++        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+         with:
+           python-version: "3.11"
+       - name: Install uv and pip-audit
+@@ -69,3 +69,25 @@ jobs:
+         run: uv export --frozen --no-emit-project --format requirements-txt > requirements.lock.txt
+       - name: Audit the pinned runtime dependency set
+         run: pip-audit --strict --progress-spinner off -r requirements.lock.txt
++
++  runtime-python:
++    name: Runtime Python (Flatpak 3.14, headless)
++    runs-on: ubuntu-latest
++    steps:
++      - name: Checkout
++        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
++      - name: Set up Python 3.14
++        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
++        with:
++          python-version: "3.14"
++      - name: Install package and test dependencies
++        # The Flatpak runtime ships Python 3.14: exercise the code there even
++        # though the main matrix stops at 3.13. No GTK extra: this job checks
++        # the interpreter the sandbox actually provides.
++        run: |
++          python -m pip install --upgrade pip
++          python -m pip install '.[test]' pytest==9.1.1 pytest-asyncio==1.4.0 pyyaml==6.0.3
++      - name: Test (headless)
++        env:
++          GTK_A11Y: none
++        run: pytest
+diff --git a/.github/workflows/release-gate.yml b/.github/workflows/release-gate.yml
+index b3ff141..7275af3 100644
+--- a/.github/workflows/release-gate.yml
++++ b/.github/workflows/release-gate.yml
+@@ -1,5 +1,8 @@
+ name: Release Gate
+ 
++permissions:
++  contents: read
++
+ on:
+   push:
+     branches: [feature]
+@@ -23,7 +26,7 @@ jobs:
+     runs-on: ubuntu-latest
+     steps:
+       - name: Checkout
+-        uses: actions/checkout@v7
++        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+       - name: Preflight checks (read-only, no Git mutations)
+         run: |
+           echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
+@@ -42,7 +45,7 @@ jobs:
+     runs-on: ubuntu-latest
+     steps:
+       - name: Checkout
+-        uses: actions/checkout@v7
++        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+       - name: Install appstream
+         run: |
+           sudo apt-get update
+@@ -56,7 +59,7 @@ jobs:
+     runs-on: ubuntu-latest
+     steps:
+       - name: Checkout
+-        uses: actions/checkout@v7
++        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+       - name: Install ClamAV
+         run: |
+           sudo apt-get update
+@@ -95,7 +98,7 @@ jobs:
+     runs-on: ubuntu-latest
+     steps:
+       - name: Checkout
+-        uses: actions/checkout@v7
++        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+       - name: Install GTK / PyGObject system dependencies
+         run: |
+           sudo apt-get update
+@@ -147,7 +150,7 @@ jobs:
+     runs-on: ubuntu-latest
+     steps:
+       - name: Checkout
+-        uses: actions/checkout@v7
++        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+       - name: Install flatpak and flatpak-builder
+         run: |
+           sudo apt-get update
+@@ -166,7 +169,7 @@ jobs:
+         # Named after the branch under test: on the feature → testing
+         # promotion PR this artifact is the testable build for the testing
+         # branch (same local manifest, same offline GNOME 51 build).
+-        uses: actions/upload-artifact@v4
++        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+         with:
+           name: ${{ (github.event_name == 'pull_request' && github.base_ref == 'testing' && 'ClamGuardian-testing-linux-x86_64.flatpak') || 'ClamGuardian-feature-linux-x86_64.flatpak' }}
+           path: io.github.clamguardian.ClamGuardian.flatpak
+@@ -179,7 +182,7 @@ jobs:
+     if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+     steps:
+       - name: Checkout
+-        uses: actions/checkout@v7
++        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+       - name: Install flatpak and flatpak-builder
+         run: |
+           sudo apt-get update
+@@ -195,7 +198,7 @@ jobs:
+       - name: Bundle release build as installable .flatpak
+         run: flatpak build-bundle flatpak-repo io.github.clamguardian.ClamGuardian.flatpak io.github.clamguardian.ClamGuardian
+       - name: Upload release Flatpak bundle
+-        uses: actions/upload-artifact@v4
++        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+         with:
+           name: ClamGuardian-v1.0.0-linux-x86_64.flatpak
+           path: io.github.clamguardian.ClamGuardian.flatpak
+@@ -211,7 +214,7 @@ jobs:
+     runs-on: ubuntu-latest
+     steps:
+       - name: Checkout
+-        uses: actions/checkout@v7
++        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+       - name: Collect evidence
+         run: |
+           gate_failed=0
+@@ -248,7 +251,7 @@ jobs:
+             fi
+           } > gate-evidence.txt
+       - name: Upload evidence artifact
+-        uses: actions/upload-artifact@v4
++        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+         with:
+           name: release-gate-evidence
+           path: gate-evidence.txt

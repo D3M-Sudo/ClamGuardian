@@ -493,7 +493,7 @@ Output atteso **dopo la remediation**: `status: infected`, `threats` contenente 
 
 ## 8. Addendum — stato della remediation (2026-10-19)
 
-I fix sono stati implementati sul branch `cline/fhyn2bmx` e proposti con PR verso `feature`. Ogni voce chiusa ha un test di regressione dedicato.
+I fix sono stati implementati sul branch `cline/fhyn2bmx` e proposti con PR verso `feature`. Ogni voce chiusa ha un test di regressione dedicato. Le modifiche a `.github/workflows/*` non possono essere pushate dall'App `cline-cloud[bot]` (permesso `workflows` assente): sono consegnate come `docs/project/ci-hardening.patch`, con istruzioni in `docs/project/CI-HARDENING.md`.
 
 | Finding | Stato | Evidenza |
 |---|---|---|
@@ -501,13 +501,13 @@ I fix sono stati implementati sul branch `cline/fhyn2bmx` e proposti con PR vers
 | AUD-02 | **Corretto** | `Secret.Schema` + attributi + 6 argomenti; test con `gi.repository.Secret` finto |
 | AUD-03 | **Corretto** | Scrittura atomica `mkstemp`/`fchmod`/`fsync`/`replace`, fail-closed su chiave corrotta; 2 test |
 | AUD-04 | **Corretto** | Rifiuto `NUL`/`\n`/`\r` in `scan()` e in `_scan_socket()`; test end-to-end |
-| AUD-05 | **Corretto** | `permissions: contents: read` su entrambi i workflow, action pinnate a SHA |
-| AUD-07 | **Corretto** | Job CI `runtime-python` su Python 3.14 headless |
+| AUD-05 | **Patch pronto** | `permissions: contents: read` + action pinnate a SHA in `docs/project/ci-hardening.patch` |
+| AUD-07 | **Patch pronto** | Job CI `runtime-python` su Python 3.14 headless nello stesso patch |
 | AUD-08 | **Corretto** | Restore accetta solo path assoluti senza componenti `..`; test |
 | AUD-09 | **Corretto** | Rifiuto symlink in quarantena e directory vault symlink; test |
 | AUD-10 | **Corretto** | `chmod` solo sulla directory creata; test |
 | AUD-12 | **Corretto** | Escaping C0/DEL in output umano e storico; test |
-| AUD-13 | **Parziale** | Pinnati `ruff`, `mypy`, `pytest`, `pytest-asyncio`, `pyyaml`; apt resta non pinnato |
+| AUD-13 | **Parziale** | Pinnati `ruff`, `mypy`, `pytest`, `pytest-asyncio`, `pyyaml` nel patch CI; apt resta non pinnato |
 | AUD-14 | **Parziale** | Ambiente sanificato per `flatpak-spawn --host` + test; zombie e lock `0666` sono igiene dell'ambiente |
 | AUD-06 | **Non applicabile al repo** | Porte dell'infrastruttura di sessione: intervento di rete, non di codice |
 | AUD-11 | **Rinviato** | VirusTotal non cablato: cablaggio o rimozione è una decisione di prodotto |
