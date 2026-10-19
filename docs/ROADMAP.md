@@ -229,3 +229,12 @@ This order keeps the project sustainable for a single maintainer and avoids prem
 - Every milestone needs a measurable goal, reproducible tests, evidence, known limits and an exit criterion.
 - Code not wired to a real call site and not covered by the gate is not a completed feature.
 - No fictitious dates for future releases: ship when the gate is green.
+- Branch policy (rulesets, 2026-10-19): `main` is governed only by the `main-protection`
+  ruleset (id `25427935`, enforcement `active`, target `refs/heads/main`); classic branch
+  protection on `main` was removed to avoid double enforcement. Rules: PR required before
+  merging with `required_approving_review_count: 0` (solo-maintainer: no self-approval
+  deadlock), `required_review_thread_resolution: true`, `deletion` + `non_fast_forward`
+  blocked, `bypass_actors: []` (nobody bypasses). No `required_status_checks` pinned yet —
+  add CI checks to the ruleset only after validating exact check names + integration_id.
+  Promotion flow: `feature` (unprotected) → PR → `testing`/`development` (count 0) → PR →
+  `main` (ruleset).
