@@ -233,7 +233,11 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
 
         def _build_target_row(self) -> Adw.EntryRow:
             row = Adw.EntryRow(title="Target")
-            row.set_icon_name("folder-symbolic")
+            if hasattr(row, "set_icon_name"):
+                # Libadwaita 1.6+
+                row.set_icon_name("folder-symbolic")
+            else:
+                row.add_prefix(Gtk.Image(icon_name="folder-symbolic"))
             row.set_placeholder_text("e.g. /home/user/Documents")
             row.set_text(str(Path.home()))
             return row
