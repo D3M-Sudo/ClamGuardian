@@ -24,6 +24,10 @@ D4 update (2026-10-19): Phase 4 implemented on the working branch
 `cline/q41cvf1r`, on top of `feature` @ `a097265` (the CI Xvfb commit that
 followed `194167c`). The working tree is clean and the local gate is green;
 the commits are promoted to `feature` only after explicit authorization.
+The release-gate inline smoke update is attached as
+`docs/project/D4-release-gate.patch` (workflow files require a token with
+`workflows` permission); the new widget tests already run under Xvfb in the
+CI `test` job.
 
 ## 3. Context — Why This Plan Exists
 
@@ -149,8 +153,12 @@ CSS).
   - page refresh on navigation (`MainWindow.show_page`), real target in the
     cancelled result, removal of the dead placeholder branch;
   - README, `docs/ROADMAP.md`, this handoff and the desktop validation
-    checklist updated; GTK smoke extended to every page, Settings, the
-    stylesheet and About.
+    checklist updated; widget tests extended to every page, Settings, the
+    stylesheet and About (`tests/test_app_shell.py`, `tests/test_ui_theme.py`,
+    run under Xvfb by the CI test job). The equivalent update to the inline
+    `gtk-smoke` job is provided as `docs/project/D4-release-gate.patch`: the
+    automation token used for this branch cannot modify workflow files, so the
+    maintainer applies it with `git apply` (or in a manual workflow commit).
 - Gate: ruff + mypy + pytest green locally (headless); GTK widget tests and
   the Xvfb smoke run in CI. No version bump in D4.
 
