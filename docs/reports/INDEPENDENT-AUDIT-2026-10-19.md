@@ -507,9 +507,9 @@ I fix sono stati implementati sul branch `cline/fhyn2bmx` e proposti con PR vers
 | AUD-09 | **Corretto** | Rifiuto symlink in quarantena e directory vault symlink; test |
 | AUD-10 | **Corretto** | `chmod` solo sulla directory creata; test |
 | AUD-12 | **Corretto** | Escaping C0/DEL in output umano e storico; test |
-| AUD-13 | **Parziale** | Pinnati `ruff`, `mypy`, `pytest`, `pytest-asyncio`, `pyyaml` nel patch CI; apt resta non pinnato |
+| AUD-13 | **Mitigato** | Runner `ubuntu-24.04` + eccezione apt documentata in `docs/project/CI-HARDENING.md` |
 | AUD-14 | **Parziale** | Ambiente sanificato per `flatpak-spawn --host` + test; zombie e lock `0666` sono igiene dell'ambiente |
-| AUD-06 | **Non applicabile al repo** | Porte dell'infrastruttura di sessione: intervento di rete, non di codice |
-| AUD-11 | **Rinviato** | VirusTotal non cablato: cablaggio o rimozione è una decisione di prodotto |
+| AUD-06 | **Accettato e documentato** | `docs/project/RUNTIME-EXPOSURE.md` (servizi di sessione, non del repo) |
+| AUD-11 | **Congelato con guardrail** | `docs/design/threat-intelligence.md`, extra `intelligence` vuoto, `tests/test_intelligence_frozen.py` |
 
-Residuo dichiarato: AUD-11 e la parte apt di AUD-13 restano aperti; nessun finding P1/P2 rimane senza fix o mitigazione.
+Residuo dichiarato: nessun finding AUD resta senza fix, mitigazione o rischio accettato e tracciato. AUD-11 è congelato con guardrail fino alla Fase 11 (`v1.2.0`), AUD-13 è mitigato (runner pinnato, apt dichiarato come eccezione), AUD-06 è rischio accettato e documentato.
