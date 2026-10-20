@@ -11,3 +11,4 @@ a milestone is marked COMPLETED in `../ROADMAP.md`.
 | `M6-CI-GATE-REPORT.md` | Phase 7: CI and dependency-audit quality gate |
 | `M7-PACKAGING-REPORT.md` | Phase 8: packaging metadata, Flatpak manifests, wheel verification |
 | `RELEASE-GATE-1.0.md` | Phase 9: the 1.0 release-gate checklist, per-gate evidence and tag procedure |
+| `INDEPENDENT-AUDIT-2026-10-19.md` | Independent technical audit: code, packaging, runtime, findings P1–P3 and remediation |

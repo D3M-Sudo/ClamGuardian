@@ -287,3 +287,31 @@ def test_detect_distro_family(tmp_path: Path) -> None:
     assert detect_distro_family(write_os_release("ID=manjaro\nID_LIKE=arch\n")) == "arch"
     assert detect_distro_family(write_os_release("ID=someos\n")) == "unknown"
     assert detect_distro_family(tmp_path / "missing-file") == "unknown"
+
+
+def test_host_which_does_not_forward_secrets(monkeypatch) -> None:
+    import subprocess
+
+    from clamguardian.core import diagnostics
+
+    captured: dict[str, object] = {}
+
+    class Completed:
+        returncode = 0
+        stdout = "/usr/bin/clamscan\n"
+
+    def fake_run(args, **kwargs):
+        captured["args"] = args
+        captured.update(kwargs)
+        return Completed()
+
+    monkeypatch.setenv("GH_TOKEN", "ghp_example")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "lf_example")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert diagnostics._host_which("clamscan") == "/usr/bin/clamscan"
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert "GH_TOKEN" not in env
+    assert "LANGFUSE_SECRET_KEY" not in env
+    assert "PATH" in env

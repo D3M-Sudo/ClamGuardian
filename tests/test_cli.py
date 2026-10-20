@@ -1031,3 +1031,24 @@ def test_ui_headless_reports_error_and_exit_3(cli, monkeypatch) -> None:
     harness = cli(FakeEngine())
     assert harness("ui") == 3
     assert "GTK 4 / Libadwaita is not available" in harness.err.getvalue()
+
+
+def test_format_human_escapes_terminal_control_characters() -> None:
+    from clamguardian.cli.output import format_human
+
+    result = ScanResult(
+        target="/tmp/\x1b]8;;https://evil\x07report.txt",
+        clean=False,
+        status=ScanStatus.INFECTED,
+        threats=("/tmp/x: Sig\x1b[31m FOUND",),
+        error="engine said \x1b[2J",
+        metadata={"note": "a\x00b"},
+    )
+
+    output = format_human(result)
+
+    assert "\x1b" not in output
+    assert "\x00" not in output
+    assert "\\x1b" in output
+    assert "\\x00" in output
+

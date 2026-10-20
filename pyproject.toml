@@ -22,6 +22,10 @@ clamguardian = "clamguardian.cli.main:main"
 gtk = [
   "PyGObject>=3.46",
 ]
+intelligence = [
+  # Reserved opt-in hook for Phase 11 (v1.2.0). The provider shipped in 1.x is
+  # frozen and unwired, so this extra intentionally installs nothing new today.
+]
 test = [
   "pytest>=8.0",
   "pytest-asyncio>=0.23",

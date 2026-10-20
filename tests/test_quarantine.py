@@ -315,3 +315,35 @@ def test_legacy_single_blob_record_is_still_restorable(tmp_path: Path) -> None:
     restored = tmp_path / "legacy_restored.bin"
     vault.restore(item_id, restored)
     assert restored.read_bytes() == payload
+
+
+def test_restore_target_rejects_relative_and_traversal_paths(tmp_path: Path) -> None:
+    vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
+    for raw in ("relative.bin", "../escape.bin", "dir/../../escape.bin"):
+        with pytest.raises(ValueError, match="unsafe original path"):
+            vault._restore_target({"original_path": raw}, None)
+
+
+def test_quarantine_refuses_symlink_and_keeps_target(tmp_path: Path) -> None:
+    real = tmp_path / "real.bin"
+    real.write_bytes(b"keep me")
+    link = tmp_path / "link.bin"
+    link.symlink_to(real)
+    vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        vault.quarantine(link)
+
+    assert real.read_bytes() == b"keep me"
+    assert link.is_symlink()
+
+
+def test_vault_directory_symlink_is_refused(tmp_path: Path) -> None:
+    real = tmp_path / "real-vault"
+    real.mkdir()
+    link = tmp_path / "vault-link"
+    link.symlink_to(real, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        QuarantineVault(link, QuarantineVault.generate_key())
+

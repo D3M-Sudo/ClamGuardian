@@ -15,6 +15,7 @@ everywhere.
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 from ..core.quarantine import _KEY_SIZE, QuarantineVault
@@ -26,6 +27,11 @@ KEY_FILE_NAME = "quarantine-key"
 KEY_FILE_MODE = 0o600
 #: App-data subdirectory that holds the quarantine vault and its key.
 QUARANTINE_DIR_NAME = "quarantine"
+#: Secret Service schema and lookup attributes (never contain the secret).
+SECRET_SCHEMA_NAME = "io.github.clamguardian.Quarantine"
+SECRET_ATTRIBUTES = {"purpose": "quarantine-key"}
+#: Human-readable label shown by the keyring UI.
+SECRET_LABEL = "ClamGuardian quarantine key"
 
 
 def default_quarantine_dir() -> Path:
@@ -86,12 +92,13 @@ class QuarantineKeyManager:
             gi.require_version("Secret", "1")
             from gi.repository import Secret
 
-            password = Secret.password_lookup_sync(
-                "clamguardian", "quarantine-key", None
+            schema = Secret.Schema.new(
+                SECRET_SCHEMA_NAME,
+                Secret.SchemaFlags.NONE,
+                {"purpose": Secret.SchemaAttributeType.STRING},
             )
-            if password is None:
-                return None
-            return bytes.fromhex(password)
+            password = Secret.password_lookup_sync(schema, dict(SECRET_ATTRIBUTES), None)
+            return _decode_key(password)
         except Exception:  # noqa: BLE001 - Secret Service is optional
             return None
 
@@ -103,13 +110,21 @@ class QuarantineKeyManager:
             gi.require_version("Secret", "1")
             from gi.repository import Secret
 
-            Secret.password_store_sync(
-                "clamguardian",
-                "quarantine-key",
-                key.hex(),
-                None,
+            schema = Secret.Schema.new(
+                SECRET_SCHEMA_NAME,
+                Secret.SchemaFlags.NONE,
+                {"purpose": Secret.SchemaAttributeType.STRING},
             )
-            return True
+            return bool(
+                Secret.password_store_sync(
+                    schema,
+                    dict(SECRET_ATTRIBUTES),
+                    Secret.COLLECTION_DEFAULT,
+                    SECRET_LABEL,
+                    key.hex(),
+                    None,
+                )
+            )
         except Exception:  # noqa: BLE001 - Secret Service is optional
             return False
 
@@ -118,21 +133,46 @@ class QuarantineKeyManager:
         if not path.is_file():
             return None
         try:
-            raw = path.read_bytes()
-            key = bytes.fromhex(raw.decode("ascii").strip())
-        except (OSError, ValueError):  # corrupted or unreadable file
-            return None
-        if len(key) != _KEY_SIZE:
-            return None
+            raw = path.read_text(encoding="ascii").strip()
+        except OSError as exc:
+            raise ValueError(f"Cannot read quarantine key file: {path}") from exc
+        except UnicodeDecodeError as exc:
+            raise ValueError("Quarantine key file is corrupt; refusing to rotate it") from exc
+        key = _decode_key(raw)
+        if key is None:
+            # Rotating silently here would orphan every existing vault record.
+            raise ValueError("Quarantine key file is corrupt; refusing to rotate it")
         return key
 
     def _store_file(self, key: bytes) -> None:
-        path = self._key_path()
-        path.write_text(key.hex())
-        os.chmod(path, KEY_FILE_MODE)
+        """Write the key atomically with owner-only permissions from creation."""
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=f".{KEY_FILE_NAME}.", dir=self._key_dir
+        )
+        tmp = Path(temporary)
+        try:
+            os.fchmod(descriptor, KEY_FILE_MODE)
+            with os.fdopen(descriptor, "w", encoding="ascii") as handle:
+                handle.write(key.hex())
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, self._key_path())
+        finally:
+            tmp.unlink(missing_ok=True)
 
     def _generate_and_store(self) -> bytes:
         key = QuarantineVault.generate_key()
         if not self._store_secret_service(key):
             self._store_file(key)
         return key
+
+
+def _decode_key(value: str | None) -> bytes | None:
+    """Decode a hexadecimal key, returning ``None`` when it is not 32 bytes."""
+    if not value:
+        return None
+    try:
+        key = bytes.fromhex(value.strip())
+    except (TypeError, ValueError):
+        return None
+    return key if len(key) == _KEY_SIZE else None
