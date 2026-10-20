@@ -4,6 +4,7 @@ The branch is pushed by the `cline-cloud[bot]` GitHub App, which has no
 `workflows` permission: GitHub rejects any push that touches
 `.github/workflows/*`. The reviewed changes are therefore shipped as a plain
 patch instead of being applied on the branch.
+Applied in commit f1c4499621b4a409125b77adaf302fea3a66745e on 2026-10-20; patch kept for traceability.
 
 Apply from the repository root:
 
