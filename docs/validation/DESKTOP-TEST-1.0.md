@@ -5,11 +5,16 @@ real desktop) and **M3** (quarantine-restore verification inside the Flatpak san
 
 - **Status:** TEMPLATE — copy it per test session (e.g. `validation/DESKTOP-TEST-1.0-<YYYY-MM-DD>.md`)
   or fill the per-step tables below.
-- **Scope:** `v1.0.0` @ `8ee8a56` release evidence, plus the desktop phase D4
-  (`feature` branch) for the UI sections §§3, 10. Record the exact commit
-  under test in §1; the D4 UI is not part of the `v1.0.0` tag.
-- **Prerequisites:** the CI GTK smoke test passed under Xvfb; this checklist covers the
-  recommended on-desktop click-through, which was **not** a release blocker.
+- **Scope:** `1.0.1` release evidence (the desktop application and the AUD-01
+  security fix), on `feature` before the tag or on the tagged commit once
+  `v1.0.1` is cut. Record the exact commit under test in §1.
+- **Bundle under test:** before the tag, use the promotion artifact
+  `ClamGuardian-testing-linux-x86_64.flatpak` built by the release gate on the
+  `feature → testing` PR; after the tag, use
+  `ClamGuardian-v1.0.1-linux-x86_64.flatpak`. Both are built offline from the
+  same local manifest; the resolved commit and SHA-256 must be recorded.
+- **Prerequisites:** the CI GTK smoke test passed under Xvfb; this checklist is
+  the last gate before the `v1.0.1` tag.
 
 ---
 
@@ -25,8 +30,8 @@ real desktop) and **M3** (quarantine-restore verification inside the Flatpak san
 | `flatpak --version` | _x.y.z_ |
 | Host `clamscan --version` | _e.g. ClamAV x.y.z_ |
 | Host `clamd` running | _yes / no (systemctl status clamav-daemon)_ |
-| Tag/commit under test | `v1.0.0` @ `8ee8a56` (release) + D4 commit on `feature` (UI sections) |
-| Bundle file | `ClamGuardian-v1.0.0-linux-x86_64.flatpak` (~4.7 MB) |
+| Tag/commit under test | _record `git rev-parse HEAD` of the bundle source (`feature` pre-tag, `v1.0.1` after the tag)_ |
+| Bundle file | `ClamGuardian-testing-linux-x86_64.flatpak` (pre-tag) or `ClamGuardian-v1.0.1-linux-x86_64.flatpak` |
 | Bundle SHA-256 | _record the digest of the installed bundle_ |
 | ClamAV definitions date | _e.g. freshclam log date_ |
 
@@ -38,7 +43,7 @@ Outcome markers used below: `PASS` · `FAIL` · `N/A` · `BLOCKED` (with blocker
 
 | # | Step | Expected | Outcome | Notes / evidence |
 |---|---|---|---|---|
-| 2.1 | Install: `flatpak install --user ClamGuardian-v1.0.0-linux-x86_64.flatpak` | Install completes with no error | | |
+| 2.1 | Install: `flatpak install --user ClamGuardian-testing-linux-x86_64.flatpak` (or the `v1.0.1` bundle after the tag) | Install completes with no error | | |
 | 2.2 | List: `flatpak list --app` and grep ClamGuardian | `io.github.clamguardian.ClamGuardian` present | | |
 | 2.3 | Launch from the desktop launcher (or `flatpak run io.github.clamguardian.ClamGuardian`) | Main window opens, no crash, no GTK criticals on stderr | | |
 | 2.4 | First-run state | Default profile selected, empty history, fresh database state visible | | |

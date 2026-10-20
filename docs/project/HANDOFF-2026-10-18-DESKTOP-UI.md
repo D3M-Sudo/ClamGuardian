@@ -27,8 +27,9 @@ green; CI run 39187789150 green on Python 3.11/3.12/3.13; Release Gate run
 39187789165 green (GTK smoke, AppStream, ClamAV, Flatpak local build). The
 release-gate inline smoke update is attached as
 `docs/project/D4-release-gate.patch` (workflow files require a token with
-`workflows` permission); the new widget tests already run under Xvfb in the
-CI `test` job.
+`workflows` permission); **that patch is now applied** on the `1.0.1`
+release-engineering branch — see `docs/project/D4-RELEASE-GATE.md`. The new
+widget tests already run under Xvfb in the CI `test` job.
 
 PR #13 update (2026-10-20): merged to `feature` @ `144e89f`. Audit P1/P2 remediation closed (clamd AUD-01/AUD-04, quarantine key AUD-02/AUD-03, CI hardening AUD-05/07/13 applied in `a315082`, RUNTIME-EXPOSURE AUD-06 accepted, intelligence frozen Phase 11). Local verification green: ruff, mypy 42 files, pytest 350 passed / 8 skipped, real clamd EICAR infected exit 1, newline exit 3, pip-audit clean, no listener on 8080/8081/15001.
 

@@ -175,6 +175,18 @@ def test_release_manifest_pins_an_immutable_source() -> None:
     assert source.get("tag") or source.get("commit"), "the source must be pinned to a tag or commit"
 
 
+def test_release_manifest_pins_the_declared_version() -> None:
+    """The release manifest must build the version the package declares.
+
+    A version bump that forgets the Flatpak pin would publish a bundle whose
+    AppStream metadata and CLI claim ``1.0.1`` while the sources still come from
+    the previous tag.
+    """
+    module = _clamguardian_module(_manifest(f"{APP_ID}.yml"))
+    source = next(s for s in module["sources"] if s.get("type") == "git")
+    assert source.get("tag") == f"v{clamguardian.__version__}"
+
+
 def test_development_manifest_builds_the_working_tree() -> None:
     module = _clamguardian_module(_manifest(f"{APP_ID}.local.yml"))
     sources = module["sources"]
