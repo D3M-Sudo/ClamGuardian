@@ -17,10 +17,25 @@ git apply docs/project/ci-hardening.patch
 - `release-gate.yml`: adds `permissions: contents: read`.
 - Both workflows: `actions/checkout`, `actions/setup-python` and
   `actions/upload-artifact` pinned to commit SHAs (`v7`, `v7`, `v4`).
+- Both workflows: the runner image is pinned to `ubuntu-24.04` instead of the
+  moving `ubuntu-latest` label.
 - `ci.yml`: pins `ruff==0.17.1`, `mypy==2.4.0`, `pytest==9.1.1`,
   `pytest-asyncio==1.4.0`, `PyYAML==6.0.3`.
 - `ci.yml`: adds the `runtime-python` headless job on Python 3.14 (the
   interpreter shipped by `org.gnome.Sdk//51`).
+
+## apt packages: accepted exception (AUD-13)
+
+The GitHub-hosted runner image is mutable and apt package versions rotate out
+of the Ubuntu mirrors. Pinning exact versions (`pkg=1.2.3-4ubuntu1`) makes CI
+fail as soon as the image is refreshed or a mirror drops the build, so the
+project pins the **image** (`ubuntu-24.04`) and keeps apt packages floating
+inside that image. Full bit-for-bit reproducibility would require building in a
+container referenced by digest; that is tracked as future work, not a blocker
+for this PR.
+
+Python tooling (ruff, mypy, pytest, pytest-asyncio, PyYAML) is pinned exactly,
+so lint/type/test behaviour does not drift.
 
 ## Validation
 
