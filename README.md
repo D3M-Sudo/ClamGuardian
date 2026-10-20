@@ -244,6 +244,7 @@ vault.restore(entry.item_id)
 | Tamper-evident metadata | metadata sealed as AES-GCM associated data |
 | Owner-only storage | vault dirs `0700`, record and restored files `0600` |
 | No shell, no injection | external commands run without a shell |
+| No remote lookups in 1.x | the threat-intelligence package is frozen and unwired; Phase 11 (`v1.2.0`) will add opt-in, hash-only lookups |
 | Sandboxed desktop app | Flatpak manifest grants only what the app needs (host ClamAV via `flatpak-spawn`, read-only host FS, app-data dir) |
 
 ## Developing

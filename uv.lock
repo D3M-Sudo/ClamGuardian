@@ -535,7 +535,7 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.23" },
     { name = "pyyaml", marker = "extra == 'test'", specifier = ">=6.0" },
 ]
-provides-extras = ["gtk", "test"]
+provides-extras = ["gtk", "intelligence", "test"]
 
 [[package]]
 name = "colorama"
