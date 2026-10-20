@@ -26,7 +26,7 @@ places in the `1.0.x` line.
 | `pyproject.toml`, `clamguardian/__init__.py` | version `1.0.0` → `1.0.1` |
 | `data/io.github.clamguardian.ClamGuardian.metainfo.xml` | new `<release version="1.0.1">` entry (the packaging test asserts `__version__` is listed) |
 | `packaging/flatpak/io.github.clamguardian.ClamGuardian.yml` | release source pinned to `tag: v1.0.1` |
-| `.github/workflows/release-gate.yml` | D4 smoke patch applied (every page, settings, stylesheet, About); release artifact renamed to `ClamGuardian-v1.0.1-linux-x86_64.flatpak`; gate label updated |
+| `.github/workflows/release-gate.yml` | **not modified on the branch** (no `workflows` permission): the D4 smoke (every page, settings, stylesheet, About), the `ClamGuardian-v1.0.1-linux-x86_64.flatpak` artifact name and the updated gate label ship as `docs/project/release-gate-1.0.1.patch` |
 | `tests/test_packaging.py` | guard: the release manifest must pin `v<current version>` |
 | `CHANGELOG.md` | new, 1.0.1 + 1.0.0 |
 | `SECURITY.md` | new: supported versions, private reporting, scope |
@@ -40,7 +40,8 @@ places in the `1.0.x` line.
 - [x] Version bumped in `pyproject.toml` and `clamguardian/__init__.py`.
 - [x] AppStream release entry added.
 - [x] Release Flatpak manifest pinned to `v1.0.1`.
-- [x] D4 release-gate patch applied (`git apply --check` was clean on `4a3d165`).
+- [x] Release-gate update prepared as `docs/project/release-gate-1.0.1.patch`
+      and verified with `git apply --check` on `4a3d165`.
 - [x] `CHANGELOG.md`, `SECURITY.md`, this document.
 - [x] Packaging guard test added.
 - [x] No tag, no promotion, no merge: `main`, `testing`, `development` untouched.
@@ -60,8 +61,9 @@ places in the `1.0.x` line.
 - [ ] `mypy clamguardian` — green.
 - [ ] `pytest` — green (local, optional GTK extra).
 - [ ] `uv lock --check` and `pip-audit --strict` — clean.
-- [ ] Apply/commit the workflow change with a token that has `workflows`
-      permission (the automation app cannot push `.github/workflows/*`).
+- [ ] Apply `docs/project/release-gate-1.0.1.patch` and commit it with a token
+      that has `workflows` permission (the automation app cannot push
+      `.github/workflows/*`; the push was rejected on 2026-10-20).
 - [ ] PR `feature → testing`; require CI (3.11/3.12/3.13 + 3.14) and the release
       gate including `ClamGuardian-testing-linux-x86_64.flatpak`.
 - [ ] PR `testing → development`; PR `development → main`.
