@@ -256,7 +256,8 @@ mypy clamguardian # type checks
 ```
 
 - **CI** (`.github/workflows/ci.yml`) runs on every PR and on pushes to `main`,
-  `feature` and `development`: tests on Python 3.11–3.13 plus a strict
+  `feature` and `development`: tests on Python 3.11–3.13, a headless
+  `runtime-python` job on Python 3.14 (the Flatpak SDK interpreter), plus a strict
   dependency audit of the pinned lockfile (`uv lock --check`, `pip-audit --strict`).
 - **Release gate** (`.github/workflows/release-gate.yml`) builds both Flatpak
   manifests offline against GNOME Platform 51, validates AppStream metadata, runs

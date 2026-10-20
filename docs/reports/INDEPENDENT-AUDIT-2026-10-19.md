@@ -513,3 +513,7 @@ I fix sono stati implementati sul branch `cline/fhyn2bmx` e proposti con PR vers
 | AUD-11 | **Congelato con guardrail** | `docs/design/threat-intelligence.md`, extra `intelligence` vuoto, `tests/test_intelligence_frozen.py` |
 
 Residuo dichiarato: nessun finding AUD resta senza fix, mitigazione o rischio accettato e tracciato. AUD-11 è congelato con guardrail fino alla Fase 11 (`v1.2.0`), AUD-13 è mitigato (runner pinnato, apt dichiarato come eccezione), AUD-06 è rischio accettato e documentato.
+
+## 9. Addendum — chiusura PR #13 (2026-10-20)
+
+La PR #13 è stata mergiata in `feature` come `144e89f` (2026-10-20T01:45:10Z). Il patch CI è stato applicato in `a315082` (`ci: apply AUD-05/07/13 workflow hardening`), chiudendo AUD-05/AUD-07/AUD-13 anche sul ramo. Verifica locale su host reale: `ruff` pulito, `mypy` 42 file puliti, `pytest` 350 passed / 8 skipped, scansione `clamd` reale (ClamAV 1.5.4/28152) con EICAR rilevato dopo file pulito (`infected`, exit 1), target con newline rifiutato (exit 3, clamd vivo), `pip-audit --strict` pulito (`aiohttp==3.14.5`, `yarl==1.25.1`), nessun listener su 8080/8081/15001. `clamd` ripristinato a disattivato dopo i test. Commento di verifica: PR #13 `issuecomment-6281317368`. PR lasciata mergiata senza tag: la release `v1.0.0` resta l'unico tag, il difetto AUD-01 è presente in `v1.0.0` come dichiarato in §1.
