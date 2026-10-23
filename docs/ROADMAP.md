@@ -1,6 +1,6 @@
 # ClamGuardian Implementation Roadmap
 
-*Last updated: 2026-10-20 — PR #13 merged to `feature` @ `144e89f` (audit P1/P2 remediation closed: clamd AUD-01/AUD-04, quarantine key AUD-02/AUD-03, CI hardening AUD-05/07/13 applied in `a315082`, runtime exposure AUD-06 accepted, intelligence frozen Phase 11). Local release verification green (350 passed / 8 skipped, mypy 42 files, ruff clean, real clamd EICAR infected exit 1, newline exit 3, `pip-audit` clean, no listener on 8080/8081/15001). Manual desktop validation pending. Future versions are planning targets, not promised releases or dates.*
+*Last updated: 2026-10-20 — PR #13 merged to `feature` @ `144e89f` (audit P1/P2 remediation closed: clamd AUD-01/AUD-04, quarantine key AUD-02/AUD-03, CI hardening AUD-05/07/13 applied in `a315082`, runtime exposure AUD-06 accepted, intelligence frozen Phase 11). Release engineering for `v1.0.1` is prepared (version, AppStream release, Flatpak manifest pin, `CHANGELOG.md`, `SECURITY.md`, release-gate patch ready to apply); the tag is blocked on the manual desktop validation. Local release verification green (350 passed / 8 skipped, mypy 42 files, ruff clean, real clamd EICAR infected exit 1, newline exit 3, `pip-audit` clean, no listener on 8080/8081/15001). Future versions are planning targets, not promised releases or dates.*
 
 This document outlines the authoritative development roadmap for ClamGuardian, tracking completed milestones, in-progress targets, and future architectural phases.
 
@@ -44,7 +44,7 @@ Future versions are planning targets, not implemented releases or promised dates
 | Status | Milestone | Exit criterion |
 |---|---|---|
 | **Completed** | `v1.0.0` | Green release gate, bundle produced, promotions documented |
-| **Current** | `1.0.x` | Coherent documentation; recorded manual desktop test; Flatpak restore verified |
+| **Current** | `1.0.x` | Coherent documentation; recorded manual desktop test; Flatpak restore verified — `v1.0.1` prepared, tag blocked on the manual validation (`reports/RELEASE-1.0.1.md`) |
 | **Implemented** | Desktop App — Phases D1 + D2 + D3 + D4 | Foundations + diagnostics, Scan page, History, Quarantine, Databases, Diagnostics and Settings; window chrome, About, opt-in notifications, accent stylesheet, default-profile settings, quarantine ingest from scan results — committed on `feature`, CI smoke covers every page |
 | **Next** | Manual desktop validation | Recorded on-desktop click-through of the D4 pages (`docs/validation/DESKTOP-TEST-1.0.md`) and Flatpak restore verification |
 | **Minor release** | `v1.1.0` | Integrated USB Auto-Scan, target safety, tests and dedicated gate |
@@ -140,9 +140,12 @@ Future versions are planning targets, not implemented releases or promised dates
 - **Status:** CURRENT
 - **M1 — Documentation realignment:** verified in this branch: `docs/ROADMAP.md` and `docs/reports/RELEASE-GATE-1.0.md` record tag `v1.0.0` @ `8ee8a56` with the final tag run `38977065253`, while on `origin/main` `docs/ROADMAP.md` still cites `745e1e7` (verified via `git show origin/main:docs/ROADMAP.md`). Realign `README.md`, `docs/ROADMAP.md`, `docs/reports/RELEASE-GATE-1.0.md` and packaging through the normal protected flow `feature → testing → development → main`, never with direct edits to `main`. Prerequisite: compare the current SHAs of all branch tips.
 - **M1 goal:** all production documents cite the same tag, commit and evidence run.
-- **M2 — Manual test on a real desktop:** the CI GTK smoke test passed (Xvfb); a click-through on a real desktop remains a recommended follow-up, not a release blocker. Verify Flatpak launch, GTK pages, host ClamAV access, clean/EICAR scan in a controlled environment, results/history and database update.
+- **M1 status (2026-10-20):** release engineering for `1.0.1` prepared — version, AppStream release entry, Flatpak manifest pin, `CHANGELOG.md` (new), `SECURITY.md` (new) and the release checklist `reports/RELEASE-1.0.1.md`; the release-gate update is ready as `project/release-gate-1.0.1.patch` (needs a `workflows` token). The bulk rewrite of the 1.0.0 references stays in the tag commit, so the docs never advertise an artifact that does not exist yet.
+- **M2 — Manual test on a real desktop:** the CI GTK smoke test passed (Xvfb); a click-through on a real desktop remains the last gate before the `v1.0.1` tag. Verify Flatpak launch, GTK pages, host ClamAV access, clean/EICAR scan in a controlled environment, results/history and database update.
+- **M2 status:** **BLOCKED — pending the maintainer's local host.** Execute `docs/validation/DESKTOP-TEST-D4-2026-10-19.md` (14 steps) and record outcomes before any promotion or tag.
 - **M2 goal:** repeatable checklist with environment and outcomes recorded. Test template: `docs/validation/DESKTOP-TEST-1.0.md`.
 - **M3 — Quarantine restore verification in Flatpak:** the core exposes `QuarantineVault.restore()`, but restoring to arbitrary host paths must be verified inside the sandbox, since `--filesystem=host:ro` may restrict writes. Reproduce the case in the installed app, define the supported destinations, and — only if needed — evaluate a file portal or narrowly scoped writable permissions. Do not broaden Flatpak permissions indiscriminately.
+- **M3 status:** **PENDING**, same desktop session as M2 (`DESKTOP-TEST-1.0.md` §8).
 - **M3 goal:** restore tested and documented without needlessly weakening the sandbox; if the supported paths already work, record the evidence without superfluous changes.
 - **M4 — Dependency and manifest maintenance:** CI, lockfile and offline manifests.
 - **Promotion testing:** opening the `feature → testing` promotion PR runs the Release Gate
@@ -210,8 +213,8 @@ Future versions are planning targets, not implemented releases or promised dates
 
 ## Recommended Work Order
 
-1. **Now:** manual desktop validation of Desktop Application Phase D4 on `feature` (click-through checklist, Flatpak restore). Plan of record: `project/HANDOFF-2026-10-18-DESKTOP-UI.md`.
-2. **Then:** merge `feature` → `testing` once the manual validation is recorded.
+1. **Now (blocked):** manual desktop validation of Desktop Application Phase D4 on `feature` (click-through checklist, Flatpak restore). Plan of record: `project/HANDOFF-2026-10-18-DESKTOP-UI.md`; release checklist: `reports/RELEASE-1.0.1.md`. The release engineering for `1.0.1` is already prepared and waits for this record.
+2. **Then:** merge `feature` → `testing` once the manual validation is recorded, promote `testing → development → main`, tag `v1.0.1` and publish the GitHub Release with the Flatpak bundle.
 3. **After:** `1.1.0` USB Auto-Scan.
 4. **Then:** `1.2.0` Threat Intelligence.
 5. **Only after remediation and audit:** `2.0.0` realtime.

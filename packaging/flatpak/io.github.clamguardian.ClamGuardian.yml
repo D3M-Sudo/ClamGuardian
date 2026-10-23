@@ -1,9 +1,10 @@
 # Release manifest (Flatpak / Flathub submission).
 #
 # The source is pinned to an immutable tag: Flathub and any reproducible build
-# refuse to build from a moving branch. The `v1.0.0` tag is created by the 1.0
-# release gate (docs/ROADMAP.md, Phase 9); when cutting a new release, update
-# `tag` and add the resulting `commit` so a moved tag cannot change the build.
+# refuse to build from a moving branch. `v1.0.1` is cut from `main` after the
+# manual desktop validation and the promotion PRs (docs/reports/RELEASE-1.0.1.md);
+# when cutting a new release, update `tag` and add the resulting `commit` so a
+# moved tag cannot change the build.
 #
 # For a build against the working tree use the local manifest:
 #   flatpak-builder build-dir io.github.clamguardian.ClamGuardian.local.yml
@@ -100,4 +101,4 @@ modules:
         sha256: 815e7be7a7806d54abb586dc943addc79e8b2ee16915059658cbeff4b1b43bf4
       - type: git
         url: https://github.com/D3M-Sudo/ClamGuardian.git
-        tag: v1.0.0
+        tag: v1.0.1

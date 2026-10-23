@@ -33,6 +33,21 @@
        objectionable content. -->
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.0.1" date="2026-10-20">
+      <description>
+        <p>
+          Security and desktop update: fixes the clamd directory-scan false
+          negative (AUD-01) shipped in 1.0.0, hardens the quarantine key store
+          and restore paths, rejects newline injection in scan targets, and
+          adds the complete GTK4 desktop application (scan, history,
+          quarantine, databases, diagnostics, settings).
+        </p>
+        <p>
+          Users of 1.0.0 should upgrade: directory scans served by clamd could
+          report a clean result for an infected directory.
+        </p>
+      </description>
+    </release>
     <release version="1.0.0" date="2026-10-13">
       <description>
         <p>

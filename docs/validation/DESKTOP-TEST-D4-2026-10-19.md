@@ -5,8 +5,11 @@ theme, window chrome, quarantine ingest). The authoritative step-by-step
 checklist is [`DESKTOP-TEST-1.0.md`](DESKTOP-TEST-1.0.md); this file only
 records the D4 session.
 
-- **Status:** TEMPLATE — to be executed on a real desktop session.
-- **Scope:** `feature` @ D4 (record the exact commit in the table below).
+- **Status:** PENDING — blocked: the maintainer's local host is unavailable. This
+  record gates the `v1.0.1` tag (`docs/reports/RELEASE-1.0.1.md`).
+- **Scope:** `feature` @ `4a3d165` + the release-engineering changes for `1.0.1`
+  (record the exact commit in the table below); after the tag, re-verify against
+  `v1.0.1` and record that SHA too.
 - **Automated coverage:** `ruff`, `mypy`, `pytest` (including GTK widget tests
   under Xvfb) and the Release Gate must be green before this session starts.
 
@@ -21,7 +24,9 @@ records the D4 session.
 | Libadwaita version | _e.g. 1.5.0 / 1.9.x_ |
 | CPU / arch | _e.g. x86_64_ |
 | Install method | _Flatpak bundle / `pip install` from source_ |
-| Commit under test | `feature` @ `44ca472` (D4 code; later docs-only commits do not change the UI) |
+| Commit under test | `feature` @ `4a3d165` + release-engineering changes (record `git rev-parse HEAD`; re-verify on `v1.0.1` after the tag) |
+| Bundle under test | `ClamGuardian-testing-linux-x86_64.flatpak` (pre-tag) or `ClamGuardian-v1.0.1-linux-x86_64.flatpak` |
+| Bundle SHA-256 | _record the digest of the installed bundle_ |
 | `flatpak --version` | _x.y.z_ |
 | Host `clamscan --version` | _e.g. ClamAV x.y.z_ |
 | Host `clamd` running | _yes / no_ |
@@ -46,6 +51,7 @@ Outcome markers: `PASS` · `FAIL` · `N/A` · `BLOCKED` (with reference).
 | D4.12 | About dialog | Version, license, website and issue tracker correct | | |
 | D4.13 | Diagnostics page | Banner state and per-distro remedies match the host | | |
 | D4.14 | All six pages | Scan, History, Quarantine, Databases, Diagnostics, Settings open without tracebacks or criticals on stderr | | |
+| D4.15 | `clamd` running → scan a folder containing `clean.txt` then `eicar.txt` | Result is **Infected** with the EICAR threat listed (AUD-01 regression; a `clean` verdict here is a release blocker) | | |
 
 ## 3. Exit
 
