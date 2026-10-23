@@ -1,0 +1,45 @@
+/* ClamGuardian accent layer.
+ *
+ * Only application-specific classes are styled here: the stock Libadwaita
+ * theme keeps ownership of every widget, so the app follows the user's
+ * system theme (light, dark and high-contrast) instead of forcing colours.
+ * Named colours (@accent_bg_color, @success_color, ...) are provided by
+ * Libadwaita and resolve correctly in every scheme.
+ */
+
+.cg-status-banner {
+  padding: 18px 12px;
+}
+
+.cg-status-banner.cg-banner-ok {
+  color: @success_color;
+}
+
+.cg-status-banner.cg-banner-warning {
+  color: @warning_color;
+}
+
+.cg-status-banner.cg-banner-error {
+  color: @error_color;
+}
+
+.cg-scan-button {
+  background-color: @accent_bg_color;
+  background-image: none;
+  color: @accent_fg_color;
+  font-weight: 700;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.cg-scan-button:hover {
+  background-color: @accent_bg_color;
+}
+
+.cg-threat-row {
+  font-weight: 600;
+}
+
+.cg-page-subtitle {
+  opacity: 0.7;
+}

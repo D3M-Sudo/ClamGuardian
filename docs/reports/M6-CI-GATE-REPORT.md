@@ -20,7 +20,7 @@ gate had never been able to report, because the gate had never actually run
 > `pip-audit --strict` reporting "No known vulnerabilities found" (section 5).
 >
 > **Phase 9 — the 1.0 release gate — remains OPEN** and is a separate gate, not
-> covered by this report. See section 5 and `docs/ROADMAP.md`.
+> covered by this report. See section 5 and `../ROADMAP.md`.
 
 ---
 
@@ -135,7 +135,7 @@ git diff --check          exit 0
 
 `mypy` reports **29** source files rather than the 26 quoted by the first
 revision of this report: the three `clamguardian/intelligence/` modules are kept
-on this branch (unwired — nothing imports them; see `docs/ROADMAP.md`, Phase 11)
+on this branch (unwired — nothing imports them; see `../ROADMAP.md`, Phase 11)
 instead of being deleted, so the package count grew by three.
 
 `actionlint` 1.7.12 was run over `.github/workflows/` and reports no findings, so
@@ -289,11 +289,11 @@ Two points that must not be conflated with that closure:
    report covers. Still to be executed: build both Flatpak manifests, validate
    the metainfo with `appstreamcli`, scan with a real ClamAV, verify the GTK UI
    on a desktop session, run the release checklist, and create the `v1.0.0` tag
-   the release manifest is pinned to. See `docs/ROADMAP.md`.
+   the release manifest is pinned to. See `../ROADMAP.md`.
 
 ## 6. Follow-ups (not part of M6)
 
-- **Documentation coherence (raised by WO-1).** `docs/ROADMAP.md` still marks
+- **Documentation coherence (raised by WO-1).** `../ROADMAP.md` still marks
   Phase 7 `[COMPLETED]` and `README.md` still describes the `audit` job as already
   present. Neither matches the branch tip. Both must be corrected once the CI run
   is green; they were left untouched by WO-1, which is scoped to the M6 gate.

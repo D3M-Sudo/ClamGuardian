@@ -16,6 +16,12 @@ from ..core.profiles import DEFAULT_PROFILE, ScanProfile
 #: Grace period given to a subprocess after ``SIGTERM`` before ``SIGKILL``.
 TERMINATE_GRACE_SECONDS = 5.0
 
+#: Upper bound for a clamd response buffered in memory (8 MiB).
+MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+
+#: Bytes that must never reach the line-oriented clamd command channel.
+_CONTROL_BYTES = (b"\x00", b"\n", b"\r")
+
 
 class ClamAVEngine(BaseAVEngine):
     """Use clamd over UNIX socket when available, otherwise clamscan/freshclam.
@@ -53,6 +59,14 @@ class ClamAVEngine(BaseAVEngine):
         profile is applied (recursion driven by ``recursive``).
         """
         target = Path(target).expanduser().resolve(strict=True)
+        if self._has_control_bytes(target):
+            return ScanResult(
+                target=str(target),
+                clean=False,
+                status=ScanStatus.ERROR,
+                engine=self.name,
+                error="Unsupported scan target: control characters in path",
+            )
         rejection = self._reject_unsupported_target(target)
         if rejection is not None:
             return rejection
@@ -105,6 +119,18 @@ class ClamAVEngine(BaseAVEngine):
         )
 
     @staticmethod
+    def _has_control_bytes(target: Path) -> bool:
+        """Reject targets that could inject a second clamd command.
+
+        The clamd protocol is line-oriented and has no quoting: a newline in
+        the path would terminate the ``SCAN``/``CONTSCAN`` command and let an
+        attacker-controlled filename issue ``SHUTDOWN``, ``RELOAD`` or an
+        additional scan.
+        """
+        raw = os.fsencode(str(target))
+        return any(token in raw for token in _CONTROL_BYTES)
+
+    @staticmethod
     def _annotate_profile(result: ScanResult, profile: ScanProfile) -> ScanResult:
         """Record which scan profile was applied to *result*."""
         result.metadata["profile_id"] = profile.id
@@ -138,6 +164,10 @@ class ClamAVEngine(BaseAVEngine):
         self, target: Path, profile: ScanProfile
     ) -> tuple[str, int, tuple[str, ...]]:
         """Run a clamd scan; return (output, code, unsupported-profile-options)."""
+        if self._has_control_bytes(target):
+            # Defence in depth: never write a control character to the
+            # line-oriented command channel, even for direct callers.
+            raise ValueError("Unsupported scan target: control characters in path")
         unsupported = self._clamd_unsupported_options(profile)
         reader, writer = await asyncio.open_unix_connection(str(self.socket_path))
         try:
@@ -147,15 +177,19 @@ class ClamAVEngine(BaseAVEngine):
             command = b"CONTSCAN" if profile.recursive and target.is_dir() else b"SCAN"
             writer.write(command + b" " + os.fsencode(str(target)) + b"\n")
             await writer.drain()
-            chunks: list[bytes] = []
+            # clamd streams one result line per file and closes the connection
+            # when the whole command has been served. Reading must therefore
+            # continue until EOF: stopping at the first "OK"/"FOUND" line
+            # silently discarded every later result of a directory scan.
+            response = bytearray()
             while True:
                 chunk = await reader.read(65536)
                 if not chunk:
                     break
-                chunks.append(chunk)
-                if b"\n" in chunk and any(token in chunk for token in (b"FOUND", b"OK", b"ERROR")):
-                    break
-            output = b"".join(chunks).decode("utf-8", errors="replace")
+                response.extend(chunk)
+                if len(response) > MAX_RESPONSE_BYTES:
+                    raise ValueError("clamd response exceeded the size limit")
+            output = bytes(response).decode("utf-8", errors="replace")
             code = (
                 1
                 if any(" ERROR" in line or line.endswith("ERROR") for line in output.splitlines())

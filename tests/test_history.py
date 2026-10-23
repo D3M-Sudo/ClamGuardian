@@ -1043,3 +1043,16 @@ async def test_unregistered_profile_id_is_not_persisted_raw(tmp_path: Path) -> N
     assert got is not None
     assert got.profile_id is None
     assert await store.list_scans(profile_id="totally-bogus-untrusted") == []
+
+
+def test_store_does_not_chmod_a_preexisting_parent(tmp_path: Path) -> None:
+    import os
+
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    os.chmod(shared, 0o755)
+
+    SqliteHistoryStore(shared / "history.db")
+
+    assert shared.stat().st_mode & 0o777 == 0o755
+

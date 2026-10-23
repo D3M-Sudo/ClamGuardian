@@ -71,7 +71,9 @@ def test_desktop_entry_is_complete_and_matches_the_console_script() -> None:
     for key in ("Name", "Comment", "Exec", "Icon", "Type", "Categories"):
         assert entry.get(key), f"desktop entry is missing {key}"
     assert entry["Type"] == "Application"
-    assert entry["Exec"] == "clamguardian"
+    # The launcher must open the desktop app, not the bare CLI: `clamguardian`
+    # with no subcommand is an argparse error and shows nothing (desktop UI D1).
+    assert entry["Exec"] == "clamguardian ui"
     assert entry["Icon"] == APP_ID
 
 
@@ -171,6 +173,18 @@ def test_release_manifest_pins_an_immutable_source() -> None:
     source = git_sources[0]
     assert source.get("url"), "the pinned git source needs a url"
     assert source.get("tag") or source.get("commit"), "the source must be pinned to a tag or commit"
+
+
+def test_release_manifest_pins_the_declared_version() -> None:
+    """The release manifest must build the version the package declares.
+
+    A version bump that forgets the Flatpak pin would publish a bundle whose
+    AppStream metadata and CLI claim ``1.0.1`` while the sources still come from
+    the previous tag.
+    """
+    module = _clamguardian_module(_manifest(f"{APP_ID}.yml"))
+    source = next(s for s in module["sources"] if s.get("type") == "git")
+    assert source.get("tag") == f"v{clamguardian.__version__}"
 
 
 def test_development_manifest_builds_the_working_tree() -> None:

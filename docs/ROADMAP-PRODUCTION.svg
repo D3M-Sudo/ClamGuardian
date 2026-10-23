@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="650" viewBox="0 0 1100 650">
+<style>
+.t{font:700 26px sans-serif;fill:#111827}.s{font:15px sans-serif;fill:#4b5563}.h{font:700 15px sans-serif;fill:#374151}
+.b{stroke-width:2;rx:13;ry:13}.done{fill:#e5e7eb;stroke:#6b7280}.rel{fill:#dbeafe;stroke:#1d4ed8;stroke-width:4}.next{fill:#fff7ed;stroke:#c2410c}.later{fill:#f9fafb;stroke:#9ca3af;stroke-dasharray:6 4}
+.l{font:700 17px sans-serif;fill:#111827;text-anchor:middle}.d{font:14px sans-serif;fill:#374151;text-anchor:middle}
+.a{stroke:#4b5563;stroke-width:2.4;fill:none;marker-end:url(#ar)}
+</style>
+<defs><marker id="ar" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#4b5563"/></marker></defs>
+<rect width="1100" height="650" fill="#fff"/>
+<text x="35" y="42" class="t">ClamGuardian — roadmap di produzione</text>
+<text x="35" y="68" class="s">Baseline 18 ottobre 2026 · v1.0.0 rilasciata</text>
+<text x="35" y="108" class="h">TRAGUARDI COMPLETATI</text>
+<rect x="35" y="125" width="220" height="75" class="b done"/><text x="145" y="153" class="l">M0–M3</text><text x="145" y="177" class="d">Core · runner · profili · CLI</text>
+<path d="M255 162 H282" class="a"/>
+<rect x="287" y="125" width="220" height="75" class="b done"/><text x="397" y="153" class="l">M4–M6</text><text x="397" y="177" class="d">Storico · hardening · CI</text>
+<path d="M507 162 H534" class="a"/>
+<rect x="539" y="125" width="220" height="75" class="b done"/><text x="649" y="153" class="l">M7 / Phase 9</text><text x="649" y="177" class="d">Packaging · release gate</text>
+<path d="M759 162 H786" class="a"/>
+<rect x="791" y="117" width="274" height="91" class="b rel"/><text x="928" y="151" class="l">v1.0.0 · RILASCIATA</text><text x="928" y="177" class="d">Gate verde · bundle Flatpak</text>
+<text x="35" y="250" class="h">PROSSIMI PASSI</text>
+<rect x="35" y="270" width="310" height="92" class="b next"/><text x="190" y="300" class="l">1.0.x · Stabilizzazione</text><text x="190" y="325" class="d">Documenti · test desktop</text><text x="190" y="345" class="d">Restore Flatpak</text>
+<path d="M345 316 H375" class="a"/>
+<rect x="380" y="270" width="310" height="92" class="b next"/><text x="535" y="300" class="l">v1.1.0 · USB Auto-Scan</text><text x="535" y="325" class="d">Mount safety · integrazione</text><text x="535" y="345" class="d">Test e gate dedicato</text>
+<path d="M690 316 H720" class="a"/>
+<rect x="725" y="270" width="340" height="92" class="b next"/><text x="895" y="300" class="l">v1.2.0 · Threat Intelligence</text><text x="895" y="325" class="d">VirusTotal via SHA-256</text><text x="895" y="345" class="d">Opt-in · rate limit · privacy</text>
+<text x="35" y="410" class="h">LINEA MAGGIORE 2.x — DOPO REMEDIATION E AUDIT</text>
+<rect x="35" y="430" width="310" height="92" class="b later"/><text x="190" y="460" class="l">v2.0.0 · Event-driven</text><text x="190" y="485" class="d">Fix P1 realtime · queue · shutdown</text><text x="190" y="505" class="d">Overflow e watch osservabili</text>
+<path d="M345 476 H375" class="a"/>
+<rect x="380" y="430" width="310" height="92" class="b later"/><text x="535" y="460" class="l">v2.1.x · Access prevention</text><text x="535" y="485" class="d">fanotify / clamonacc</text><text x="535" y="505" class="d">Threat model e privilegi</text>
+<path d="M690 476 H720" class="a"/>
+<rect x="725" y="430" width="340" height="92" class="b later"/><text x="895" y="460" class="l">v2.2.x · IPC privilegiato</text><text x="895" y="485" class="d">Daemon / IPC / Polkit</text><text x="895" y="505" class="d">Solo se necessario</text>
+<rect x="35" y="560" width="1030" height="58" rx="12" fill="#f9fafb" stroke="#d1d5db"/>
+<text x="55" y="585" class="l" text-anchor="start">Regola di avanzamento</text><text x="55" y="605" class="d" text-anchor="start">Ogni milestone richiede test riproducibili, evidenze documentate e gate verde; nessuna data futura è promessa.</text>
+</svg>

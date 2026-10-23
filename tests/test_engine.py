@@ -1,5 +1,6 @@
 """Unit tests for the ClamAV engine without requiring ClamAV on the test host."""
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -281,3 +282,77 @@ async def test_clean_path_containing_found_is_not_a_detection(
     result = await engine.scan(target)
     assert result.status is ScanStatus.CLEAN
     assert result.threats == ()
+
+
+async def _serve_clamd(socket_path: Path, lines: list[bytes]):
+    """Serve one clamd command, streaming *lines* like the real daemon."""
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        await reader.readline()
+        for line in lines:
+            writer.write(line)
+            await writer.drain()
+            await asyncio.sleep(0)
+        writer.close()
+        await writer.wait_closed()
+
+    return await asyncio.start_unix_server(handle, path=str(socket_path))
+
+
+@pytest.mark.asyncio
+async def test_clamd_directory_scan_reads_every_result_line(tmp_path: Path) -> None:
+    """A directory scan must not stop at the first "OK" line (AUD-01)."""
+    target = tmp_path / "scanned"
+    target.mkdir()
+    socket_path = tmp_path / "clamd.ctl"
+    lines = [
+        b"clean-a.txt: OK\n",
+        b"clean-b.txt: OK\n",
+        b"eicar.txt: Eicar-Test-Signature FOUND\n",
+        b"\n----------- SCAN SUMMARY -----------\nInfected files: 1\n",
+    ]
+
+    server = await _serve_clamd(socket_path, lines)
+    async with server:
+        engine = ClamAVEngine(socket_path=socket_path, command_timeout=5)
+        result = await engine.scan(target)
+
+    assert result.status is ScanStatus.INFECTED
+    assert result.threats == ("eicar.txt: Eicar-Test-Signature FOUND",)
+    assert result.engine == "clamd"
+
+
+@pytest.mark.asyncio
+async def test_target_with_newline_is_rejected_before_clamd(tmp_path: Path) -> None:
+    """Control characters must never reach the line-oriented clamd channel."""
+    target = tmp_path / "evil\nSHUTDOWN"
+    target.write_text("payload")
+    engine = ClamAVEngine(socket_path=tmp_path / "clamd.ctl")
+
+    result = await engine.scan(target)
+
+    assert result.status is ScanStatus.ERROR
+    assert "control characters" in (result.error or "")
+
+    from clamguardian.core.profiles import DEFAULT_PROFILE
+
+    with pytest.raises(ValueError, match="control characters"):
+        await engine._scan_socket(target, DEFAULT_PROFILE)
+
+
+@pytest.mark.asyncio
+async def test_clamd_response_size_is_bounded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from clamguardian.core.profiles import DEFAULT_PROFILE
+
+    target = tmp_path / "target.txt"
+    target.write_text("x")
+    socket_path = tmp_path / "clamd.ctl"
+    monkeypatch.setattr("clamguardian.engines.clamav.MAX_RESPONSE_BYTES", 32)
+
+    server = await _serve_clamd(socket_path, [b"x" * 64])
+    async with server:
+        engine = ClamAVEngine(socket_path=socket_path, command_timeout=5)
+        with pytest.raises(ValueError, match="size limit"):
+            await engine._scan_socket(target, DEFAULT_PROFILE)
