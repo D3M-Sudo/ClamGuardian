@@ -10,7 +10,7 @@
 
 ## 1. Gate criteria and verdict
 
-M4 Final is the sequence of Phases 1-4 of `docs/ROADMAP.md`: profile-aware history
+M4 Final is the sequence of Phases 1-4 of `../ROADMAP.md`: profile-aware history
 propagation, the content-hash model, the security test gap closure, and boundary
 isolation + quality gates + report.
 

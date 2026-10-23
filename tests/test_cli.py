@@ -19,6 +19,7 @@ import pytest
 from clamguardian.cli import main as cli_main
 from clamguardian.cli import run
 from clamguardian.core.base import BaseAVEngine, ScanResult, ScanStatus
+from clamguardian.core.diagnostics import CheckResult, CheckStatus
 from clamguardian.core.errors import EngineError
 from clamguardian.core.profiles import ScanProfile
 from clamguardian.core.runner import ScanTaskRunner
@@ -270,7 +271,7 @@ def test_unknown_profile_is_usage_error(tmp_path, cli):
 
 def test_missing_target_file(cli):
     harness = cli(FakeEngine())
-    assert harness("scan", "/nonexistent/path/for/clamguardian") == 3
+    assert harness("scan", "/nonexistent/path/for/clamguardian") == 2
     assert "does not exist" in harness.err.getvalue()
 
 
@@ -791,6 +792,30 @@ def test_history_purge_no_match_with_past_before(cli) -> None:
     assert len(recorder._stored) == 1
 
 
+def test_history_purge_unknown_status_is_usage_error(cli) -> None:
+    """U-06: an invented ``--status`` is a usage error (exit 2), not a traceback."""
+    recorder = FakeRecorder()
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "purge", "--status", "nope") == 2
+    assert "unknown status" in harness.err.getvalue()
+
+
+def test_history_list_unknown_status_is_usage_error(cli) -> None:
+    """U-06: ``history list --status nope`` is a usage error (exit 2)."""
+    recorder = FakeRecorder()
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "list", "--status", "nope") == 2
+    assert "unknown status" in harness.err.getvalue()
+
+
+def test_history_list_non_positive_limit_is_usage_error(cli) -> None:
+    """U-06: ``history list --limit 0`` is a usage error (exit 2)."""
+    recorder = FakeRecorder()
+    harness = cli(FakeEngine(make_result(ScanStatus.CLEAN, target="/tmp/x")), recorder=recorder)
+    assert harness("history", "list", "--limit", "0") == 2
+    assert "--limit must be a positive integer" in harness.err.getvalue()
+
+
 def test_history_purge_status_filter(cli) -> None:
     """``--status`` restricts deletion to matching records only."""
     recorder = FakeRecorder()
@@ -890,3 +915,140 @@ def test_history_purge_does_not_affect_list_show(cli) -> None:
     assert harness("history", "list") == 0
     assert "/tmp/keep" in harness.out.getvalue()
     assert "/tmp/drop" not in harness.out.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# doctor / ui (desktop UI phase D1)
+# ---------------------------------------------------------------------------
+
+
+def _fake_checks(*, healthy: bool = True) -> list[CheckResult]:
+    """Build a deterministic diagnostics result for the doctor tests."""
+    if healthy:
+        return [
+            CheckResult(
+                id="clamscan",
+                label="clamscan",
+                status=CheckStatus.OK,
+                detail="/usr/bin/clamscan",
+                critical=True,
+                remedies={},
+            ),
+            CheckResult(
+                id="databases",
+                label="Signature databases",
+                status=CheckStatus.OK,
+                detail="newest database is 1 day(s) old",
+                critical=True,
+                remedies={},
+            ),
+        ]
+    return [
+        CheckResult(
+            id="clamscan",
+            label="clamscan",
+            status=CheckStatus.MISSING,
+            detail="clamscan not found on PATH",
+            critical=True,
+            remedies={"debian": "sudo apt install clamav"},
+        ),
+        CheckResult(
+            id="clamd",
+            label="clamd daemon",
+            status=CheckStatus.WARNING,
+            detail="daemon not running; scans fall back to clamscan",
+            critical=False,
+            remedies={"debian": "sudo systemctl enable --now clamav-daemon"},
+        ),
+    ]
+
+
+def test_top_level_help_includes_doctor_and_ui(cli) -> None:
+    harness = cli(FakeEngine())
+    with pytest.raises(SystemExit) as excinfo:
+        run(["--help"], out=harness.out, err=harness.err)
+    assert excinfo.value.code == 0
+    help_text = harness.out.getvalue()
+    assert "doctor" in help_text
+    assert "ui" in help_text
+
+
+def test_doctor_human_healthy(cli, monkeypatch) -> None:
+    monkeypatch.setattr(cli_main, "run_dependency_checks", lambda: _fake_checks())
+    harness = cli(FakeEngine())
+    assert harness("doctor") == 0
+    output = harness.out.getvalue()
+    assert "ClamGuardian diagnostics:" in output
+    assert "Ready to scan." in output
+
+
+def test_doctor_human_reports_failures_and_remedies(cli, monkeypatch) -> None:
+    monkeypatch.setattr(cli_main, "run_dependency_checks", lambda: _fake_checks(healthy=False))
+    harness = cli(FakeEngine())
+    assert harness("doctor") == 6
+    output = harness.out.getvalue()
+    assert "MISSING" in output
+    assert "sudo apt install clamav" in output
+    assert "Critical dependencies need attention" in output
+
+
+def test_doctor_json_contract(cli, monkeypatch) -> None:
+    monkeypatch.setattr(cli_main, "run_dependency_checks", lambda: _fake_checks(healthy=False))
+    harness = cli(FakeEngine())
+    assert harness("doctor", "--json") == 6
+    payload = json.loads(harness.out.getvalue())
+    assert list(payload) == ["checks", "summary", "healthy"]
+    assert payload["healthy"] is False
+    assert payload["summary"] == {"ok": 0, "warning": 1, "missing": 1}
+    first = payload["checks"][0]
+    assert list(first) == ["id", "label", "status", "detail", "critical", "remedies"]
+    assert first["status"] == "missing"
+    assert first["remedies"] == {"debian": "sudo apt install clamav"}
+
+
+def test_doctor_exit_zero_when_only_warnings(cli, monkeypatch) -> None:
+    warnings_only = [
+        CheckResult(
+            id="clamd",
+            label="clamd daemon",
+            status=CheckStatus.WARNING,
+            detail="daemon not running; scans fall back to clamscan",
+            critical=False,
+            remedies={"debian": "sudo systemctl enable --now clamav-daemon"},
+        )
+    ]
+    monkeypatch.setattr(cli_main, "run_dependency_checks", lambda: warnings_only)
+    harness = cli(FakeEngine())
+    assert harness("doctor") == 0
+    assert harness("doctor", "--json") == 0
+    assert json.loads(harness.out.getvalue())["healthy"] is True
+
+
+def test_ui_headless_reports_error_and_exit_3(cli, monkeypatch) -> None:
+    import clamguardian.ui as ui_package
+
+    monkeypatch.setattr(ui_package, "GTK_AVAILABLE", False)
+    harness = cli(FakeEngine())
+    assert harness("ui") == 3
+    assert "GTK 4 / Libadwaita is not available" in harness.err.getvalue()
+
+
+def test_format_human_escapes_terminal_control_characters() -> None:
+    from clamguardian.cli.output import format_human
+
+    result = ScanResult(
+        target="/tmp/\x1b]8;;https://evil\x07report.txt",
+        clean=False,
+        status=ScanStatus.INFECTED,
+        threats=("/tmp/x: Sig\x1b[31m FOUND",),
+        error="engine said \x1b[2J",
+        metadata={"note": "a\x00b"},
+    )
+
+    output = format_human(result)
+
+    assert "\x1b" not in output
+    assert "\x00" not in output
+    assert "\\x1b" in output
+    assert "\\x00" in output
+

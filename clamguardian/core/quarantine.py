@@ -99,7 +99,12 @@ class QuarantineVault:
 
     def quarantine(self, source: Path) -> QuarantineEntry:
         """Encrypt *source* into the vault and remove the original after success."""
-        source = Path(source).resolve(strict=True)
+        requested = Path(source)
+        if requested.is_symlink():
+            # Resolving first would delete the link *target* and leave a
+            # dangling link behind: refuse and let the caller decide.
+            raise ValueError("Refusing to quarantine a symbolic link")
+        source = requested.resolve(strict=True)
         if not source.is_file():
             raise ValueError("Only regular files can be quarantined")
         size = source.stat().st_size
@@ -288,9 +293,14 @@ class QuarantineVault:
         if destination is not None:
             return Path(destination).expanduser().resolve()
         raw_original = metadata.get("original_path", "")
-        if not raw_original or raw_original.startswith("..") or "/../" in raw_original:
+        if not isinstance(raw_original, str) or not raw_original:
             raise ValueError("Invalid or unsafe original path in quarantine metadata")
-        return Path(raw_original).expanduser().resolve()
+        candidate = Path(raw_original).expanduser()
+        # Records written by this vault always store an absolute path; any
+        # relative path or ".." component is either corrupt or hostile.
+        if not candidate.is_absolute() or any(part == ".." for part in candidate.parts):
+            raise ValueError("Invalid or unsafe original path in quarantine metadata")
+        return candidate.resolve()
 
     def _encrypt_chunk(
         self, nonce: bytes, aad: bytes, index: int, last: bool, chunk: bytes
@@ -299,6 +309,8 @@ class QuarantineVault:
 
     @staticmethod
     def _harden_permissions(path: Path) -> None:
+        if path.is_symlink():
+            raise ValueError("Quarantine directory must not be a symbolic link")
         os.chmod(path, stat.S_IRWXU)
 
     @staticmethod

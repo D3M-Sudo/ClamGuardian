@@ -67,8 +67,8 @@ the lock check; they only need a re-pin when hatchling itself is bumped.
 
 ## 4. Post-verification status (2026-10-16)
 
-Three items from §4 were closed by the Release Gate CI (tag run `38975655153`,
-`v1.0.0` @ `745e1e7`); one residual stays open:
+Three items from §4 were closed by the Release Gate CI (final tag run `38977065253`,
+`v1.0.0` @ `8ee8a56`); one residual stays open:
 
 1. `appstreamcli validate` on the metainfo — **CLOSED** (job green in CI).
 2. **Build offline — CLOSED**: i manifest usano ora wheel vendute (`hatchling`,

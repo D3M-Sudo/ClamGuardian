@@ -12,10 +12,13 @@ from __future__ import annotations
 from typing import Any
 
 from ..core.base import ScanResult
+from ..core.diagnostics import CheckResult, CheckStatus, summarize
 from ..core.profiles import ScanProfile
 from ..history.models import HistoryRecord, encode_timestamp
 
 __all__ = [
+    "doctor_to_payload",
+    "format_doctor",
     "format_history_list",
     "format_history_record",
     "format_human",
@@ -24,6 +27,28 @@ __all__ = [
     "history_record_to_payload",
     "result_to_payload",
 ]
+
+#: Human-readable tags for the ``doctor`` report, one per status.
+DOCTOR_TAGS: dict[CheckStatus, str] = {
+    CheckStatus.OK: "OK",
+    CheckStatus.WARNING: "WARN",
+    CheckStatus.MISSING: "MISSING",
+}
+
+#: C0 control characters (plus DEL) escaped before they reach a terminal.
+_CONTROL_TRANSLATION = str.maketrans(
+    {**{code: f"\\x{code:02x}" for code in range(0x20)}, 0x7F: "\\x7f"}
+)
+
+
+def _printable(value: object) -> str:
+    """Escape control characters so scan output cannot spoof the terminal.
+
+    Threat names and paths come from ClamAV output and from the filesystem: an
+    ESC byte in a filename could otherwise inject OSC sequences (hyperlinks,
+    clipboard writes) into the user's terminal.
+    """
+    return str(value).translate(_CONTROL_TRANSLATION)
 
 
 def result_to_payload(result: ScanResult, profile_id: str) -> dict[str, Any]:
@@ -85,12 +110,12 @@ def format_human(result: ScanResult) -> str:
         lines.insert(1, f"Files scanned: {result.files_scanned}")
     if result.threats:
         threat_lines = ["Threat detected:"]
-        threat_lines.extend(f"  {threat}" for threat in result.threats)
+        threat_lines.extend(f"  {_printable(threat)}" for threat in result.threats)
         lines[1:1] = threat_lines
     if result.error:
-        lines.append(f"Error: {result.error}")
+        lines.append(f"Error: {_printable(result.error)}")
     for key, value in sorted(result.metadata.items()):
-        lines.append(f"{key}: {value}")
+        lines.append(f"{_printable(key)}: {_printable(value)}")
     return "\n".join(lines)
 
 
@@ -114,7 +139,7 @@ def format_history_list(records: list[HistoryRecord]) -> str:
         threats = str(len(record.threats)) if record.threats else "0"
         target = record.target if len(record.target) <= 30 else "…" + record.target[-29:]
         lines.append(
-            f"{started:<20} {record.status:<10} {target:<30} {threats:<10} "
+            f"{started:<20} {record.status:<10} {_printable(target):<30} {threats:<10} "
             f"{record.duration_seconds:>7.2f}s"
         )
     return "\n".join(lines)
@@ -125,7 +150,7 @@ def format_history_record(record: HistoryRecord) -> str:
     lines = [
         f"Scan: {record.id}",
         f"Status: {record.status.upper()}",
-        f"Target: {record.target}",
+        f"Target: {_printable(record.target)}",
         f"Engine: {record.engine}",
         f"Profile: {record.profile_id or '-'}",
         f"Started: {encode_timestamp(record.started_at)}",
@@ -136,12 +161,15 @@ def format_history_record(record: HistoryRecord) -> str:
     ]
     if record.threats:
         lines.append("Detections:")
-        lines.extend(f"  {threat}" for threat in record.threats)
+        lines.extend(f"  {_printable(threat)}" for threat in record.threats)
     if record.error:
-        lines.append(f"Error: {record.error}")
+        lines.append(f"Error: {_printable(record.error)}")
     if record.metadata:
         lines.append("Metadata:")
-        lines.extend(f"  {key}: {value}" for key, value in sorted(record.metadata.items()))
+        lines.extend(
+            f"  {_printable(key)}: {_printable(value)}"
+            for key, value in sorted(record.metadata.items())
+        )
     return "\n".join(lines)
 
 
@@ -176,3 +204,54 @@ def format_profiles(profiles: tuple[ScanProfile, ...]) -> str:
             line += f" — {profile.description}"
         lines.append(line)
     return "\n".join(lines)
+
+
+def format_doctor(results: list[CheckResult]) -> str:
+    """Render the dependency checks as a human-readable report.
+
+    Produces one aligned line per check plus, for anything that is not OK,
+    the per-distro remedies; the trailing summary states whether the machine
+    is ready to scan. Nothing here re-runs or re-interprets the checks.
+    """
+    lines = ["ClamGuardian diagnostics:"]
+    width = max((len(result.label) for result in results), default=0)
+    for result in results:
+        tag = DOCTOR_TAGS[result.status]
+        lines.append(f"  [{tag:^7}] {result.label:<{width}}  {result.detail}")
+        if result.status is not CheckStatus.OK and result.remedies:
+            for family, command in result.remedies.items():
+                lines.append(f"      {family:<6}  {command}")
+    counts = summarize(results)
+    lines.append("")
+    lines.append(f"{counts['ok']} ok, {counts['warning']} warning(s), {counts['missing']} missing.")
+    if any(result.critical and result.status is not CheckStatus.OK for result in results):
+        lines.append("Critical dependencies need attention: scanning will not work until fixed.")
+    else:
+        lines.append("Ready to scan.")
+    return "\n".join(lines)
+
+
+def doctor_to_payload(results: list[CheckResult]) -> dict[str, Any]:
+    """Serialize the diagnostics into a deterministic JSON contract.
+
+    Guaranteed keys, always present, in this exact order: ``checks``,
+    ``summary``, ``healthy``. Each check object carries ``id``, ``label``,
+    ``status``, ``detail``, ``critical``, ``remedies`` in that order.
+    """
+    return {
+        "checks": [
+            {
+                "id": result.id,
+                "label": result.label,
+                "status": result.status.value,
+                "detail": result.detail,
+                "critical": result.critical,
+                "remedies": dict(result.remedies),
+            }
+            for result in results
+        ],
+        "summary": summarize(results),
+        "healthy": not any(
+            result.critical and result.status is not CheckStatus.OK for result in results
+        ),
+    }
