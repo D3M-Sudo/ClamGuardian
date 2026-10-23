@@ -194,10 +194,17 @@ class SqliteHistoryStore:
 
     def _initialize(self) -> None:
         try:
-            self.path.parent.mkdir(mode=_DIR_MODE, parents=True, exist_ok=True)
-            os.chmod(self.path.parent, _DIR_MODE)
+            self.path.parent.mkdir(mode=_DIR_MODE, parents=True)
+        except FileExistsError:
+            # Pre-existing directory (possibly shared): never change its mode.
+            pass
         except OSError as exc:
             raise HistoryError(f"cannot create history directory: {exc}") from exc
+        else:
+            try:
+                os.chmod(self.path.parent, _DIR_MODE)
+            except OSError as exc:
+                raise HistoryError(f"cannot create history directory: {exc}") from exc
 
         existed = self.path.exists()
         try:

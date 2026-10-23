@@ -9,6 +9,7 @@ clamd sockets or ClamAV CLI flags directly.
 
 from .exit_codes import (
     EXIT_CANCELLED,
+    EXIT_DOCTOR_FAILED,
     EXIT_ENGINE_ERROR,
     EXIT_INFECTED,
     EXIT_OK,
@@ -19,6 +20,7 @@ from .main import build_parser, run
 
 __all__ = [
     "EXIT_CANCELLED",
+    "EXIT_DOCTOR_FAILED",
     "EXIT_ENGINE_ERROR",
     "EXIT_INFECTED",
     "EXIT_OK",

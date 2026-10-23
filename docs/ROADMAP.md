@@ -1,6 +1,6 @@
 # ClamGuardian Implementation Roadmap
 
-*Last updated: 2026-10-18 — baseline `v1.0.0` released. Future versions are planning targets, not promised releases or dates.*
+*Last updated: 2026-10-20 — PR #13 merged to `feature` @ `144e89f` (audit P1/P2 remediation closed: clamd AUD-01/AUD-04, quarantine key AUD-02/AUD-03, CI hardening AUD-05/07/13 applied in `a315082`, runtime exposure AUD-06 accepted, intelligence frozen Phase 11). Release engineering for `v1.0.1` is prepared (version, AppStream release, Flatpak manifest pin, `CHANGELOG.md`, `SECURITY.md`, release-gate patch ready to apply); the tag is blocked on the manual desktop validation. Local release verification green (350 passed / 8 skipped, mypy 42 files, ruff clean, real clamd EICAR infected exit 1, newline exit 3, `pip-audit` clean, no listener on 8080/8081/15001). Future versions are planning targets, not promised releases or dates.*
 
 This document outlines the authoritative development roadmap for ClamGuardian, tracking completed milestones, in-progress targets, and future architectural phases.
 
@@ -26,6 +26,8 @@ Phase 9: 1.0 Release Gate [COMPLETED 2026-10-16 — tag v1.0.0 @ 8ee8a56, instal
     ↓
 1.0.x: Stabilization [CURRENT - documentation, desktop validation, Flatpak restore]
     ↓
+Desktop Application (GTK4/Libadwaita) [D1..D4 IMPLEMENTED 2026-10-19 on `feature` — manual desktop validation pending]
+    ↓
 Phase 10: 1.1 USB Auto-Scan [DEFERRED - out of 1.0 scope]
 Phase 11: Threat Intelligence Integration [DEFERRED - out of 1.0 scope]
 Phase 12: 2.x-A Event-Driven Monitoring [DEFERRED - out of 1.0 scope]
@@ -42,7 +44,9 @@ Future versions are planning targets, not implemented releases or promised dates
 | Status | Milestone | Exit criterion |
 |---|---|---|
 | **Completed** | `v1.0.0` | Green release gate, bundle produced, promotions documented |
-| **Current** | `1.0.x` | Coherent documentation; recorded manual desktop test; Flatpak restore verified |
+| **Current** | `1.0.x` | Coherent documentation; recorded manual desktop test; Flatpak restore verified — `v1.0.1` prepared, tag blocked on the manual validation (`reports/RELEASE-1.0.1.md`) |
+| **Implemented** | Desktop App — Phases D1 + D2 + D3 + D4 | Foundations + diagnostics, Scan page, History, Quarantine, Databases, Diagnostics and Settings; window chrome, About, opt-in notifications, accent stylesheet, default-profile settings, quarantine ingest from scan results — committed on `feature`, CI smoke covers every page |
+| **Next** | Manual desktop validation | Recorded on-desktop click-through of the D4 pages (`docs/validation/DESKTOP-TEST-1.0.md`) and Flatpak restore verification |
 | **Minor release** | `v1.1.0` | Integrated USB Auto-Scan, target safety, tests and dedicated gate |
 | **Minor release** | `v1.2.0` | VirusTotal lookup over SHA-256, opt-in, rate limiting, privacy and tests |
 | **Major release** | `v2.0.0` | Reliable realtime after P1 remediation and independent audit |
@@ -136,9 +140,12 @@ Future versions are planning targets, not implemented releases or promised dates
 - **Status:** CURRENT
 - **M1 — Documentation realignment:** verified in this branch: `docs/ROADMAP.md` and `docs/reports/RELEASE-GATE-1.0.md` record tag `v1.0.0` @ `8ee8a56` with the final tag run `38977065253`, while on `origin/main` `docs/ROADMAP.md` still cites `745e1e7` (verified via `git show origin/main:docs/ROADMAP.md`). Realign `README.md`, `docs/ROADMAP.md`, `docs/reports/RELEASE-GATE-1.0.md` and packaging through the normal protected flow `feature → testing → development → main`, never with direct edits to `main`. Prerequisite: compare the current SHAs of all branch tips.
 - **M1 goal:** all production documents cite the same tag, commit and evidence run.
-- **M2 — Manual test on a real desktop:** the CI GTK smoke test passed (Xvfb); a click-through on a real desktop remains a recommended follow-up, not a release blocker. Verify Flatpak launch, GTK pages, host ClamAV access, clean/EICAR scan in a controlled environment, results/history and database update.
+- **M1 status (2026-10-20):** release engineering for `1.0.1` prepared — version, AppStream release entry, Flatpak manifest pin, `CHANGELOG.md` (new), `SECURITY.md` (new) and the release checklist `reports/RELEASE-1.0.1.md`; the release-gate update is ready as `project/release-gate-1.0.1.patch` (needs a `workflows` token). The bulk rewrite of the 1.0.0 references stays in the tag commit, so the docs never advertise an artifact that does not exist yet.
+- **M2 — Manual test on a real desktop:** the CI GTK smoke test passed (Xvfb); a click-through on a real desktop remains the last gate before the `v1.0.1` tag. Verify Flatpak launch, GTK pages, host ClamAV access, clean/EICAR scan in a controlled environment, results/history and database update.
+- **M2 status:** **BLOCKED — pending the maintainer's local host.** Execute `docs/validation/DESKTOP-TEST-D4-2026-10-19.md` (14 steps) and record outcomes before any promotion or tag.
 - **M2 goal:** repeatable checklist with environment and outcomes recorded. Test template: `docs/validation/DESKTOP-TEST-1.0.md`.
 - **M3 — Quarantine restore verification in Flatpak:** the core exposes `QuarantineVault.restore()`, but restoring to arbitrary host paths must be verified inside the sandbox, since `--filesystem=host:ro` may restrict writes. Reproduce the case in the installed app, define the supported destinations, and — only if needed — evaluate a file portal or narrowly scoped writable permissions. Do not broaden Flatpak permissions indiscriminately.
+- **M3 status:** **PENDING**, same desktop session as M2 (`DESKTOP-TEST-1.0.md` §8).
 - **M3 goal:** restore tested and documented without needlessly weakening the sandbox; if the supported paths already work, record the evidence without superfluous changes.
 - **M4 — Dependency and manifest maintenance:** CI, lockfile and offline manifests.
 - **Promotion testing:** opening the `feature → testing` promotion PR runs the Release Gate
@@ -148,6 +155,17 @@ Future versions are planning targets, not implemented releases or promised dates
   validated before any further promotion or tag.
 - **Gate:** no critical regressions; tests, audit and packaging green. Ship a patch only if actual fixes are needed.
 - **Dependencies:** 1.0 Release Gate.
+
+### Desktop Application (GTK4/Libadwaita)
+
+- **Status:** APPROVED 2026-10-18 — implemented on `feature`: Phases D1, D2, D3, D4 (D4 recorded in `docs/validation/DESKTOP-TEST-D4-2026-10-19.md`; manual desktop validation pending). Plan of record: `project/HANDOFF-2026-10-18-DESKTOP-UI.md` (core inventory, constraints, estimates).
+- **Reason:** the repository currently has no `Adw.Application`, no main window and no Scan/History/Quarantine/Diagnostics pages; the `.desktop` launcher invokes the CLI headlessly and shows nothing. The maintainer approved building the complete desktop application on the existing UI-ready core (engine, `ShieldTaskController`, profiles, history store, quarantine vault, database pages), styled after the Malwarebytes layout mapped to Libadwaita.
+- **Phase D1 — Foundations + Diagnostics:** **IMPLEMENTED 2026-10-18 (`4a37241`)** — headless `core/diagnostics.py` (`run_dependency_checks()` with per-distro remedies, Flatpak-aware binary lookup), CLI `clamguardian doctor [--json]` (exit 6 on critical gaps) + `clamguardian ui`, `Adw.Application` shell with `NavigationSplitView` sidebar (Scan/History/Quarantine placeholders until D2/D3, Databases embedded, Diagnostics real), Diagnostics page (status banner + per-component expanders with per-distro install guides + Recheck), startup auto-dialog when critical dependencies are missing, `.desktop` fixed to `Exec=clamguardian ui`, release-gate GTK smoke extended to app shell + diagnostics page. Local evidence: ruff + mypy green, 279 passed / 2 skipped, live validation on the desktop (healthy path + missing-dependency dialog path). Remaining for closure: CI smoke on the next gate run + maintainer click-through.
+- **Phase D2 — Scan page:** **IMPLEMENTED 2026-10-18 (`26abf34`)** — target chooser (folder/file/home), profile dropdown, Scan/Cancel buttons, in-flight state (timer + threat counter), cancel, result cards (clean / infected with per-threat `ActionRow` list / error / cancelled), history recording via `record_scan`; integrated into `MainWindow` shell and the GTK smoke job in `.github/workflows/release-gate.yml`. Gate green (ruff/mypy/pytest).
+- **Phase D3 — History + Quarantine pages:** **IMPLEMENTED 2026-10-18 (`5dbd74c`)** — `ui/history_page.py` with status-filter list and limit, detail dialog, purge with `AlertDialog` confirmation; `ui/quarantine_page.py` with entry list, restore (destination dialog) and delete with confirmation; key management via Secret Service with `0600` file fallback in app-data. Tests `tests/test_history_page.py` + `tests/test_quarantine_page.py`. Gate green (ruff/mypy/pytest).
+- **Phase D4 — Polish:** accent CSS provider + bundled `data/style.css`, About dialog (AppStream metainfo exists), optional desktop notifications via portal, light settings (default profile). README/desktop-docs realignment, desktop validation checklist update. Estimate: ~200 lines + docs. *(payment-of-record: `project/HANDOFF-2026-10-18-DESKTOP-UI.md`)*
+- **Gate per phase:** ruff + mypy + pytest green, CI smoke green, commit to `feature`; commits/pushes per the standing authorization rule.
+- **Exit criterion:** installable Flatpak presenting all five pages, diagnostics dialog blocking-on-missing-dependencies at first run, desktop validation recorded.
 
 ### Phase 10: 1.1 USB Auto-Scan
 - **Status:** DEFERRED (out of 1.0 scope)
@@ -195,8 +213,8 @@ Future versions are planning targets, not implemented releases or promised dates
 
 ## Recommended Work Order
 
-1. **Now:** `1.0.x` documentation realignment.
-2. **Then:** manual desktop test and Flatpak restore verification.
+1. **Now (blocked):** manual desktop validation of Desktop Application Phase D4 on `feature` (click-through checklist, Flatpak restore). Plan of record: `project/HANDOFF-2026-10-18-DESKTOP-UI.md`; release checklist: `reports/RELEASE-1.0.1.md`. The release engineering for `1.0.1` is already prepared and waits for this record.
+2. **Then:** merge `feature` → `testing` once the manual validation is recorded, promote `testing → development → main`, tag `v1.0.1` and publish the GitHub Release with the Flatpak bundle.
 3. **After:** `1.1.0` USB Auto-Scan.
 4. **Then:** `1.2.0` Threat Intelligence.
 5. **Only after remediation and audit:** `2.0.0` realtime.
@@ -214,3 +232,12 @@ This order keeps the project sustainable for a single maintainer and avoids prem
 - Every milestone needs a measurable goal, reproducible tests, evidence, known limits and an exit criterion.
 - Code not wired to a real call site and not covered by the gate is not a completed feature.
 - No fictitious dates for future releases: ship when the gate is green.
+- Branch policy (rulesets, 2026-10-19): `main` is governed only by the `main-protection`
+  ruleset (id `25427935`, enforcement `active`, target `refs/heads/main`); classic branch
+  protection on `main` was removed to avoid double enforcement. Rules: PR required before
+  merging with `required_approving_review_count: 0` (solo-maintainer: no self-approval
+  deadlock), `required_review_thread_resolution: true`, `deletion` + `non_fast_forward`
+  blocked, `bypass_actors: []` (nobody bypasses). No `required_status_checks` pinned yet —
+  add CI checks to the ruleset only after validating exact check names + integration_id.
+  Promotion flow: `feature` (unprotected) → PR → `testing`/`development` (count 0) → PR →
+  `main` (ruleset).

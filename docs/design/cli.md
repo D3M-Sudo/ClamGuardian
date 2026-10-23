@@ -46,6 +46,9 @@ BaseAVEngine`, exactly as for the GTK controller.
 | `scan`      | ✅ M3  | `clamguardian scan PATH [--profile ID] [--json]`             |
 | `profiles`  | ✅ M3  | reads `DEFAULT_REGISTRY.list()`; `--json` supported          |
 | `version`   | ✅ M3  | from `clamguardian.__version__` (single source of truth)     |
+| `history`   | ✅ M4  | `list` / `show ID` / `purge` over the SQLite store; `--json` |
+| `doctor`    | ✅ D1  | Core dependency diagnostics (binaries, daemon, databases); `--json`; exit 6 on critical gaps |
+| `ui`        | ✅ D1  | launches the GTK4/Libadwaita app (`ui/app.py`); exit 3 when PyGObject is unavailable |
 | `databases` | ❌ M3  | see "Why no `databases` command" below                       |
 
 ### Default profile
@@ -86,14 +89,19 @@ emitted on stdout, with the human message on stderr.
 
 Centralized in `clamguardian/cli/exit_codes.py`:
 
-| Code | Meaning                                |
-| ---- | -------------------------------------- |
-| 0    | scan completed successfully / clean    |
-| 1    | scan completed and threats detected    |
-| 2    | usage / CLI argument error             |
-| 3    | engine or runtime error                |
-| 4    | scan timeout                           |
-| 5    | scan cancelled by the user (Ctrl+C)    |
+| Code | Meaning                                                  |
+| ---- | -------------------------------------------------------- |
+| 0    | scan completed successfully / clean                       |
+| 1    | scan completed and threats detected                       |
+| 2    | usage / CLI argument error                                |
+| 3    | engine or runtime error (incl. `ui` without PyGObject)    |
+| 4    | scan timeout                                              |
+| 5    | scan cancelled by the user (Ctrl+C)                       |
+| 6    | diagnostics: one or more critical dependencies missing    |
+
+Exit code 6 belongs to `doctor` alone: it is returned only when a *critical*
+check (clamscan, signature databases) is not OK, so scripts can distinguish
+"cannot scan at all" (6) from "degraded but functional" (0 with warnings).
 
 ## Ctrl+C / cancellation
 

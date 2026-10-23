@@ -2,7 +2,7 @@
 Name=ClamGuardian
 GenericName=Antivirus & Security Guard
 Comment=Linux antivirus scanning, quarantine vault, and security management
-Exec=clamguardian
+Exec=clamguardian ui
 Icon=io.github.clamguardian.ClamGuardian
 Terminal=false
 Type=Application

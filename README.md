@@ -12,6 +12,12 @@
 > closed — both Flatpak manifests build offline against `org.gnome.Platform//51`,
 > AppStream validates, and real ClamAV scans plus the GTK smoke test pass in CI.
 > Evidence: `docs/reports/RELEASE-GATE-1.0.md`.
+>
+> **Security note:** `v1.0.0` is affected by AUD-01 — a directory scan served by
+> `clamd` could report `clean` for a directory that contains an infected file.
+> The fix is merged on `feature` and ships in `v1.0.1`, whose tag is cut after the
+> manual desktop validation (`docs/reports/RELEASE-1.0.1.md`). Details and
+> reporting process: [`SECURITY.md`](SECURITY.md).
 
 ## Contents
 
@@ -51,6 +57,10 @@ flatpak run io.github.clamguardian.ClamGuardian
 You'll need ClamAV installed on the host (`clamscan`, `freshclam`, optionally the
 `clamd` daemon) — the app reaches it through the sandbox — and the GNOME
 Platform 51 runtime, pulled automatically from Flathub on first run.
+
+> The `v1.0.0` bundle is the currently published artifact and is affected by
+> AUD-01 (see the security note above). `v1.0.1` is the next release; until its
+> tag is cut, run from source on `feature` or wait for the updated bundle.
 
 ## Install
 
@@ -167,14 +177,22 @@ zombies, no orphans.
 
 The desktop app wraps the same core in a native GTK4/Libadwaita interface:
 
-- **Scan page** — pick a target, choose a profile, see the result
-- **History page** — every scan recorded with profile, SHA-256 (single files) and timing
-- **Quarantine page** — encrypted detections with restore
-- **Antivirus Databases page** — official signatures (owned by `freshclam`) plus
-  manageable third-party sources (see below)
+- **Scan** — pick a target and a profile, follow the in-flight state and review the result; detected files can be moved to the encrypted quarantine directly from the threat list
+- **History** — filtered list with purge, profile and SHA-256 per scan, detail dialog
+- **Quarantine** — encrypted detections with detail view, restore and delete
+- **Databases** — official signatures (owned by `freshclam`) plus manageable third-party sources (see below)
+- **Diagnostics** — dependency checks with per-distro remedies, presented at first run when a critical dependency is missing
+- **Settings** — default scan profile, desktop notifications and system/light/dark theme, plus the About dialog
 
-The UI is import-safe on headless systems: without PyGObject the GTK pages simply
-cannot be instantiated, so the test suite runs anywhere.
+Scan-completion notifications can be disabled in Settings and are content-free:
+they report the status and the number of files/threats, never file names or
+paths. The app follows the system theme by default and ships a small accent
+stylesheet; no colour is forced on the user. Quarantine, history and settings
+live in the application-data directory, both outside and inside the Flatpak
+sandbox.
+
+The UI is import-safe on headless systems: without PyGObject the GTK pages
+simply cannot be instantiated, so the test suite runs anywhere.
 
 ```python
 from clamguardian.ui import build_database_navigation
@@ -236,6 +254,8 @@ vault.restore(entry.item_id)
 | Tamper-evident metadata | metadata sealed as AES-GCM associated data |
 | Owner-only storage | vault dirs `0700`, record and restored files `0600` |
 | No shell, no injection | external commands run without a shell |
+| No remote lookups in 1.x | the threat-intelligence package is frozen and unwired; Phase 11 (`v1.2.0`) will add opt-in, hash-only lookups |
+| Known issue in 1.0.0 | AUD-01: `clamd` directory scans could miss an infected file after a clean one; fixed in 1.0.1 — see [`SECURITY.md`](SECURITY.md) |
 | Sandboxed desktop app | Flatpak manifest grants only what the app needs (host ClamAV via `flatpak-spawn`, read-only host FS, app-data dir) |
 
 ## Developing
@@ -247,7 +267,8 @@ mypy clamguardian # type checks
 ```
 
 - **CI** (`.github/workflows/ci.yml`) runs on every PR and on pushes to `main`,
-  `feature` and `development`: tests on Python 3.11–3.13 plus a strict
+  `feature` and `development`: tests on Python 3.11–3.13, a headless
+  `runtime-python` job on Python 3.14 (the Flatpak SDK interpreter), plus a strict
   dependency audit of the pinned lockfile (`uv lock --check`, `pip-audit --strict`).
 - **Release gate** (`.github/workflows/release-gate.yml`) builds both Flatpak
   manifests offline against GNOME Platform 51, validates AppStream metadata, runs
@@ -265,7 +286,7 @@ Development flows `feature → testing → development → main`:
 | `feature` | Active development | open |
 | `testing` | Integration and QA | PR-only, no force push/delete |
 | `development` | Stable pre-release | PR-only, no force push/delete |
-| `main` | Production; releases are cut from here | PR-only, 1 approving review |
+| `main` | Production; releases are cut from here | ruleset `main-protection`: PR required (0 approvals), thread resolution, no delete/force-push, no bypass |
 
 ## Roadmap & scope
 

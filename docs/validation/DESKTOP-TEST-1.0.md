@@ -5,9 +5,16 @@ real desktop) and **M3** (quarantine-restore verification inside the Flatpak san
 
 - **Status:** TEMPLATE — copy it per test session (e.g. `validation/DESKTOP-TEST-1.0-<YYYY-MM-DD>.md`)
   or fill the per-step tables below.
-- **Scope:** `v1.0.0` @ `8ee8a56`, installable bundle `ClamGuardian-v1.0.0-linux-x86_64.flatpak`.
-- **Prerequisites:** the CI GTK smoke test passed under Xvfb; this checklist covers the
-  recommended on-desktop click-through, which was **not** a release blocker.
+- **Scope:** `1.0.1` release evidence (the desktop application and the AUD-01
+  security fix), on `feature` before the tag or on the tagged commit once
+  `v1.0.1` is cut. Record the exact commit under test in §1.
+- **Bundle under test:** before the tag, use the promotion artifact
+  `ClamGuardian-testing-linux-x86_64.flatpak` built by the release gate on the
+  `feature → testing` PR; after the tag, use
+  `ClamGuardian-v1.0.1-linux-x86_64.flatpak`. Both are built offline from the
+  same local manifest; the resolved commit and SHA-256 must be recorded.
+- **Prerequisites:** the CI GTK smoke test passed under Xvfb; this checklist is
+  the last gate before the `v1.0.1` tag.
 
 ---
 
@@ -23,8 +30,8 @@ real desktop) and **M3** (quarantine-restore verification inside the Flatpak san
 | `flatpak --version` | _x.y.z_ |
 | Host `clamscan --version` | _e.g. ClamAV x.y.z_ |
 | Host `clamd` running | _yes / no (systemctl status clamav-daemon)_ |
-| Tag/commit under test | `v1.0.0` @ `8ee8a56` |
-| Bundle file | `ClamGuardian-v1.0.0-linux-x86_64.flatpak` (~4.7 MB) |
+| Tag/commit under test | _record `git rev-parse HEAD` of the bundle source (`feature` pre-tag, `v1.0.1` after the tag)_ |
+| Bundle file | `ClamGuardian-testing-linux-x86_64.flatpak` (pre-tag) or `ClamGuardian-v1.0.1-linux-x86_64.flatpak` |
 | Bundle SHA-256 | _record the digest of the installed bundle_ |
 | ClamAV definitions date | _e.g. freshclam log date_ |
 
@@ -36,7 +43,7 @@ Outcome markers used below: `PASS` · `FAIL` · `N/A` · `BLOCKED` (with blocker
 
 | # | Step | Expected | Outcome | Notes / evidence |
 |---|---|---|---|---|
-| 2.1 | Install: `flatpak install --user ClamGuardian-v1.0.0-linux-x86_64.flatpak` | Install completes with no error | | |
+| 2.1 | Install: `flatpak install --user ClamGuardian-testing-linux-x86_64.flatpak` (or the `v1.0.1` bundle after the tag) | Install completes with no error | | |
 | 2.2 | List: `flatpak list --app` and grep ClamGuardian | `io.github.clamguardian.ClamGuardian` present | | |
 | 2.3 | Launch from the desktop launcher (or `flatpak run io.github.clamguardian.ClamGuardian`) | Main window opens, no crash, no GTK criticals on stderr | | |
 | 2.4 | First-run state | Default profile selected, empty history, fresh database state visible | | |
@@ -49,10 +56,16 @@ Open each page and confirm it renders and reacts (no traceback, no frozen UI).
 
 | # | Page | Expected | Outcome | Notes / evidence |
 |---|---|---|---|---|
-| 3.1 | Scan page | Profile selector shows `quick`, `home`, `full`, `custom`; target picker opens | | |
-| 3.2 | History page | Opens; empty on first run; later shows recorded scans | | |
-| 3.3 | Quarantine page | Opens; shows items after §6; restore action available | | |
-| 3.4 | Settings / database page | Database version/age displayed; update action available | | |
+| 3.1 | Scan page | Default profile matches Settings (`quick` on a fresh install); target picker opens; threat rows offer **Quarantine** | | |
+| 3.2 | History page | Opens and refreshes after a scan; filters, limit and purge work; detail dialog shows profile and SHA-256 | | |
+| 3.3 | Quarantine page | Lists entries with name, size, date and original path; detail view offers Restore/Delete; Refresh works | | |
+| 3.4 | Databases page | Database version/age displayed; update action available; third-party management opens | | |
+| 3.5 | Diagnostics page | Global banner state matches the environment; per-distro remedies expand | | |
+| 3.6 | Settings page | Default profile, notifications and theme persist after restart | | |
+| 3.7 | About dialog | Version, license, website and issue tracker correct; opens from the menu and Settings | | |
+| 3.8 | Window chrome | Sidebar and content header bars, page title follows navigation, menu and `Ctrl+Q`/`F1` work | | |
+| 3.9 | Theme | Follows system by default; Light/Dark apply immediately; accent stylesheet renders on GNOME 46 and 51 | | |
+| 3.10 | Notifications | With the setting enabled, a background scan completion shows a notification without file names/paths; disabled setting sends none | | |
 
 ---
 
@@ -150,6 +163,7 @@ purpose). The app runs with `--filesystem=host:ro` plus the writable
 | M3 | Restore tested and documented without weakening the sandbox | _yes / no_ | §8, incl. the 8.5 matrix |
 | M3-alt | If supported paths already work, evidence recorded with no superfluous changes | _yes / no / N/A_ | |
 | Gate | No critical regressions; tests, audit and packaging still green | _yes / no_ | CI run(s): _record_ |
+| D4 | All six pages reachable; Settings/About/notifications/theme behave as in §3.6–3.10 | _yes / no_ | this file, §3 |
 
 **Known limits / follow-ups:** _list anything deferred._
 

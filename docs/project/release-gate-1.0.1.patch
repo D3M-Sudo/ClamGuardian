@@ -1,0 +1,108 @@
+diff --git a/.github/workflows/release-gate.yml b/.github/workflows/release-gate.yml
+index 3cecc8b..fa0d0e9 100644
+--- a/.github/workflows/release-gate.yml
++++ b/.github/workflows/release-gate.yml
+@@ -105,43 +105,70 @@ jobs:
+           sudo apt-get install -y libgirepository-2.0-dev gir1.2-gtk-4.0 gir1.2-adw-1 libcairo2-dev pkg-config python3-dev xvfb xauth
+       - name: Install clamguardian with GTK extra (system Python, GI typelib visible)
+         run: python3 -m pip install --break-system-packages '.[gtk]'
+-      - name: Construct GTK UI, app shell and diagnostics page (headless via Xvfb)
++      - name: Construct every GTK page, settings, stylesheet and About (headless via Xvfb)
+         env:
+           GTK_A11Y: none
+         run: |
+           xvfb-run -a python3 << 'PYEOF'
+           import tempfile
++          from pathlib import Path
+ 
++          from clamguardian.core.settings import AppSettings, SettingsStore
+           from clamguardian.databases import DatabaseManager
++          from clamguardian.history.backend import SqliteHistoryStore
+           from clamguardian.ui import build_database_navigation
+-          from clamguardian.ui.app import ClamGuardianApp, MainWindow
++          from clamguardian.ui.about import build_about_dialog
++          from clamguardian.ui.app import SIDEBAR_ENTRIES, ClamGuardianApp, MainWindow
++          from clamguardian.ui.controller import ShieldTaskController
+           from clamguardian.ui.diagnostics_page import DiagnosticsPage
++          from clamguardian.ui.quarantine_key import QuarantineKeyManager
++          from clamguardian.ui.scan_page import ScanPage
++          from clamguardian.ui.theme import load_css
+ 
+-          db_dir = tempfile.mkdtemp(prefix="clamguardian-test-")
+-          state_file = tempfile.mktemp(suffix=".json", prefix="clamguardian-state-")
+-          manager = DatabaseManager(db_dir, state_file)
++          root = Path(tempfile.mkdtemp(prefix="clamguardian-test-"))
++          manager = DatabaseManager(root / "databases", root / "state.json")
+           view = build_database_navigation(manager)
+ 
+-          # Phase D1: application shell + diagnostics page construct cleanly.
+           # `register()` emits GApplication::startup, which GTK requires before
+           # any application window is created.
+           app = ClamGuardianApp()
+           assert app.register()
+-          window = MainWindow(app, manager=manager)
+-          page = DiagnosticsPage()
+-          assert page.checks, "diagnostics page must render at least one check"
++
++          settings_store = SettingsStore(root / "settings.json")
++          settings_store.save(
++              AppSettings(
++                  default_profile_id="home",
++                  notifications_enabled=False,
++                  color_scheme="dark",
++              )
++          )
++          window = MainWindow(
++              app,
++              checks=[],
++              manager=manager,
++              controller=ShieldTaskController(),
++              history_store=SqliteHistoryStore(root / "history.db"),
++              key_manager=QuarantineKeyManager(root / "quarantine"),
++              settings_store=settings_store,
++          )
+           assert window.toast_overlay is not None
++          assert load_css(), "application stylesheet must load"
++          assert window.settings.default_profile_id == "home"
+ 
+-          # Phase D2: scan page constructs cleanly and starts idle.
+-          from clamguardian.ui.controller import ShieldTaskController
+-          from clamguardian.ui.scan_page import ScanPage
++          expected_pages = {page_id for page_id, _label, _icon in SIDEBAR_ENTRIES}
++          assert set(window.page_ids) == expected_pages
++          for page_id in window.page_ids:
++              window.show_page(page_id)
++              assert window.visible_page_id == page_id
+ 
+-          controller = ShieldTaskController()
+-          scan_page = ScanPage(controller)
++          page = DiagnosticsPage()
++          assert page.checks, "diagnostics page must render at least one check"
++          scan_page = ScanPage(ShieldTaskController())
+           assert scan_page.root is not None
+           assert not scan_page.in_flight
++          assert build_about_dialog() is not None
+ 
+-          print("GTK UI construction OK — database pages, app shell, diagnostics page")
++          print("GTK UI construction OK — all pages, settings, stylesheet, About")
+           PYEOF
+ 
+   flatpak-local:
+@@ -200,7 +227,7 @@ jobs:
+       - name: Upload release Flatpak bundle
+         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+         with:
+-          name: ClamGuardian-v1.0.0-linux-x86_64.flatpak
++          name: ClamGuardian-v1.0.1-linux-x86_64.flatpak
+           path: io.github.clamguardian.ClamGuardian.flatpak
+           retention-days: 90
+ 
+@@ -238,7 +265,7 @@ jobs:
+             check "${{ needs.flatpak-local.result }}" "2+3. Flatpak build manifest locale (runtime 51, offline) + bundle"
+             check "${{ needs.appstream.result }}" "4. AppStream validation (metainfo)"
+             check "${{ needs.clamav.result }}" "5. ClamAV reale (clamscan + clamdscan, pulito + EICAR)"
+-            check "${{ needs.gtk-smoke.result }}" "6. GTK smoke (UI, shell, diagnostica)"
++            check "${{ needs.gtk-smoke.result }}" "6. GTK smoke (UI: tutte le pagine, impostazioni, stylesheet, About)"
+             echo ""
+             echo "Ref corrente:  ${{ github.ref }} (${{ github.ref_type }})"
+             echo "Flatpak build manifest di release (job flatpak-release): ${{ needs.flatpak-release.result }}"
