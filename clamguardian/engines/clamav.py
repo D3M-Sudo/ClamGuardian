@@ -187,7 +187,7 @@ class ClamAVEngine(BaseAVEngine):
             if not stat.S_ISREG(os.fstat(fd).st_mode):
                 raise ValueError("FILDES target is not a regular file")
             await loop.sock_connect(sock, str(self.socket_path))
-            payload = b"FILDES\\n"
+            payload = b"FILDES\n"
             ancillary = [
                 (socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [fd]))
             ]

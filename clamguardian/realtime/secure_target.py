@@ -14,6 +14,21 @@ class UnsafeRealtimeTarget(OSError):
     """A realtime event cannot be mapped safely to a regular file in a watched root."""
 
 
+def _open_directory_without_symlinks(path: Path) -> int:
+    """Open an absolute directory while refusing symlinks in every component."""
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
+    directory_fd = os.open("/", flags)
+    try:
+        for component in path.parts[1:]:
+            next_fd = os.open(component, flags, dir_fd=directory_fd)
+            os.close(directory_fd)
+            directory_fd = next_fd
+        return directory_fd
+    except BaseException:
+        os.close(directory_fd)
+        raise
+
+
 def _is_beneath(path: Path, root: Path) -> bool:
     try:
         path.relative_to(root)
@@ -49,9 +64,7 @@ def secure_file_snapshot(
     if not parts or any(part in ("", ".", "..") for part in parts):
         raise UnsafeRealtimeTarget("invalid relative event path")
 
-    directory_fd = os.open(
-        selected_root, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
-    )
+    directory_fd = _open_directory_without_symlinks(selected_root)
     source_fd = -1
     try:
         for component in parts[:-1]:
