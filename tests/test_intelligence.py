@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+from io import StringIO
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from clamguardian.core.base import ScanResult, ScanStatus
 from clamguardian.core.settings import AppSettings, SettingsStore
+from clamguardian.intelligence import service as intelligence_service_module
 from clamguardian.intelligence.manager import ThreatProviderManager
 from clamguardian.intelligence.secrets import IntelligenceSecretStore, SecretStorageError
-from clamguardian.intelligence import service as intelligence_service_module
 from clamguardian.intelligence.service import ThreatIntelligenceService
 from clamguardian.intelligence.virustotal import VirusTotalProvider
 
@@ -117,7 +118,9 @@ async def test_intelligence_service_reuses_provider_and_enforces_terms_gate(tmp_
     store = SettingsStore(tmp_path / "settings.json")
     store.save(AppSettings(intelligence_enabled=True))
     provider = AsyncMock(spec=VirusTotalProvider)
-    service = ThreatIntelligenceService(settings_store=store, provider=provider)
+    secret_store = AsyncMock()
+    secret_store.get_api_key.return_value = "test-api-key"
+    service = ThreatIntelligenceService(settings_store=store, secret_store=secret_store)
 
     monkeypatch.setattr(
         intelligence_service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", False
@@ -125,14 +128,82 @@ async def test_intelligence_service_reuses_provider_and_enforces_terms_gate(tmp_
     result = ScanResult(target="/tmp/file", clean=True, metadata={"sha256": "a" * 64})
     assert await service.lookup_scan_result(result) is None
     provider.lookup_hash.assert_not_awaited()
+    secret_store.get_api_key.assert_not_awaited()
 
     monkeypatch.setattr(
         intelligence_service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True
     )
-    service._provider = provider
-    service._provider_initialized = True
+    monkeypatch.setattr(
+        intelligence_service_module, "VirusTotalProvider", lambda _key: provider
+    )
     assert service.get_provider() is provider
     assert service.get_provider() is provider
+    secret_store.get_api_key.assert_awaited_once()
+
+
+def test_virustotal_default_rate_limit_is_at_least_four_per_minute() -> None:
+    provider = VirusTotalProvider("fake_key")
+    assert provider._min_interval >= 15.0
+
+
+def test_cli_lookup_requires_opt_in_before_secret_access(tmp_path, monkeypatch) -> None:
+    from clamguardian.cli.main import run
+
+    store = SettingsStore(tmp_path / "settings.json")
+    store.save(AppSettings(intelligence_enabled=False))
+    monkeypatch.setattr("clamguardian.core.settings.SettingsStore", lambda: store)
+
+    def forbidden_secret_store():
+        raise AssertionError("Secret Service must not be touched while disabled")
+
+    monkeypatch.setattr(
+        "clamguardian.intelligence.secrets.IntelligenceSecretStore",
+        forbidden_secret_store,
+    )
+    output, errors = StringIO(), StringIO()
+    code = run(["intel", "lookup", "a" * 64], out=output, err=errors)
+    assert code == 2
+    assert "disabled" in errors.getvalue()
+
+
+def test_cli_lookup_respects_maintainer_terms_gate(tmp_path, monkeypatch) -> None:
+    from clamguardian.cli.main import run
+
+    store = SettingsStore(tmp_path / "settings.json")
+    store.save(AppSettings(intelligence_enabled=True))
+    monkeypatch.setattr("clamguardian.core.settings.SettingsStore", lambda: store)
+    monkeypatch.setattr(
+        "clamguardian.intelligence.virustotal.VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED",
+        False,
+    )
+    output, errors = StringIO(), StringIO()
+    code = run(["intel", "lookup", "a" * 64], out=output, err=errors)
+    assert code == 3
+    assert "eligibility" in errors.getvalue()
+
+
+def test_cli_set_key_uses_hidden_input_and_secret_service(monkeypatch) -> None:
+    import getpass
+
+    from clamguardian.cli.main import run
+
+    class FakeSecretStore:
+        stored: str | None = None
+
+        def set_api_key(self, value: str) -> None:
+            self.stored = value
+
+    fake = FakeSecretStore()
+    monkeypatch.setattr(getpass, "getpass", lambda _prompt: "never-echo-this")
+    monkeypatch.setattr(
+        "clamguardian.intelligence.secrets.IntelligenceSecretStore", lambda: fake
+    )
+    output, errors = StringIO(), StringIO()
+    code = run(["intel", "set-key"], out=output, err=errors)
+    assert code == 0
+    assert fake.stored == "never-echo-this"
+    assert "never-echo-this" not in output.getvalue()
+    assert errors.getvalue() == ""
 
 
 @pytest.mark.asyncio
