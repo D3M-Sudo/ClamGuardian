@@ -100,7 +100,11 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
 
             intel_row = Adw.SwitchRow(
                 title="Threat Intelligence",
-                subtitle="Opt-in hash-only VirusTotal lookups; API key: 'clamguardian intel set-key'. Network access remains gated pending maintainer terms review.",
+                subtitle=(
+                    "Opt-in hash-only VirusTotal lookups; API key: "
+                    "'clamguardian intel set-key'. Network access remains gated "
+                    "pending maintainer terms review."
+                ),
             )
             intel_row.set_active(self._settings.intelligence_enabled)
             intel_row.connect("notify::active", self._on_intelligence_changed)
