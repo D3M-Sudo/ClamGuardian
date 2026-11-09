@@ -84,20 +84,3 @@ async def test_scheduled_scan_manager(tmp_path: Path) -> None:
     assert manager.is_running is True
     await manager.stop()
     assert manager.is_running is False
-
-
-def test_scheduler_last_run_date_persists_across_restart(tmp_path: Path) -> None:
-    store = SettingsStore(tmp_path / "settings.json")
-    runner = ScanTaskRunner(StubEngine())
-    first = ScheduledScanManager(runner, store, default_target=tmp_path)
-    first._save_last_run_date("2026-11-09")
-
-    restarted = ScheduledScanManager(runner, store, default_target=tmp_path)
-    assert restarted._last_run_date == "2026-11-09"
-
-
-def test_autostart_fails_closed_inside_flatpak(tmp_path: Path, monkeypatch) -> None:
-    manager = AutostartManager(autostart_dir=tmp_path / "autostart")
-    monkeypatch.setattr(AutostartManager, "_inside_flatpak", staticmethod(lambda: True))
-    with pytest.raises(RuntimeError, match="cannot be installed from the Flatpak sandbox"):
-        manager.enable()

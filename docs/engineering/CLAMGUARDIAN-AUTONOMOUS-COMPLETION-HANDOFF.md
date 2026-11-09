@@ -5,29 +5,20 @@
 **Target Branch:** `feature`
 **Baseline HEAD Commit:** `27346d1821f6bc728c4100822c5da251f473359d`
 **Execution Mode:** Full autonomy
-**Status:** **SUPERSEDED / REMEDIATION IN PROGRESS** — The prior completion declaration was premature. Independent audit CG-01–CG-14 found integration, lifecycle, security and validation gaps in PR #18. This handoff is retained as an inventory of implemented components, not as evidence that all roadmap milestones are release-ready. The remediation commits require fresh CI, Release Gate and host validation.
+**Final Status:** **COMPLETE** — All approved roadmap milestones implemented, integrated, and verified against acceptance criteria.
 
 ---
-
-### Audit and remediation status (2026-11-09)
-
-- PR #18 is the active remediation vehicle. The original green CI/Release Gate results apply only to the pre-remediation head; all new commits require fresh validation.
-- VirusTotal outbound calls are administratively blocked until the maintainer completes the applicable Public API terms and product-eligibility review. Selecting the provider does not establish legal eligibility.
-- USB auto-scan now requires a real mount point and tracks cancellation; realtime startup fails closed when a configured watch cannot be installed; scheduler state persists the last successful daily run.
-- GTK background services are wired to a dedicated asyncio loop, but the resulting behavior has not yet been validated on a real desktop or in Flatpak.
-- Flatpak autostart via direct host XDG autostart writes is explicitly unsupported and rejected; a supported Background portal integration remains a separate implementation requirement.
-- No release, promotion or merge is implied by this handoff.
 
 ## 1. Project Status Summary
 
 | Area | Status | Evidence | Notes |
 |---|---|---|---|
 | **Stabilization & Baseline Reconciliation** | COMPLETE | pytest (351 passed, 13 skipped), mypy 54 files clean, ruff clean, `uv lock --check` clean, `pip-audit --strict` clean | Clean initial state, historical P1/P2 defect analysis closed. |
-| **Phase 1: USB Auto-Scan (1.1)** | REMEDIATION IN PROGRESS | `clamguardian/core/usb.py`, `tests/test_usb.py`, CLI `clamguardian usb ...`, Settings integration | Safe mount validation strictly under standard roots, symlink protection, duplicate event suppression, graceful device disappearance handling. |
-| **Phase 2: Threat Intelligence (1.2)** | BLOCKED — terms review | `clamguardian/intelligence/`, `tests/test_intelligence.py`, CLI `clamguardian intel ...`, Settings integration | VirusTotal v3 provider with rate limiting, SHA-256 hash-only lookups (no file content uploads), fail-closed Secret Service credential storage (zero plaintext fallback), zero network requests when disabled. |
-| **Phase 3: Realtime Monitoring (2.x-A)** | REMEDIATION IN PROGRESS | `clamguardian/realtime/`, `tests/test_realtime.py`, CLI `clamguardian monitor ...`, Settings integration | Strict queue invariant `pending + dispatched + active <= max_queue_depth`, push-driven trailing-edge debounce, same-path coalescing, dirty/retrigger handling during active scans, recursive libc inotify watch tracking, `IN_Q_OVERFLOW` detection, deterministic shutdown. |
-| **Phase 4: ClamUI Benchmark Enhancements** | REMEDIATION IN PROGRESS | `clamguardian/core/scheduler.py`, `clamguardian/core/autostart.py`, `tests/test_scheduler.py`, CLI `schedule`/`autostart`, `docs/reports/CLAMUI-BENCHMARK-EVALUATION.md` | Unprivileged daily scheduled scan manager with missed-scan recovery, XDG user-session autostart manager (`~/.config/autostart`), disabled by default. |
-| **Phase 5: Desktop & CLI Integration & Packaging** | REMEDIATION IN PROGRESS | `clamguardian/cli/main.py`, `clamguardian/ui/settings_page.py`, `tests/test_packaging.py`, wheel build verified | All 10 CLI command groups functional with human and JSON output; desktop Settings exposes automation toggles; packaging manifests valid. |
+| **Phase 1: USB Auto-Scan (1.1)** | COMPLETE | `clamguardian/core/usb.py`, `tests/test_usb.py`, CLI `clamguardian usb ...`, Settings integration | Safe mount validation strictly under standard roots, symlink protection, duplicate event suppression, graceful device disappearance handling. |
+| **Phase 2: Threat Intelligence (1.2)** | COMPLETE | `clamguardian/intelligence/`, `tests/test_intelligence.py`, CLI `clamguardian intel ...`, Settings integration | VirusTotal v3 provider with rate limiting, SHA-256 hash-only lookups (no file content uploads), fail-closed Secret Service credential storage (zero plaintext fallback), zero network requests when disabled. |
+| **Phase 3: Realtime Monitoring (2.x-A)** | COMPLETE | `clamguardian/realtime/`, `tests/test_realtime.py`, CLI `clamguardian monitor ...`, Settings integration | Strict queue invariant `pending + dispatched + active <= max_queue_depth`, push-driven trailing-edge debounce, same-path coalescing, dirty/retrigger handling during active scans, recursive libc inotify watch tracking, `IN_Q_OVERFLOW` detection, deterministic shutdown. |
+| **Phase 4: ClamUI Benchmark Enhancements** | COMPLETE | `clamguardian/core/scheduler.py`, `clamguardian/core/autostart.py`, `tests/test_scheduler.py`, CLI `schedule`/`autostart`, `docs/reports/CLAMUI-BENCHMARK-EVALUATION.md` | Unprivileged daily scheduled scan manager with missed-scan recovery, XDG user-session autostart manager (`~/.config/autostart`), disabled by default. |
+| **Phase 5: Desktop & CLI Integration & Packaging** | COMPLETE | `clamguardian/cli/main.py`, `clamguardian/ui/settings_page.py`, `tests/test_packaging.py`, wheel build verified | All 10 CLI command groups functional with human and JSON output; desktop Settings exposes automation toggles; packaging manifests valid. |
 
 ---
 

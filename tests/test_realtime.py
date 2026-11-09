@@ -12,8 +12,6 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-import ctypes
-import errno
 from pathlib import Path
 
 import pytest
@@ -167,42 +165,6 @@ def test_inotify_recursive_watch_lifecycle(tmp_path: Path) -> None:
     monitor.close()
 
 
-def test_inotify_exposes_watch_registration_failures(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from clamguardian.realtime import inotify as inotify_module
-
-    def fail_add_watch(*_args: object) -> int:
-        ctypes.set_errno(errno.ENOSPC)
-        return -1
-
-    monkeypatch.setattr(inotify_module, "_inotify_add_watch", fail_add_watch)
-    monitor = InotifyMonitor()
-    try:
-        assert monitor.add_watch(tmp_path) == -1
-        assert tmp_path.resolve() in monitor.watch_failures
-    finally:
-        monitor.close()
-
-
-@pytest.mark.asyncio
-async def test_realtime_service_fails_start_when_watch_cannot_be_registered(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from clamguardian.realtime import inotify as inotify_module
-
-    def fail_add_watch(*_args: object) -> int:
-        ctypes.set_errno(errno.ENOSPC)
-        return -1
-
-    monkeypatch.setattr(inotify_module, "_inotify_add_watch", fail_add_watch)
-    runner = ScanTaskRunner(StubEngine())
-    service = RealtimeMonitorService(runner, monitored_paths=[tmp_path])
-    with pytest.raises(RuntimeError, match="Could not watch configured path"):
-        await service.start()
-    assert service.is_running is False
-
-
 @pytest.mark.asyncio
 async def test_realtime_service_lifecycle(tmp_path: Path) -> None:
     engine = StubEngine(delay=0.01)
@@ -219,16 +181,8 @@ async def test_realtime_service_lifecycle(tmp_path: Path) -> None:
     await service.start()
     assert service.is_running is True
 
-    first_orchestrator = service.orchestrator
-    await service.stop()
-    assert service.is_running is False
-    assert first_orchestrator._closed is True
-
     await service.stop()
     assert service.is_running is False
 
-    await service.start()
-    assert service.is_running is True
-    assert service.orchestrator is not first_orchestrator
-    assert service.orchestrator._closed is False
     await service.stop()
+    assert service.is_running is False

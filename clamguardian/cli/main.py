@@ -792,11 +792,7 @@ def _cmd_autostart_enable(args: argparse.Namespace, streams: _Streams) -> int:
     from ..core.settings import AppSettings, SettingsStore
 
     manager = AutostartManager()
-    try:
-        manager.enable()
-    except (OSError, RuntimeError) as exc:
-        print(f"error: cannot enable host autostart: {exc}", file=streams.err)
-        return EXIT_ENGINE_ERROR
+    manager.enable()
 
     store = SettingsStore()
     settings = store.load()
@@ -893,7 +889,6 @@ def _cmd_intel_set_key(args: argparse.Namespace, streams: _Streams) -> int:
 def _cmd_intel_status(args: argparse.Namespace, streams: _Streams) -> int:
     from ..core.settings import SettingsStore
     from ..intelligence.secrets import IntelligenceSecretStore
-    from ..intelligence.virustotal import VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED
 
     store = SettingsStore()
     settings = store.load()
@@ -912,7 +907,6 @@ def _cmd_intel_status(args: argparse.Namespace, streams: _Streams) -> int:
             "intelligence_enabled": settings.intelligence_enabled,
             "secret_service_available": secret_avail,
             "api_key_configured": has_key,
-            "provider_eligible": VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED,
         }
         print(json.dumps(payload, indent=2), file=streams.out)
     else:
@@ -920,12 +914,6 @@ def _cmd_intel_status(args: argparse.Namespace, streams: _Streams) -> int:
         print(f"Threat Intelligence: {status_str}", file=streams.out)
         print(f"Secret Service Available: {secret_avail}", file=streams.out)
         print(f"API Key Configured: {has_key}", file=streams.out)
-        gate_status = (
-            "cleared"
-            if VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED
-            else "BLOCKED — maintainer review required"
-        )
-        print(f"VirusTotal terms eligibility gate: {gate_status}", file=streams.out)
     return EXIT_OK
 
 
@@ -949,12 +937,7 @@ def _cmd_intel_enable(args: argparse.Namespace, streams: _Streams) -> int:
         autostart_enabled=settings.autostart_enabled,
     )
     store.save(updated)
-    print("Threat Intelligence preference enabled", file=streams.out)
-    print(
-        "VirusTotal network lookups remain blocked until the maintainer verifies "
-        "applicable Public API terms and product eligibility.",
-        file=streams.out,
-    )
+    print("Threat Intelligence enabled", file=streams.out)
     return EXIT_OK
 
 
@@ -993,15 +976,14 @@ def _cmd_intel_lookup(args: argparse.Namespace, streams: _Streams) -> int:
     settings = SettingsStore().load()
     if not settings.intelligence_enabled:
         print(
-            "error: Threat Intelligence is disabled; run "
-            "'clamguardian intel enable' first",
+            "error: Threat Intelligence is disabled; run 'clamguardian intel enable' first",
             file=streams.err,
         )
         return EXIT_USAGE
     if not VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED:
         print(
-            "error: VirusTotal lookups are administratively blocked pending review "
-            "of applicable Public API terms and product eligibility",
+            "error: VirusTotal integration is proactively blocked pending "
+            "review of applicable Public API terms and product eligibility",
             file=streams.err,
         )
         return EXIT_ENGINE_ERROR

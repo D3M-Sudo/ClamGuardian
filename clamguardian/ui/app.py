@@ -470,7 +470,6 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     history_store=self._service_history_store,
                 )
                 self._usb_monitor = USBMountMonitor(scanner)
-            paths_changed = False
             if self._realtime_service is None:
                 self._realtime_service = RealtimeMonitorService(
                     self._service_runner,
@@ -478,11 +477,9 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     monitored_paths=settings.realtime_paths,
                 )
             else:
-                new_paths = [Path(path).resolve() for path in settings.realtime_paths]
-                paths_changed = new_paths != self._realtime_service.monitored_paths
-                if paths_changed and self._realtime_service.is_running:
-                    await self._realtime_service.stop()
-                self._realtime_service.monitored_paths = new_paths
+                self._realtime_service.monitored_paths = [
+                    Path(path).resolve() for path in settings.realtime_paths
+                ]
             if self._scheduler is None:
                 self._scheduler = ScheduledScanManager(
                     self._service_runner,
@@ -526,12 +523,6 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 logging.getLogger(__name__).error(
                     "Autostart setting could not be applied: %s", error
                 )
-                if settings.autostart_enabled:
-                    from dataclasses import replace
-
-                    self._service_settings_store.save(
-                        replace(settings, autostart_enabled=False)
-                    )
 
         def _on_shutdown(self, _app: Adw.Application) -> None:
             loop = self._service_loop

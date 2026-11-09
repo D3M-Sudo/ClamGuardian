@@ -100,11 +100,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
 
             intel_row = Adw.SwitchRow(
                 title="Threat Intelligence",
-                subtitle=(
-                    "Opt-in hash-only VirusTotal lookups; API key: "
-                    "'clamguardian intel set-key'. Network access remains gated "
-                    "pending maintainer terms review."
-                ),
+                subtitle="Opt-in hash-only queries to VirusTotal (never uploads files)",
             )
             intel_row.set_active(self._settings.intelligence_enabled)
             intel_row.connect("notify::active", self._on_intelligence_changed)
@@ -272,17 +268,6 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             )
 
         def _on_autostart_changed(self, row: Adw.SwitchRow, _pspec: object) -> None:
-            if row.get_active():
-                from ..core.autostart import AutostartManager
-
-                if AutostartManager._inside_flatpak():
-                    self._show_error(
-                        "Autostart unavailable in Flatpak",
-                        "Host XDG autostart cannot be written from the sandbox. "
-                        "A supported desktop Background portal integration is not yet available.",
-                    )
-                    row.set_active(False)
-                    return
             self._persist(
                 AppSettings(
                     default_profile_id=self._settings.default_profile_id,
