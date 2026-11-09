@@ -13,7 +13,7 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - **Realtime lifecycle:** recreate the scan orchestrator on each start, fail startup when configured directories or recursive watches cannot be registered, and expose watch-registration failures instead of reporting incomplete monitoring as active.
 - **Scheduled scans:** persist the last successful daily run across restarts and retry failed scans rather than recording a failed attempt as completed.
 - **Background service integration:** start and stop USB, realtime and scheduler services from the GTK application lifecycle using the application's shared scan runner and history store; apply realtime path changes.
-- **VirusTotal safety:** enforce opt-in in the CLI, cache the provider for a service lifetime, apply a 15.1-second minimum request interval, add hidden-input Secret Service key setup, and keep all network lookups blocked until maintainer review confirms applicable Public API terms and product eligibility.
+- **VirusTotal safety:** enforce opt-in in the CLI, cache the provider for a service lifetime, apply a shared, cross-process 15.1-second minimum request interval, add hidden-input Secret Service key setup, and keep all network lookups blocked until maintainer review confirms applicable Public API terms and product eligibility.
 - **Flatpak credentials:** grant the Secret Service D-Bus name in both manifests; Secret Service availability checks now exercise the D-Bus operation and remain fail-closed.
 - **Autostart:** reject unsupported host XDG autostart writes from inside Flatpak rather than silently claiming that host autostart was installed.
 
