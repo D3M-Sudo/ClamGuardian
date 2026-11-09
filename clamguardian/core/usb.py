@@ -82,7 +82,8 @@ class USBDeviceScanner:
         self.runner = runner
         self.history_store = history_store
         self.profile = default_profile or DEFAULT_PROFILE
-        self.mount_roots = tuple(Path(root).resolve() for root in (allowed_mount_roots or self.DEFAULT_MOUNT_ROOTS))
+        roots = allowed_mount_roots or self.DEFAULT_MOUNT_ROOTS
+        self.mount_roots = tuple(Path(root).resolve() for root in roots)
         self._mount_detector = mount_detector or _is_removable_device_mount
         self._active_mounts: set[Path] = set()
         self._lock = asyncio.Lock()
