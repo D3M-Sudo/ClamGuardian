@@ -9,7 +9,10 @@ The module is import-safe on headless systems without PyGObject.
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from collections.abc import Callable
+from pathlib import Path
 
 from ..core.profiles import DEFAULT_REGISTRY
 from ..core.settings import AppSettings, SettingsStore, profile_index
@@ -20,7 +23,7 @@ try:  # pragma: no cover - exercised only on systems with PyGObject
 
     gi.require_version("Gtk", "4.0")
     gi.require_version("Adw", "1")
-    from gi.repository import Adw, Gtk
+    from gi.repository import Adw, GLib, Gtk
 
     GTK_AVAILABLE = True
 except Exception:  # pragma: no cover - headless environments
@@ -52,6 +55,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
 
             self._build_scanning_group()
             self._build_automation_group()
+            self._build_intelligence_group()
             self._build_notifications_group()
             self._build_appearance_group()
             self._build_about_group()
@@ -101,9 +105,9 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             intel_row = Adw.SwitchRow(
                 title="Threat Intelligence",
                 subtitle=(
-                    "Opt-in hash-only VirusTotal lookups; API key: "
-                    "'clamguardian intel set-key'. Network access remains gated "
-                    "pending maintainer terms review."
+                    "Optional VirusTotal hash enrichment. Configure credentials "
+                    "in the VirusTotal Integration section; Public access remains "
+                    "blocked pending written eligibility authorization."
                 ),
             )
             intel_row.set_active(self._settings.intelligence_enabled)
@@ -178,6 +182,289 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     f"{dropped} event(s) dropped in the last run"
                 )
             self._realtime_status_row.set_subtitle(subtitle)
+
+        def _build_intelligence_group(self) -> None:
+            group = Adw.PreferencesGroup(
+                title="VirusTotal Integration",
+                description=(
+                    "Credentials are stored only in the operating system Secret Service. "
+                    "Public API access remains blocked pending written eligibility "
+                    "authorization; Premium requires a valid subscription entitlement."
+                ),
+            )
+            self._credential_rows: dict[str, Adw.ActionRow] = {}
+            for profile, label in (("public", "Public"), ("premium", "Premium")):
+                row = Adw.ActionRow(
+                    title=f"{label} API credential",
+                    subtitle="Checking OS Secret Service…",
+                )
+                entry = Gtk.Entry()
+                entry.set_visibility(False)
+                entry.set_input_purpose(Gtk.InputPurpose.PASSWORD)
+                entry.set_placeholder_text("API key (input hidden)")
+                entry.set_hexpand(True)
+                save_button = Gtk.Button(label="Save")
+                save_button.connect(
+                    "clicked", self._on_save_credential, profile, entry, row
+                )
+                controls = Gtk.Box(
+                    orientation=Gtk.Orientation.HORIZONTAL,
+                    spacing=6,
+                )
+                controls.append(entry)
+                controls.append(save_button)
+                row.add_suffix(controls)
+                group.add(row)
+                self._credential_rows[profile] = row
+
+            upload_row = Adw.ActionRow(
+                title="Submit a file for analysis",
+                subtitle=(
+                    "Looks up SHA-256 first. A full-file upload requires a separate "
+                    "confirmation for that exact file."
+                ),
+            )
+            upload_button = Gtk.Button(label="Choose file…")
+            upload_button.connect("clicked", self._on_choose_upload_file)
+            upload_row.add_suffix(upload_button)
+            upload_row.set_sensitive(self._settings.intelligence_enabled)
+            group.add(upload_row)
+            self._intel_upload_row = upload_row
+            self._intel_upload_button = upload_button
+            self._root.add(group)
+            self._refresh_credential_status()
+
+        def _refresh_credential_status(self) -> None:
+            from ..intelligence.secrets import (
+                IntelligenceSecretStore,
+                SecretStorageError,
+            )
+
+            store = IntelligenceSecretStore()
+            for profile, row in self._credential_rows.items():
+                try:
+                    configured = bool(store.get_credential(profile))
+                except SecretStorageError:
+                    row.set_subtitle(
+                        "Secret Service unavailable; plaintext storage is prohibited."
+                    )
+                else:
+                    row.set_subtitle(
+                        "Credential stored in OS Secret Service."
+                        if configured
+                        else "No credential configured."
+                    )
+
+        def _on_save_credential(
+            self,
+            _button: Gtk.Button,
+            profile: str,
+            entry: Gtk.Entry,
+            row: Adw.ActionRow,
+        ) -> None:
+            from ..intelligence.secrets import (
+                IntelligenceSecretStore,
+                SecretStorageError,
+            )
+
+            credential = entry.get_text()
+            if not credential.strip():
+                self._show_error(
+                    "Missing API credential",
+                    "Enter the selected VirusTotal profile's API credential.",
+                )
+                return
+            try:
+                IntelligenceSecretStore().set_credential(profile, credential)
+            except (SecretStorageError, ValueError):
+                self._show_error(
+                    "Credential not stored",
+                    "The credential could not be stored in OS Secret Service. "
+                    "No plaintext fallback was used.",
+                )
+                return
+            entry.set_text("")
+            row.set_subtitle("Credential stored in OS Secret Service.")
+
+        def _on_choose_upload_file(self, _button: Gtk.Button) -> None:
+            from .dialogs import top_level_window
+
+            window = top_level_window(self._root)
+            if window is None:
+                self._show_error(
+                    "File selection unavailable",
+                    "The VirusTotal upload action requires an active application window.",
+                )
+                return
+            if hasattr(Gtk, "FileDialog"):
+                dialog = Gtk.FileDialog(title="Select a file for VirusTotal analysis")
+
+                def _done(source: Gtk.FileDialog, result: object) -> None:
+                    try:
+                        selected = source.open_finish(result)
+                    except GLib.Error:
+                        return
+                    filename = selected.get_path() if selected is not None else None
+                    if filename:
+                        self._start_upload_workflow(Path(filename))
+
+                dialog.open(window, None, _done)
+                return
+
+            if hasattr(Gtk, "FileChooserNative"):  # pragma: no cover - older GTK4
+                chooser = Gtk.FileChooserNative.new(
+                    "Select a file for VirusTotal analysis",
+                    window,
+                    Gtk.FileChooserAction.OPEN,
+                    "Select",
+                    "Cancel",
+                )
+
+                def _response(dialog: object, response: int) -> None:
+                    filename = (
+                        dialog.get_filename()
+                        if response == Gtk.ResponseType.ACCEPT
+                        else None
+                    )
+                    dialog.destroy()
+                    if filename:
+                        self._start_upload_workflow(Path(filename))
+
+                chooser.connect("response", _response)
+                chooser.show()
+                return
+
+            self._show_error(
+                "File selection unavailable",
+                "This GTK version does not provide a file chooser.",
+            )
+
+        def _start_upload_workflow(self, path: Path) -> None:
+            from ..intelligence.service import ThreatIntelligenceService
+            from .database_pages import run_async
+
+            service = ThreatIntelligenceService(settings_store=self._store)
+            consent_event = threading.Event()
+            consent_decision = {"accepted": False}
+            self._intel_upload_button.set_sensitive(False)
+
+            async def _workflow() -> tuple[str, dict[str, object] | None]:
+                preview = service.preview_file_upload(path)
+                lookup = await service.lookup_upload_candidate(preview)
+                if lookup.get("found") is True:
+                    return "existing", lookup
+                if lookup.get("found") is not False:
+                    raise RuntimeError(
+                        "VirusTotal hash lookup did not establish whether a report exists"
+                    )
+                GLib.idle_add(
+                    self._present_upload_consent,
+                    preview,
+                    consent_event,
+                    consent_decision,
+                )
+                await asyncio.to_thread(consent_event.wait)
+                if not consent_decision["accepted"]:
+                    return "cancelled", None
+                report = await service.upload_file(
+                    preview,
+                    consent=True,
+                    lookup_report=lookup,
+                )
+                return "uploaded", report
+
+            def _done(
+                result: object,
+                error: Exception | None,
+            ) -> None:
+                self._intel_upload_button.set_sensitive(
+                    self._settings.intelligence_enabled
+                )
+                if error is not None:
+                    self._show_error(
+                        "VirusTotal operation failed",
+                        f"The operation could not be completed ({type(error).__name__}).",
+                    )
+                    return
+                if not isinstance(result, tuple) or len(result) != 2:
+                    self._show_error(
+                        "VirusTotal operation failed",
+                        "The operation returned an invalid result.",
+                    )
+                    return
+                status, report = result
+                if status == "cancelled":
+                    return
+                if isinstance(report, dict):
+                    self._show_upload_report(status, report)
+
+            run_async(_workflow(), _done)
+
+        def _present_upload_consent(
+            self,
+            preview: object,
+            consent_event: threading.Event,
+            consent_decision: dict[str, bool],
+        ) -> bool:
+            from .dialogs import alert_dialog, top_level_window
+
+            filename = str(getattr(preview, "filename", "selected file"))
+            filename = filename.replace("\\n", "\\\\n").replace("\\r", "\\\\r")
+            size = int(getattr(preview, "size", 0))
+            digest = str(getattr(preview, "sha256", ""))
+            warning = str(getattr(preview, "warning", ""))
+            body = (
+                f"File: {filename}\n"
+                f"Size: {size:,} bytes\n"
+                f"SHA-256: {digest}\n\n"
+                f"{warning}\n\n"
+                "The file will be transmitted only if you explicitly choose Upload."
+            )
+            dialog = alert_dialog(
+                "Confirm VirusTotal file submission",
+                body,
+                responses=(("upload", "Upload file"), ("cancel", "Cancel")),
+                default_response="cancel",
+                close_response="cancel",
+            )
+
+            def _response(_dialog: object, response: str) -> None:
+                consent_decision["accepted"] = response == "upload"
+                consent_event.set()
+
+            dialog.connect("response", _response)
+            window = top_level_window(self._root)
+            if window is None:
+                consent_event.set()
+            else:
+                dialog.present(window)
+            return False
+
+        def _show_upload_report(
+            self,
+            status: str,
+            report: dict[str, object],
+        ) -> None:
+            if status == "existing":
+                heading = "Existing VirusTotal report"
+                stats = report.get("last_analysis_stats", {})
+                permalink = report.get("permalink", "")
+                body = (
+                    "A report already exists for this SHA-256. No file was uploaded.\n"
+                    f"Detection statistics: {stats}\n"
+                    f"Report: {permalink}"
+                )
+            else:
+                heading = "VirusTotal analysis submitted"
+                stats = report.get("stats", {})
+                body = (
+                    f"Analysis status: {report.get('status', 'unknown')}\n"
+                    f"Analysis ID: {report.get('analysis_id', 'unavailable')}\n"
+                    f"Analysis statistics: {stats}\n\n"
+                    "This remote assessment is supplemental and does not change "
+                    "the local ClamAV verdict."
+                )
+            self._show_error(heading, body)
 
         def _build_notifications_group(self) -> None:
             group = Adw.PreferencesGroup(
@@ -262,6 +549,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             )
 
         def _on_intelligence_changed(self, row: Adw.SwitchRow, _pspec: object) -> None:
+            self._intel_upload_row.set_sensitive(row.get_active())
             self._persist(
                 AppSettings(
                     default_profile_id=self._settings.default_profile_id,
