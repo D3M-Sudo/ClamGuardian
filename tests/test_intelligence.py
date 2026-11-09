@@ -14,7 +14,6 @@ from clamguardian.intelligence import service as intelligence_service_module
 from clamguardian.intelligence.manager import ThreatProviderManager
 from clamguardian.intelligence.secrets import IntelligenceSecretStore, SecretStorageError
 from clamguardian.intelligence.service import ThreatIntelligenceService
-from clamguardian.intelligence import virustotal as virustotal_module
 from clamguardian.intelligence.virustotal import VirusTotalProvider
 
 
