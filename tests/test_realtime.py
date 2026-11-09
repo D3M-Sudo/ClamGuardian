@@ -181,8 +181,16 @@ async def test_realtime_service_lifecycle(tmp_path: Path) -> None:
     await service.start()
     assert service.is_running is True
 
+    first_orchestrator = service.orchestrator
     await service.stop()
     assert service.is_running is False
+    assert first_orchestrator._closed is True
 
     await service.stop()
     assert service.is_running is False
+
+    await service.start()
+    assert service.is_running is True
+    assert service.orchestrator is not first_orchestrator
+    assert service.orchestrator._closed is False
+    await service.stop()
