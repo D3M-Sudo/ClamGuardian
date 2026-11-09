@@ -119,7 +119,9 @@ class SettingsStore:
             parsed = json.loads(self._path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return AppSettings().normalized()
-        return _settings_from_mapping(parsed) if isinstance(parsed, dict) else AppSettings().normalized()
+        if isinstance(parsed, dict):
+            return _settings_from_mapping(parsed)
+        return AppSettings().normalized()
 
     def save(self, settings: AppSettings) -> AppSettings:
         normalized = settings.normalized()

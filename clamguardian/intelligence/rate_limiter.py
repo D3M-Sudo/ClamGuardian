@@ -6,7 +6,7 @@ import json
 import math
 import os
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -121,7 +121,7 @@ class PersistentRateLimiter:
             os.fchmod(fd, 0o600)
             fcntl.flock(fd, fcntl.LOCK_EX)
             state = self._read_state(fd)
-            today = datetime.now(timezone.utc).date().isoformat()
+            today = datetime.now(UTC).date().isoformat()
             entry = self._entry_for_today(state, today)
             entry["retry_after_until"] = max(
                 float(entry.get("retry_after_until", 0.0)), time.time() + seconds
@@ -147,7 +147,8 @@ class PersistentRateLimiter:
             last = float(entry["last_request"])
             if self.profile is APIProfile.PUBLIC and count >= self.public_daily_limit:
                 raise QuotaExceeded(
-                    f"VirusTotal Public API daily quota exhausted ({self.public_daily_limit} requests/day)"
+                    "VirusTotal Public API daily quota exhausted "
+                    f"({self.public_daily_limit} requests/day)"
                 )
             remaining = max(
                 0.0,

@@ -1,10 +1,10 @@
 """Explicit VirusTotal API profile selection and policy metadata."""
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class APIProfile(str, Enum):
+class APIProfile(StrEnum):
     PUBLIC = "public"
     PREMIUM = "premium"
 

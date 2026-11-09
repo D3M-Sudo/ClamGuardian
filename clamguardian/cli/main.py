@@ -333,7 +333,9 @@ def build_parser() -> argparse.ArgumentParser:
     intel_upload = intel_sub.add_parser(
         "upload",
         help="submit a file after hash lookup and explicit per-file consent",
-        description="Look up the file SHA-256 first; upload only if absent and the user types UPLOAD.",
+        description=(
+            "Look up the file SHA-256 first; upload only if absent and the user types UPLOAD."
+        ),
     )
     intel_upload.add_argument("path", metavar="PATH")
     intel_upload.set_defaults(func=_cmd_intel_upload)
@@ -968,7 +970,11 @@ def _cmd_intel_status(args: argparse.Namespace, streams: _Streams) -> int:
         print(f"Secret Service Available: {secret_avail}", file=streams.out)
         print(f"Public Credential Configured: {credentials['public']}", file=streams.out)
         print(f"Premium Credential Configured: {credentials['premium']}", file=streams.out)
-        gate_status = "cleared" if VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED else "BLOCKED — written authorization required"
+        gate_status = (
+            "cleared"
+            if VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED
+            else "BLOCKED — written authorization required"
+        )
         print(f"VirusTotal Public API eligibility gate: {gate_status}", file=streams.out)
     return EXIT_OK
 
@@ -1040,7 +1046,10 @@ def _cmd_intel_upload(args: argparse.Namespace, streams: _Streams) -> int:
         print(f"SHA-256: {preview.sha256}", file=streams.out)
         lookup = await service.lookup_upload_candidate(preview)
         if lookup.get("found") is True:
-            print("VirusTotal already has a report for this hash; upload skipped.", file=streams.out)
+            print(
+                "VirusTotal already has a report for this hash; upload skipped.",
+                file=streams.out,
+            )
             return EXIT_OK, lookup
         if lookup.get("found") is not False:
             print(
