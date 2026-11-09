@@ -28,8 +28,8 @@ from ..core.base import ScanResult
 from ..core.diagnostics import CheckResult, critical_missing, run_dependency_checks
 from ..core.quarantine import QuarantineEntry, QuarantineVault
 from ..core.settings import AppSettings, SettingsStore
-from ..intelligence.service import ThreatIntelligenceService
 from ..history.backend import SqliteHistoryStore, default_history_db_path
+from ..intelligence.service import ThreatIntelligenceService
 from .controller import ShieldTaskController
 from .database_pages import GTK_AVAILABLE
 from .diagnostics_page import DiagnosticsPage
@@ -523,7 +523,9 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 else:
                     autostart.disable()
             except (OSError, RuntimeError) as error:
-                logging.getLogger(__name__).error("Autostart setting could not be applied: %s", error)
+                logging.getLogger(__name__).error(
+                    "Autostart setting could not be applied: %s", error
+                )
 
         def _on_shutdown(self, _app: Adw.Application) -> None:
             loop = self._service_loop
