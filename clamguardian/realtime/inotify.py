@@ -73,6 +73,7 @@ class InotifyMonitor(FileMonitor):
         self._path_map: dict[Path, int] = {}
         self._root_watches: set[Path] = set()
         self._overflow_count: int = 0
+        self._watch_failures: set[Path] = set()
         self._mask = (
             IN_CLOSE_WRITE
             | IN_CREATE
@@ -86,6 +87,11 @@ class InotifyMonitor(FileMonitor):
     def overflow_count(self) -> int:
         """Return the number of inotify queue overflow events detected."""
         return self._overflow_count
+
+    @property
+    def watch_failures(self) -> frozenset[Path]:
+        """Paths that could not be registered as inotify watches."""
+        return frozenset(self._watch_failures)
 
     def add_watch(self, path: Path) -> int:
         """Add recursive inotify watch on *path* and all existing subdirectories."""
@@ -116,8 +122,10 @@ class InotifyMonitor(FileMonitor):
                 logger.error("Inotify watch limit reached (ENOSPC) for %s", dir_path)
             elif err in (errno.ENOENT, errno.EACCES):
                 logger.warning("Cannot watch path %s: errno %d", dir_path, err)
+            self._watch_failures.add(dir_path)
             return -1
 
+        self._watch_failures.discard(dir_path)
         self._wd_map[wd] = dir_path
         self._path_map[dir_path] = wd
         return wd
@@ -247,3 +255,4 @@ class InotifyMonitor(FileMonitor):
         self._wd_map.clear()
         self._path_map.clear()
         self._root_watches.clear()
+        self._watch_failures.clear()
