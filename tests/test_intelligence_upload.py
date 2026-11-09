@@ -41,7 +41,6 @@ class _FakeSession:
 
 
 def test_premium_upload_posts_only_after_absent_hash_lookup(tmp_path: Path) -> None:
-    import pytest
     from unittest.mock import AsyncMock
 
     sample = tmp_path / "fixture.bin"

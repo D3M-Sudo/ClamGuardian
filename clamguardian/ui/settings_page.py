@@ -420,24 +420,29 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 f"{warning}\n\n"
                 "The file will be transmitted only if you explicitly choose Upload."
             )
-            dialog = alert_dialog(
-                "Confirm VirusTotal file submission",
-                body,
-                responses=(("upload", "Upload file"), ("cancel", "Cancel")),
-                default_response="cancel",
-                close_response="cancel",
-            )
+            try:
+                dialog = alert_dialog(
+                    "Confirm VirusTotal file submission",
+                    body,
+                    responses=(("upload", "Upload file"), ("cancel", "Cancel")),
+                    default_response="cancel",
+                    close_response="cancel",
+                )
+                window = top_level_window(self._root)
+                if window is None:
+                    consent_event.set()
+                    return False
 
-            def _response(_dialog: object, response: str) -> None:
-                consent_decision["accepted"] = response == "upload"
-                consent_event.set()
+                def _response(_dialog: object, response: str) -> None:
+                    consent_decision["accepted"] = response == "upload"
+                    consent_event.set()
 
-            dialog.connect("response", _response)
-            window = top_level_window(self._root)
-            if window is None:
-                consent_event.set()
-            else:
+                dialog.connect("response", _response)
                 dialog.present(window)
+            except Exception:
+                # Fail closed: never leave the upload worker waiting or infer consent.
+                consent_decision["accepted"] = False
+                consent_event.set()
             return False
 
         def _show_upload_report(
