@@ -889,6 +889,7 @@ def _cmd_intel_set_key(args: argparse.Namespace, streams: _Streams) -> int:
 def _cmd_intel_status(args: argparse.Namespace, streams: _Streams) -> int:
     from ..core.settings import SettingsStore
     from ..intelligence.secrets import IntelligenceSecretStore
+    from ..intelligence.virustotal import VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED
 
     store = SettingsStore()
     settings = store.load()
@@ -907,6 +908,7 @@ def _cmd_intel_status(args: argparse.Namespace, streams: _Streams) -> int:
             "intelligence_enabled": settings.intelligence_enabled,
             "secret_service_available": secret_avail,
             "api_key_configured": has_key,
+            "provider_eligible": VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED,
         }
         print(json.dumps(payload, indent=2), file=streams.out)
     else:
@@ -914,6 +916,10 @@ def _cmd_intel_status(args: argparse.Namespace, streams: _Streams) -> int:
         print(f"Threat Intelligence: {status_str}", file=streams.out)
         print(f"Secret Service Available: {secret_avail}", file=streams.out)
         print(f"API Key Configured: {has_key}", file=streams.out)
+        print(
+            f"VirusTotal terms eligibility gate: {'cleared' if VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED else 'BLOCKED — maintainer review required'}",
+            file=streams.out,
+        )
     return EXIT_OK
 
 
@@ -937,7 +943,11 @@ def _cmd_intel_enable(args: argparse.Namespace, streams: _Streams) -> int:
         autostart_enabled=settings.autostart_enabled,
     )
     store.save(updated)
-    print("Threat Intelligence enabled", file=streams.out)
+    print("Threat Intelligence preference enabled", file=streams.out)
+    print(
+        "VirusTotal network lookups remain blocked until the maintainer verifies applicable Public API terms and product eligibility.",
+        file=streams.out,
+    )
     return EXIT_OK
 
 
