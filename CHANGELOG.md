@@ -6,6 +6,7 @@
 - Add hash-first file submission workflow with per-file typed consent, privacy warning, SHA-256 revalidation, upload polling, CLI commands, and GTK profile selection.
 
 ### Security
+- Realtime scans now reject symlinked path components and paths outside configured watch roots, and scan a private snapshot copied from a no-follow file descriptor rather than reopening the event pathname.
 - Keep Public API requests blocked until written VirusTotal eligibility authorization is recorded.
 - Remove upstream response bodies and sensitive request details from VirusTotal error logs; never fall back between API profiles.
 - Keep VirusTotal enrichment separate from the local ClamAV verdict.

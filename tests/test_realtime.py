@@ -55,7 +55,7 @@ async def test_realtime_trailing_edge_debounce(tmp_path: Path) -> None:
 
     engine = StubEngine(delay=0.01)
     runner = ScanTaskRunner(engine)
-    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.1)
+    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.1, allowed_roots=(tmp_path,))
 
     completed: list[ScanResult] = []
 
@@ -78,7 +78,7 @@ async def test_realtime_trailing_edge_debounce(tmp_path: Path) -> None:
 async def test_realtime_strict_queue_bound(tmp_path: Path) -> None:
     engine = StubEngine(delay=0.1)
     runner = ScanTaskRunner(engine)
-    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.01, max_queue_depth=3)
+    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.01, max_queue_depth=3, allowed_roots=(tmp_path,))
 
     files = [tmp_path / f"file_{i}.txt" for i in range(10)]
     for f in files:
@@ -100,7 +100,7 @@ async def test_realtime_events_arriving_during_active_scan(tmp_path: Path) -> No
 
     engine = StubEngine(delay=0.1)
     runner = ScanTaskRunner(engine)
-    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.01)
+    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.01, allowed_roots=(tmp_path,))
 
     completed: list[ScanResult] = []
     event1 = FileEvent(path=test_file, event_type=FileEventType.MODIFY)
@@ -129,7 +129,7 @@ async def test_realtime_deterministic_shutdown(tmp_path: Path) -> None:
 
     engine = StubEngine(delay=0.2)
     runner = ScanTaskRunner(engine)
-    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.05)
+    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.05, allowed_roots=(tmp_path,))
 
     event = FileEvent(path=test_file, event_type=FileEventType.CREATE)
     await orchestrator.handle_events([event])
@@ -232,3 +232,95 @@ async def test_realtime_service_lifecycle(tmp_path: Path) -> None:
     assert service.orchestrator is not first_orchestrator
     assert service.orchestrator._closed is False
     await service.stop()
+
+
+
+@pytest.mark.asyncio
+async def test_realtime_rejects_symlink_to_file_outside_root(tmp_path: Path) -> None:
+    root = tmp_path / "watched"
+    root.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("must not be scanned")
+    link = root / "escape.txt"
+    link.symlink_to(outside)
+
+    engine = StubEngine(delay=0)
+    orchestrator = RealtimeScanOrchestrator(
+        ScanTaskRunner(engine), debounce_seconds=0, allowed_roots=(root,)
+    )
+    completed: list[ScanResult] = []
+    await orchestrator.handle_events(
+        [FileEvent(path=link, event_type=FileEventType.CREATE)],
+        on_scan_complete=completed.append,
+    )
+    await asyncio.sleep(0.05)
+
+    assert engine.scanned_paths == []
+    assert len(completed) == 1
+    assert completed[0].status is ScanStatus.ERROR
+    assert "rejected" in (completed[0].error or "").lower()
+    await orchestrator.close()
+
+
+@pytest.mark.asyncio
+async def test_realtime_rejects_symlinked_parent_inside_root(tmp_path: Path) -> None:
+    root = tmp_path / "watched"
+    root.mkdir()
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    outside_file = outside_dir / "payload.txt"
+    outside_file.write_text("must not be scanned")
+    (root / "jump").symlink_to(outside_dir, target_is_directory=True)
+    event_path = root / "jump" / "payload.txt"
+
+    engine = StubEngine(delay=0)
+    orchestrator = RealtimeScanOrchestrator(
+        ScanTaskRunner(engine), debounce_seconds=0, allowed_roots=(root,)
+    )
+    completed: list[ScanResult] = []
+    await orchestrator.handle_events(
+        [FileEvent(path=event_path, event_type=FileEventType.CREATE)],
+        on_scan_complete=completed.append,
+    )
+    await asyncio.sleep(0.05)
+
+    assert engine.scanned_paths == []
+    assert len(completed) == 1
+    assert completed[0].status is ScanStatus.ERROR
+    await orchestrator.close()
+
+
+@pytest.mark.asyncio
+async def test_realtime_scans_private_snapshot_not_mutable_event_path(tmp_path: Path) -> None:
+    root = tmp_path / "watched"
+    root.mkdir()
+    target = root / "sample.txt"
+    target.write_text("original-content")
+
+    class ContentEngine(StubEngine):
+        scanned_contents: list[str]
+
+        def __init__(self) -> None:
+            super().__init__(delay=0)
+            self.scanned_contents = []
+
+        async def scan(self, target: Path, *, recursive=True, profile=None):
+            self.scanned_paths.append(str(target))
+            self.scanned_contents.append(target.read_text())
+            return ScanResult(target=str(target), clean=True)
+
+    engine = ContentEngine()
+    orchestrator = RealtimeScanOrchestrator(
+        ScanTaskRunner(engine), debounce_seconds=0, allowed_roots=(root,)
+    )
+    completed: list[ScanResult] = []
+    await orchestrator.handle_events(
+        [FileEvent(path=target, event_type=FileEventType.CREATE)],
+        on_scan_complete=completed.append,
+    )
+    await asyncio.sleep(0.05)
+
+    assert engine.scanned_contents == ["original-content"]
+    assert engine.scanned_paths[0] != str(target)
+    assert completed[0].target == str(target)
+    await orchestrator.close()

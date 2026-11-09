@@ -57,6 +57,7 @@ class RealtimeMonitorService:
             profile=self.profile,
             debounce_seconds=self.debounce_seconds,
             max_queue_depth=self.max_queue_depth,
+            allowed_roots=tuple(self.monitored_paths),
         )
         self._monitor: InotifyMonitor | None = None
         self._poll_task: asyncio.Task[None] | None = None
@@ -132,6 +133,7 @@ class RealtimeMonitorService:
             profile=self.profile,
             debounce_seconds=self.debounce_seconds,
             max_queue_depth=self.max_queue_depth,
+            allowed_roots=tuple(self.monitored_paths),
         )
         self._monitor = InotifyMonitor()
         try:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from time import time
@@ -91,10 +92,9 @@ class RealtimeScanOrchestrator:
                 if not self.policy.should_scan(event):
                     continue
 
-                try:
-                    path = event.path.resolve()
-                except OSError:
-                    path = event.path.absolute()
+                # Keep the lexical event path. Resolving it here would
+                # follow a symlink before the descriptor-based policy can reject it.
+                path = Path(os.path.abspath(os.fspath(event.path)))
 
                 if path in self._active_scans or path in self._dispatched:
                     self._dirty_paths.add(path)
