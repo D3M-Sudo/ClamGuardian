@@ -6,9 +6,9 @@ import asyncio
 import time
 from typing import Any
 
-import aiohttp
-
 from ..core.base import BaseThreatProvider
+
+import aiohttp
 
 
 # Keep outbound VirusTotal lookups disabled until the maintainer has
