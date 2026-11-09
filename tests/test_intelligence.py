@@ -390,3 +390,18 @@ def test_provider_upload_rejects_missing_per_file_consent(monkeypatch, tmp_path)
     with pytest.raises(PermissionError, match="Explicit per-file consent"):
         asyncio.run(provider.upload_file(sample, "0" * 64, consent=False))
     provider.lookup_hash.assert_not_awaited()
+
+
+
+def test_upload_preview_is_invalidated_if_file_changes_after_preview(tmp_path):
+    from clamguardian.intelligence.upload import preview_upload, submit_after_consent
+
+    sample = tmp_path / "changed.bin"
+    sample.write_bytes(b"before")
+    preview = preview_upload(sample)
+    sample.write_bytes(b"after")
+
+    provider = Mock()
+    with pytest.raises(RuntimeError, match="changed after the upload preview"):
+        asyncio.run(submit_after_consent(provider, preview, consent=True))
+    provider.upload_file.assert_not_called()
