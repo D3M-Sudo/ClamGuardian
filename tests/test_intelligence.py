@@ -11,6 +11,7 @@ from clamguardian.core.base import ScanResult, ScanStatus
 from clamguardian.core.settings import AppSettings, SettingsStore
 from clamguardian.intelligence.manager import ThreatProviderManager
 from clamguardian.intelligence.secrets import IntelligenceSecretStore, SecretStorageError
+from clamguardian.intelligence import service as intelligence_service_module
 from clamguardian.intelligence.service import ThreatIntelligenceService
 from clamguardian.intelligence.virustotal import VirusTotalProvider
 
@@ -76,7 +77,10 @@ async def test_intelligence_service_zero_network_when_disabled(tmp_path) -> None
 
 
 @pytest.mark.asyncio
-async def test_intelligence_service_lookup_when_enabled(tmp_path) -> None:
+async def test_intelligence_service_lookup_when_enabled(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        intelligence_service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True
+    )
     settings_file = tmp_path / "settings.json"
     settings_store = SettingsStore(settings_file)
     settings_store.save(AppSettings(intelligence_enabled=True))
@@ -106,6 +110,29 @@ async def test_intelligence_service_lookup_when_enabled(tmp_path) -> None:
     assert verdict["malicious"] is True
     assert result.clean is True
     assert result.status is ScanStatus.CLEAN
+
+
+@pytest.mark.asyncio
+async def test_intelligence_service_reuses_provider_and_enforces_terms_gate(tmp_path, monkeypatch) -> None:
+    store = SettingsStore(tmp_path / "settings.json")
+    store.save(AppSettings(intelligence_enabled=True))
+    provider = AsyncMock(spec=VirusTotalProvider)
+    service = ThreatIntelligenceService(settings_store=store, provider=provider)
+
+    monkeypatch.setattr(
+        intelligence_service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", False
+    )
+    result = ScanResult(target="/tmp/file", clean=True, metadata={"sha256": "a" * 64})
+    assert await service.lookup_scan_result(result) is None
+    provider.lookup_hash.assert_not_awaited()
+
+    monkeypatch.setattr(
+        intelligence_service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True
+    )
+    service._provider = provider
+    service._provider_initialized = True
+    assert service.get_provider() is provider
+    assert service.get_provider() is provider
 
 
 @pytest.mark.asyncio
