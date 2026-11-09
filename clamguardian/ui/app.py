@@ -526,6 +526,12 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 logging.getLogger(__name__).error(
                     "Autostart setting could not be applied: %s", error
                 )
+                if settings.autostart_enabled:
+                    from dataclasses import replace
+
+                    self._service_settings_store.save(
+                        replace(settings, autostart_enabled=False)
+                    )
 
         def _on_shutdown(self, _app: Adw.Application) -> None:
             loop = self._service_loop
