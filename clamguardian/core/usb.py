@@ -204,7 +204,15 @@ class USBMountMonitor:
             for line in lines:
                 parts = line.split()
                 if len(parts) >= 2:
-                    mount_path = Path(parts[1])
+                    mount_field = parts[1]
+                    for escaped, decoded in (
+                        (r"\\040", " "),
+                        (r"\\011", "\\t"),
+                        (r"\\012", "\\n"),
+                        (r"\\134", "\\\\"),
+                    ):
+                        mount_field = mount_field.replace(escaped, decoded)
+                    mount_path = Path(mount_field)
                     if self.scanner.is_removable_mount(mount_path):
                         mounts.add(mount_path)
         except OSError as err:
