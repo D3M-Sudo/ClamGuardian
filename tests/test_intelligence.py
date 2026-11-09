@@ -256,7 +256,7 @@ async def test_virustotal_rate_limiting(tmp_path) -> None:
 
 def test_secret_service_availability_checks_dbus_operation(monkeypatch) -> None:
     import sys
-    from types import SimpleNamespace
+    from types import ModuleType, SimpleNamespace
 
     calls = []
     class FakeSchema:
@@ -271,11 +271,13 @@ def test_secret_service_availability_checks_dbus_operation(monkeypatch) -> None:
         def password_lookup_sync(*_args):
             calls.append("lookup")
             return None
-    fake_gi = SimpleNamespace(
-        require_version=lambda *_args: None,
-        repository=SimpleNamespace(Secret=FakeSecret),
-    )
+    fake_repository = ModuleType("gi.repository")
+    fake_repository.Secret = FakeSecret
+    fake_gi = ModuleType("gi")
+    fake_gi.__path__ = []
+    fake_gi.require_version = lambda *_args: None
+    fake_gi.repository = fake_repository
     monkeypatch.setitem(sys.modules, "gi", fake_gi)
-    monkeypatch.setitem(sys.modules, "gi.repository", fake_gi.repository)
+    monkeypatch.setitem(sys.modules, "gi.repository", fake_repository)
     assert IntelligenceSecretStore.is_available() is True
     assert calls == ["lookup"]

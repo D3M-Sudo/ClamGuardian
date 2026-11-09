@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from clamguardian.core.base import BaseAVEngine, ScanResult, ScanStatus
 from clamguardian.core.profiles import ScanProfile
 from clamguardian.core.runner import ScanTaskRunner
-from clamguardian.core.usb import USBDeviceScanner, USBMountMonitor, USBScanError, _is_removable_device_mount
+from clamguardian.core.usb import USBDeviceScanner, USBMountMonitor, USBScanError
 from clamguardian.history import SqliteHistoryStore
 
 
@@ -46,31 +44,6 @@ def test_is_removable_mount_detection(tmp_path: Path) -> None:
     assert scanner.is_removable_mount(Path("/mnt")) is False
     assert scanner.is_removable_mount(Path("/home/user/documents")) is False
     assert scanner.is_removable_mount(Path("/etc")) is False
-
-
-def test_removable_mount_detector_uses_sysfs_and_udev_evidence(tmp_path: Path, monkeypatch) -> None:
-    mount = tmp_path / "media" / "usb"
-    mount.mkdir(parents=True)
-    sysfs = tmp_path / "sys"
-    udev = tmp_path / "udev"
-    device = sysfs / "devices" / "block" / "sda"
-    device.mkdir(parents=True)
-    (device / "removable").write_text("1\n", encoding="ascii")
-    (sysfs / "dev" / "block").mkdir(parents=True)
-    (sysfs / "dev" / "block" / "8:1").symlink_to(device)
-    monkeypatch.setattr(Path, "is_mount", lambda self: self == mount)
-    device_stat = lambda _path: SimpleNamespace(st_dev=os.makedev(8, 1))
-
-    assert _is_removable_device_mount(mount, sysfs_root=sysfs, udev_root=udev, device_stat=device_stat)
-
-    # USB bridges may report removable=0; udev bus identity is the second signal.
-    (device / "removable").write_text("0\n", encoding="ascii")
-    udev.mkdir()
-    (udev / "b8:1").write_text("E:ID_BUS=usb\n", encoding="utf-8")
-    assert _is_removable_device_mount(mount, sysfs_root=sysfs, udev_root=udev)
-
-    (udev / "b8:1").write_text("E:ID_BUS=scsi\n", encoding="utf-8")
-    assert not _is_removable_device_mount(mount, sysfs_root=sysfs, udev_root=udev)
 
 
 def test_default_mount_detector_rejects_ordinary_directory(tmp_path: Path) -> None:

@@ -185,7 +185,8 @@ class RealtimeMonitorService:
                     await self.orchestrator.handle_events(
                         events, on_scan_complete=self.on_scan_complete
                     )
-                    self._notify_status_changed()
+                # Overflow may arrive without a normal file event; refresh health every read.
+                self._notify_status_changed()
             except asyncio.CancelledError:
                 break
             except Exception as exc:
