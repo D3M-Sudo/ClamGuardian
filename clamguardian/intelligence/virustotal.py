@@ -11,6 +11,13 @@ import aiohttp
 from ..core.base import BaseThreatProvider
 
 
+# Keep outbound VirusTotal lookups disabled until the maintainer has
+# reviewed the applicable Public API terms and recorded eligibility for this
+# product/use case. This is deliberately a source-level release gate, not a
+# claim that the terms have already been accepted or verified.
+VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED = False
+
+
 class VirusTotalProvider(BaseThreatProvider):
     """Query VirusTotal's v3 file endpoint by SHA-256 digest."""
 
