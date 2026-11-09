@@ -183,12 +183,19 @@ active. They are part of the unreleased PR #18 remediation and are not included
 in the published `v1.0.0` bundle.
 
 ```bash
-clamguardian usb status|enable|disable
-clamguardian monitor status|enable|disable
+clamguardian usb status
+clamguardian usb enable
+clamguardian usb disable
+clamguardian monitor status
+clamguardian monitor enable
 clamguardian monitor add DIRECTORY
 clamguardian monitor remove DIRECTORY
-clamguardian schedule status|enable|disable
-clamguardian autostart status|enable|disable
+clamguardian schedule status
+clamguardian schedule enable --time 02:00
+clamguardian schedule disable
+clamguardian autostart status
+clamguardian autostart enable
+clamguardian autostart disable
 ```
 
 VirusTotal is hash-only: file contents are never uploaded. Configure the API
