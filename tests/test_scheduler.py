@@ -101,3 +101,41 @@ def test_autostart_fails_closed_inside_flatpak(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setattr(AutostartManager, "_inside_flatpak", staticmethod(lambda: True))
     with pytest.raises(RuntimeError, match="cannot be installed from the Flatpak sandbox"):
         manager.enable()
+
+
+@pytest.mark.parametrize("profile", ["public", "premium"])
+def test_set_schedule_preserves_intelligence_profile_and_other_settings(
+    tmp_path: Path, profile: str
+) -> None:
+    store = SettingsStore(tmp_path / "settings.json")
+    original = AppSettings(
+        default_profile_id="balanced",
+        notifications_enabled=False,
+        color_scheme="dark",
+        usb_autoscan_enabled=True,
+        intelligence_enabled=True,
+        intelligence_profile=profile,
+        realtime_enabled=True,
+        realtime_paths=("/home/example/Downloads",),
+        scheduled_scans_enabled=False,
+        scheduled_hour=4,
+        scheduled_minute=15,
+        autostart_enabled=True,
+    )
+    store.save(original)
+    manager = ScheduledScanManager(ScanTaskRunner(StubEngine()), store)
+
+    manager.set_schedule(True, hour=7, minute=45)
+
+    updated = store.load()
+    assert updated.intelligence_profile == profile
+    assert updated.intelligence_enabled is True
+    assert updated.default_profile_id == "balanced"
+    assert updated.notifications_enabled is False
+    assert updated.color_scheme == "dark"
+    assert updated.usb_autoscan_enabled is True
+    assert updated.realtime_enabled is True
+    assert updated.realtime_paths == ("/home/example/Downloads",)
+    assert updated.autostart_enabled is True
+    assert updated.scheduled_scans_enabled is True
+    assert (updated.scheduled_hour, updated.scheduled_minute) == (7, 45)

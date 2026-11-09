@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime, time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -77,20 +78,13 @@ class ScheduledScanManager:
         return time(hour=settings.scheduled_hour, minute=settings.scheduled_minute)
 
     def set_schedule(self, enabled: bool, hour: int = 2, minute: int = 0) -> None:
-        """Update scheduled scan settings."""
+        """Update schedule fields without resetting unrelated application settings."""
         settings = self.settings_store.load()
-        updated = AppSettings(
-            default_profile_id=settings.default_profile_id,
-            notifications_enabled=settings.notifications_enabled,
-            color_scheme=settings.color_scheme,
-            usb_autoscan_enabled=settings.usb_autoscan_enabled,
-            intelligence_enabled=settings.intelligence_enabled,
-            realtime_enabled=settings.realtime_enabled,
-            realtime_paths=settings.realtime_paths,
+        updated = replace(
+            settings,
             scheduled_scans_enabled=enabled,
             scheduled_hour=hour % 24,
             scheduled_minute=minute % 60,
-            autostart_enabled=settings.autostart_enabled,
         )
         self.settings_store.save(updated)
 

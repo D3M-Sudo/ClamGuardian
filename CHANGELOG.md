@@ -5,6 +5,9 @@
 - Add persistent profile-aware request pacing, Public daily quota enforcement, and cross-process Retry-After cooldowns.
 - Add hash-first file submission workflow with per-file typed consent, privacy warning, SHA-256 revalidation, upload polling, CLI commands, and GTK profile selection.
 
+### Fixed
+- Preserve the selected VirusTotal intelligence profile and all unrelated application settings when the Scheduler updates its configuration.
+
 ### Security
 - Keep Public API requests blocked until written VirusTotal eligibility authorization is recorded.
 - Remove upstream response bodies and sensitive request details from VirusTotal error logs; never fall back between API profiles.
@@ -39,7 +42,6 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - **Engineering Handoff**: Comprehensive technical documentation in `docs/engineering/CLAMGUARDIAN-AUTONOMOUS-COMPLETION-HANDOFF.md`.
 
 ## [1.0.1] — release candidate (tag cut after the manual desktop validation)
-
 Security and desktop update. Prepared on 2026-10-20; the `v1.0.1` tag is created
 from `main` only after the desktop validation recorded in
 `docs/validation/DESKTOP-TEST-D4-2026-10-19.md` and the promotion PRs
