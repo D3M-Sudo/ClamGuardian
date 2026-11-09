@@ -15,9 +15,8 @@ from urllib.parse import urlsplit
 import aiohttp
 
 from ..core.base import BaseThreatProvider
-from .models import UploadPreview
 from .profiles import APIProfile
-from .rate_limiter import PersistentRateLimiter, QuotaExceeded
+from .rate_limiter import PersistentRateLimiter
 from .reports import normalize_analysis_report, normalize_file_report
 
 # Public API network access remains blocked until written eligibility clarification

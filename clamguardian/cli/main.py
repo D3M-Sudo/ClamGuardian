@@ -1032,19 +1032,22 @@ def _cmd_intel_upload(args: argparse.Namespace, streams: _Streams) -> int:
     from ..intelligence.service import ThreatIntelligenceService
 
     service = ThreatIntelligenceService()
-    try:
+
+    async def _workflow() -> tuple[int, dict[str, object] | None]:
         preview = service.preview_file_upload(Path(args.path))
         print(f"File: {preview.filename}", file=streams.out)
         print(f"Size: {preview.size} bytes", file=streams.out)
         print(f"SHA-256: {preview.sha256}", file=streams.out)
-        lookup = asyncio.run(service.lookup_upload_candidate(preview))
+        lookup = await service.lookup_upload_candidate(preview)
         if lookup.get("found") is True:
             print("VirusTotal already has a report for this hash; upload skipped.", file=streams.out)
-            print(json.dumps(lookup, indent=2), file=streams.out)
-            return EXIT_OK
+            return EXIT_OK, lookup
         if lookup.get("found") is not False:
-            print("error: hash lookup did not establish that the file is absent; upload blocked", file=streams.err)
-            return EXIT_ENGINE_ERROR
+            print(
+                "error: hash lookup did not establish that the file is absent; upload blocked",
+                file=streams.err,
+            )
+            return EXIT_ENGINE_ERROR, None
         print(preview.warning, file=streams.out)
         print("This action transmits the complete file to VirusTotal.", file=streams.out)
         try:
@@ -1053,15 +1056,23 @@ def _cmd_intel_upload(args: argparse.Namespace, streams: _Streams) -> int:
             confirmation = ""
         if confirmation != "UPLOAD":
             print("Upload cancelled; no file contents were transmitted.", file=streams.out)
-            return EXIT_CANCELLED
-        report = asyncio.run(
-            service.upload_file(preview, consent=True, lookup_report=lookup)
+            return EXIT_CANCELLED, None
+        report = await service.upload_file(
+            preview, consent=True, lookup_report=lookup
         )
+        return EXIT_OK, report
+
+    try:
+        code, report = asyncio.run(_workflow())
     except Exception as exc:
-        print(f"error: VirusTotal upload workflow failed ({type(exc).__name__})", file=streams.err)
+        print(
+            f"error: VirusTotal upload workflow failed ({type(exc).__name__})",
+            file=streams.err,
+        )
         return EXIT_ENGINE_ERROR
-    print(json.dumps(report, indent=2), file=streams.out)
-    return EXIT_OK
+    if report is not None:
+        print(json.dumps(report, indent=2), file=streams.out)
+    return code
 
 
 def _cmd_intel_lookup(args: argparse.Namespace, streams: _Streams) -> int:
