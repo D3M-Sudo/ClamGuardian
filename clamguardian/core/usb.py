@@ -21,7 +21,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _is_removable_device_mount(path: Path) -> bool:
+def _is_removable_device_mount(
+    path: Path,
+    *,
+    sysfs_root: Path = Path("/sys"),
+    udev_root: Path = Path("/run/udev/data"),
+) -> bool:
     """Fail closed unless the mount resolves to removable/USB block media."""
     try:
         if not path.is_mount():
@@ -29,14 +34,14 @@ def _is_removable_device_mount(path: Path) -> bool:
         device = os.stat(path).st_dev
         major, minor = os.major(device), os.minor(device)
         device_id = f"{major}:{minor}"
-        sys_device = (Path("/sys/dev/block") / device_id).resolve(strict=True)
+        sys_device = (sysfs_root / "dev/block" / device_id).resolve(strict=True)
         for parent in (sys_device, *sys_device.parents):
             removable = parent / "removable"
             if removable.is_file() and removable.read_text(encoding="ascii").strip() == "1":
                 return True
         # Some USB bridges report removable=0; udev's persistent database
         # provides a second read-only identification signal.
-        udev_record = Path("/run/udev/data") / f"b{device_id}"
+        udev_record = udev_root / f"b{device_id}"
         if udev_record.is_file():
             return any(
                 line.strip() == "E:ID_BUS=usb"

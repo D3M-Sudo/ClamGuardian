@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from clamguardian.core.autostart import AutostartManager
-from clamguardian.core.base import BaseAVEngine, ScanResult
+from clamguardian.core.base import BaseAVEngine, ScanResult, ScanStatus
 from clamguardian.core.profiles import ScanProfile
 from clamguardian.core.runner import ScanTaskRunner
 from clamguardian.core.scheduler import ScheduledScanManager
@@ -101,3 +101,21 @@ def test_autostart_fails_closed_inside_flatpak(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setattr(AutostartManager, "_inside_flatpak", staticmethod(lambda: True))
     with pytest.raises(RuntimeError, match="cannot be installed from the Flatpak sandbox"):
         manager.enable()
+
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        (ScanStatus.CLEAN, True),
+        (ScanStatus.INFECTED, True),
+        (ScanStatus.ERROR, False),
+        (ScanStatus.TIMEOUT, False),
+        (ScanStatus.CANCELLED, False),
+    ],
+)
+def test_scheduler_only_commits_completed_scan_status(tmp_path: Path, status: ScanStatus, expected: bool) -> None:
+    manager = ScheduledScanManager(ScanTaskRunner(StubEngine()), SettingsStore(tmp_path / "settings.json"))
+    result = ScanResult(target=str(tmp_path), clean=status is ScanStatus.CLEAN, status=status,
+                        error="failure" if status in (ScanStatus.ERROR, ScanStatus.TIMEOUT) else None)
+    assert manager._is_successful_daily_result(result) is expected

@@ -380,8 +380,15 @@ def test_flatpak_finish_args_cover_what_the_code_needs() -> None:
     finish_args = set(manifest["finish-args"])
     # clamscan/freshclam run on the host through flatpak-spawn --host.
     assert "--talk-name=org.freedesktop.Flatpak" in finish_args
+    assert "--talk-name=org.freedesktop.secrets" in finish_args
     # third-party database downloads and freshclam updates use the network.
     assert "--share=network" in finish_args
     # quarantine vault, history and database state are written by the app.
     assert "--filesystem=xdg-data/clamguardian:create" in finish_args
     assert "--socket=fallback-x11" in finish_args or "--socket=x11" in finish_args
+
+
+
+@pytest.mark.parametrize("manifest_name", MANIFESTS)
+def test_both_flatpak_manifests_allow_secret_service_dbus(manifest_name: str) -> None:
+    assert "--talk-name=org.freedesktop.secrets" in set(_manifest(manifest_name)["finish-args"])
