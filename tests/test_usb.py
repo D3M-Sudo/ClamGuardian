@@ -46,6 +46,16 @@ def test_is_removable_mount_detection(tmp_path: Path) -> None:
     assert scanner.is_removable_mount(Path("/etc")) is False
 
 
+def test_default_mount_detector_rejects_ordinary_directory(tmp_path: Path) -> None:
+    mount_root = tmp_path / "media"
+    ordinary_directory = mount_root / "not-a-mount"
+    ordinary_directory.mkdir(parents=True)
+    scanner = USBDeviceScanner(
+        ScanTaskRunner(StubEngine()), allowed_mount_roots=(mount_root,)
+    )
+    assert scanner.is_removable_mount(ordinary_directory) is False
+
+
 def test_validate_target_rejection(tmp_path: Path) -> None:
     runner = ScanTaskRunner(StubEngine())
     custom_root = tmp_path / "media"
