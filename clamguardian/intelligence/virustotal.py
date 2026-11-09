@@ -168,8 +168,12 @@ class VirusTotalProvider(BaseThreatProvider):
         try:
             upload_url = f"{self.BASE_URL}/files"
             if size > STANDARD_UPLOAD_SIZE:
-                response = await self._request("GET", f"{self.BASE_URL}/files/upload_url")
-                upload_url = self._validate_upload_url(response.get("data"))
+                upload_url_response = await self._request(
+                    "GET", f"{self.BASE_URL}/files/upload_url"
+                )
+                upload_url = self._validate_upload_url(
+                    upload_url_response.get("data")
+                )
 
             await self._reserve()
             snapshot.seek(0)
