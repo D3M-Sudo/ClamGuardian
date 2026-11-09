@@ -131,8 +131,12 @@ class VirusTotalProvider(BaseThreatProvider):
             return {"provider": self.name, "found": False, "sha256": digest}
         return normalize_file_report(payload, digest)
 
-    async def upload_file(self, path: Path, expected_sha256: str) -> str:
-        """Upload only after a fresh hash lookup proves no report exists."""
+    async def upload_file(
+        self, path: Path, expected_sha256: str, *, consent: bool
+    ) -> str:
+        """Upload only after explicit per-file consent and a fresh absent-hash lookup."""
+        if consent is not True:
+            raise PermissionError("Explicit per-file consent is required before upload")
         self._ensure_profile_eligible()
         if (
             not isinstance(expected_sha256, str)

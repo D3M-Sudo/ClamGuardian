@@ -376,4 +376,17 @@ def test_provider_upload_requires_fresh_absent_hash_lookup(monkeypatch, tmp_path
     sample = tmp_path / "already-known.bin"
     sample.write_bytes(b"fixture")
     with pytest.raises(PermissionError, match="fresh VirusTotal hash lookup"):
-        asyncio.run(provider.upload_file(sample, "0" * 64))
+        asyncio.run(provider.upload_file(sample, "0" * 64, consent=True))
+
+
+
+def test_provider_upload_rejects_missing_per_file_consent(monkeypatch, tmp_path):
+    provider = VirusTotalProvider("test-key", profile="premium")
+    monkeypatch.setattr(
+        provider, "lookup_hash", AsyncMock(return_value={"found": False})
+    )
+    sample = tmp_path / "consent.bin"
+    sample.write_bytes(b"fixture")
+    with pytest.raises(PermissionError, match="Explicit per-file consent"):
+        asyncio.run(provider.upload_file(sample, "0" * 64, consent=False))
+    provider.lookup_hash.assert_not_awaited()

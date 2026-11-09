@@ -60,7 +60,9 @@ async def submit_after_consent(
     current = await asyncio.to_thread(preview_upload, preview.path)
     if current.sha256 != preview.sha256 or current.size != preview.size:
         raise RuntimeError("File changed after the upload preview; consent is invalidated")
-    analysis_id = await provider.upload_file(preview.path, preview.sha256)
+    analysis_id = await provider.upload_file(
+        preview.path, preview.sha256, consent=True
+    )
     report: dict[str, Any] = {
         "provider": "virustotal",
         "analysis_id": analysis_id,
