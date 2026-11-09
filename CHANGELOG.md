@@ -10,9 +10,9 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ### Fixed
 - **USB lifecycle and mount validation:** require an actual mount backed by removable/USB block-device identity beneath an allowed root; track background scan tasks, cancel them on unmount/shutdown, and prevent ordinary directories from being treated as removable devices.
-- **Realtime lifecycle:** recreate the scan orchestrator on each start, fail startup when configured directories or recursive watches cannot be registered, and expose watch-registration failures instead of reporting incomplete monitoring as active.
-- **Scheduled scans:** persist the last successful daily run across restarts and retry failed scans rather than recording a failed attempt as completed.
-- **Background service integration:** start and stop USB, realtime and scheduler services from the GTK application lifecycle using the application's shared scan runner and history store; apply realtime path changes.
+- **Realtime lifecycle:** recreate the scan orchestrator on each start, fail startup when configured directories or recursive watches cannot be registered, and expose live watch failures, kernel overflows and dropped-event counters in GTK Settings, including after stop.
+- **Scheduled scans:** persist only CLEAN/INFECTED daily completions across restarts; ERROR, TIMEOUT and CANCELLED outcomes remain eligible for retry.
+- **Background service integration:** start and stop USB, realtime and scheduler services from the GTK lifecycle using the shared scan runner and history store; apply settings changes and marshal runtime health back to GTK.
 - **VirusTotal safety:** enforce opt-in in the CLI, cache the provider for a service lifetime, apply a shared, cross-process 15.1-second minimum request interval, add hidden-input Secret Service key setup, and keep all network lookups blocked until maintainer review confirms applicable Public API terms and product eligibility.
 - **Flatpak credentials:** grant the Secret Service D-Bus name in both manifests; Secret Service availability checks now exercise the D-Bus operation and remain fail-closed.
 - **Autostart:** reject unsupported host XDG autostart writes from inside Flatpak rather than silently claiming that host autostart was installed.
@@ -86,3 +86,9 @@ AES-256-GCM quarantine vault with chunked streaming, ClamAV engine integration
 with Flatpak-aware host execution, and a pinned dependency audit in CI.
 Tag `v1.0.0` → commit `8ee8a56`; evidence
 [`docs/reports/RELEASE-GATE-1.0.md`](docs/reports/RELEASE-GATE-1.0.md).
+
+### Security and lifecycle hardening
+- The shared scan runner coordinates concurrency across independent event loops without loop-bound asyncio primitives. Realtime shutdown no longer cancels unrelated manual, USB or scheduled scans.
+- USB detection requires a real mount and removable-block or explicit udev USB-bus evidence; sysfs/udev inputs are injectable for deterministic regression tests.
+- Both Flatpak manifests grant the Secret Service D-Bus name, and packaging tests enforce the permission in each manifest.
+- CLI monitor status distinguishes persisted configuration from live desktop-session runtime health.

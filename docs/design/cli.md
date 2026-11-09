@@ -130,6 +130,20 @@ removals). Inventing CLI-default paths now would be an arbitrary policy
 choice outside the Core; the command is deferred until a Headless-approved
 configuration surface exists.
 
+## Background automation commands
+
+USB, realtime, scheduled-scan and autostart commands edit or inspect persisted
+configuration; they do not create a resident service process. USB polling,
+inotify monitoring and scheduled execution are owned by the GTK application
+lifecycle. The desktop Settings page reports live realtime health, including
+watch failures, kernel queue overflows and dropped events. CLI monitor status
+reports configuration and the runtime owner, not live process health.
+
+VirusTotal credentials are configured with the CLI set-key command, which
+reads the key without echo and stores it only in OS Secret Service. The command
+fails closed when Secret Service is unavailable; no plaintext fallback exists.
+Network lookup remains blocked until the maintainer eligibility gate is cleared.
+
 ## Future hooks (M4+, not implemented here)
 
 The `ScanResult` produced by `scan` is the natural input for a history

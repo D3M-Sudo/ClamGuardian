@@ -26,12 +26,13 @@ def _is_removable_device_mount(
     *,
     sysfs_root: Path = Path("/sys"),
     udev_root: Path = Path("/run/udev/data"),
+    device_stat: Callable[[Path], object] | None = None,
 ) -> bool:
     """Fail closed unless the mount resolves to removable/USB block media."""
     try:
         if not path.is_mount():
             return False
-        device = os.stat(path).st_dev
+        device = (device_stat or os.stat)(path).st_dev
         major, minor = os.major(device), os.minor(device)
         device_id = f"{major}:{minor}"
         sys_device = (sysfs_root / "dev/block" / device_id).resolve(strict=True)

@@ -251,3 +251,31 @@ async def test_virustotal_rate_limiting(tmp_path) -> None:
         elapsed = asyncio.get_running_loop().time() - start
 
         assert elapsed >= 0.04
+
+
+
+def test_secret_service_availability_checks_dbus_operation(monkeypatch) -> None:
+    import sys
+    from types import SimpleNamespace
+
+    calls = []
+    class FakeSchema:
+        @staticmethod
+        def new(*_args):
+            return object()
+    class FakeSecret:
+        Schema = FakeSchema
+        SchemaFlags = SimpleNamespace(NONE=0)
+        SchemaAttributeType = SimpleNamespace(STRING=1)
+        @staticmethod
+        def password_lookup_sync(*_args):
+            calls.append("lookup")
+            return None
+    fake_gi = SimpleNamespace(
+        require_version=lambda *_args: None,
+        repository=SimpleNamespace(Secret=FakeSecret),
+    )
+    monkeypatch.setitem(sys.modules, "gi", fake_gi)
+    monkeypatch.setitem(sys.modules, "gi.repository", fake_gi.repository)
+    assert IntelligenceSecretStore.is_available() is True
+    assert calls == ["lookup"]

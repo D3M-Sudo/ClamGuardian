@@ -604,6 +604,8 @@ def _cmd_monitor_status(args: argparse.Namespace, streams: _Streams) -> int:
         payload = {
             "realtime_enabled": settings.realtime_enabled,
             "monitored_paths": list(settings.realtime_paths),
+            "runtime_status": "owned-by-desktop-session",
+            "runtime_health_available": False,
         }
         print(json.dumps(payload, indent=2), file=streams.out)
     else:
@@ -611,6 +613,7 @@ def _cmd_monitor_status(args: argparse.Namespace, streams: _Streams) -> int:
         print(f"Realtime Monitoring: {status_str}", file=streams.out)
         paths_str = ", ".join(settings.realtime_paths) if settings.realtime_paths else "(none)"
         print(f"Monitored paths: {paths_str}", file=streams.out)
+        print("Runtime health: available in the running desktop Settings page", file=streams.out)
     return EXIT_OK
 
 

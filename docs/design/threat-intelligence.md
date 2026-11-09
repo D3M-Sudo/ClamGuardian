@@ -1,18 +1,20 @@
-# Threat intelligence — frozen until Phase 11 (`v1.2.0`)
+# Threat intelligence — opt-in, eligibility-gated VirusTotal integration
 
 ## Status
 
-`clamguardian.intelligence` ships in the 1.x package but is **not wired**:
+`clamguardian.intelligence` is integrated with scan-result enrichment and CLI
+configuration, but external VirusTotal requests remain administratively
+blocked by default:
 
-- no module under `clamguardian/cli`, `clamguardian/ui`, `clamguardian/core`
-  or `clamguardian/history` imports it;
+- CLI commands provide key setup, status, enable, disable and lookup; GTK scan
+  completion adds supplemental hash-only metadata when permitted;
 - `pyproject.toml` declares no `clamguardian.threat_providers` entry point;
 - the `intelligence` extra is reserved and intentionally empty;
 - importing the package performs no network I/O and reads no secrets.
 
-`docs/ROADMAP.md` (Phase 11) keeps the feature out of the 1.0 scope. The Core
-seam `BaseThreatProvider` (`clamguardian/core/base.py`) is the extension
-contract; the provider is re-activated only with its own call site and gate.
+VirusTotal remains opt-in. The maintainer eligibility constant remains false
+until applicable Public API terms and product/use-case eligibility have been
+reviewed. A user preference cannot bypass that administrative hard gate.
 
 ## Why it is frozen
 
@@ -45,7 +47,7 @@ activation is caught in CI. The package has no side effects on import and no
 credential storage: the API key is passed to the constructor, kept in memory
 and sent only in the `x-apikey` header of an explicit `lookup_hash` call.
 
-## Activation checklist (Phase 11)
+## Operational gates
 
 - **M1 Privacy**: explicit opt-in, statement of which hashes are sent.
 - **M2 Provider**: wire the call site; keep the lookup asynchronous and
