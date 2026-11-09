@@ -31,8 +31,19 @@ class IntelligenceSecretStore:
             import gi
 
             gi.require_version("Secret", "1")
-            from gi.repository import Secret  # noqa: F401
+            from gi.repository import Secret
 
+            # Importability is not availability: Flatpak may filter the
+            # session bus or the user's Secret Service may be stopped.
+            Secret.password_lookup_sync(
+                Secret.Schema.new(
+                    SECRET_SCHEMA_NAME,
+                    Secret.SchemaFlags.NONE,
+                    {"service": Secret.SchemaAttributeType.STRING},
+                ),
+                dict(SECRET_ATTRIBUTES),
+                None,
+            )
             return True
         except Exception:
             return False
