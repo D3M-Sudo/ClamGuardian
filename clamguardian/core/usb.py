@@ -206,10 +206,10 @@ class USBMountMonitor:
                 if len(parts) >= 2:
                     mount_field = parts[1]
                     for escaped, decoded in (
-                        (r"\\040", " "),
-                        (r"\\011", "\\t"),
-                        (r"\\012", "\\n"),
-                        (r"\\134", "\\\\"),
+                        (r"\040", " "),
+                        (r"\011", "\t"),
+                        (r"\012", "\n"),
+                        (r"\134", "\\"),
                     ):
                         mount_field = mount_field.replace(escaped, decoded)
                     mount_path = Path(mount_field)
