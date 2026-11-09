@@ -109,7 +109,7 @@ def test_set_schedule_preserves_intelligence_profile_and_other_settings(
 ) -> None:
     store = SettingsStore(tmp_path / "settings.json")
     original = AppSettings(
-        default_profile_id="balanced",
+        default_profile_id="home",
         notifications_enabled=False,
         color_scheme="dark",
         usb_autoscan_enabled=True,
@@ -130,7 +130,7 @@ def test_set_schedule_preserves_intelligence_profile_and_other_settings(
     updated = store.load()
     assert updated.intelligence_profile == profile
     assert updated.intelligence_enabled is True
-    assert updated.default_profile_id == "balanced"
+    assert updated.default_profile_id == "home"
     assert updated.notifications_enabled is False
     assert updated.color_scheme == "dark"
     assert updated.usb_autoscan_enabled is True
