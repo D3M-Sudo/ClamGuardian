@@ -356,3 +356,53 @@ async def test_clamd_response_size_is_bounded(
         engine = ClamAVEngine(socket_path=socket_path, command_timeout=5)
         with pytest.raises(ValueError, match="size limit"):
             await engine._scan_socket(target, DEFAULT_PROFILE)
+
+
+
+@pytest.mark.asyncio
+async def test_clamd_fildes_passes_the_open_file_descriptor(tmp_path: Path) -> None:
+    """FILDES must transfer the opened file, not ask clamd to reopen its path."""
+    import array
+    import os
+    import socket
+    import threading
+
+    from clamguardian.core.profiles import DEFAULT_PROFILE
+
+    target = tmp_path / "private-snapshot"
+    target.write_text("descriptor payload")
+    socket_path = tmp_path / "clamd.ctl"
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(str(socket_path))
+    server.listen(1)
+    received: list[bytes] = []
+
+    def serve_one() -> None:
+        connection, _ = server.accept()
+        try:
+            _data, ancillary, _flags, _address = connection.recvmsg(
+                128, socket.CMSG_SPACE(array.array("i").itemsize)
+            )
+            for level, kind, payload in ancillary:
+                if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
+                    descriptors = array.array("i")
+                    descriptors.frombytes(payload[: descriptors.itemsize])
+                    with os.fdopen(descriptors[0], "rb") as transferred:
+                        received.append(transferred.read())
+            connection.sendall(b"private-snapshot: OK\\n")
+        finally:
+            connection.close()
+            server.close()
+
+    thread = threading.Thread(target=serve_one, daemon=True)
+    thread.start()
+    engine = ClamAVEngine(socket_path=socket_path, command_timeout=5)
+    output, exit_code, unsupported = await engine._scan_socket_fd(
+        target, DEFAULT_PROFILE
+    )
+    thread.join(timeout=5)
+
+    assert received == [b"descriptor payload"]
+    assert "OK" in output
+    assert exit_code == 0
+    assert unsupported == ()
