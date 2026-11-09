@@ -3,8 +3,8 @@
 ## Status
 
 `clamguardian.intelligence` is integrated with scan-result enrichment and CLI
-configuration, but external VirusTotal requests remain administratively
-blocked by default:
+configuration. Public API requests remain administratively blocked by default;
+Premium requests require a valid subscription entitlement:
 
 - CLI commands provide profile selection, credential setup, status, enable,
   disable, hash lookup and explicit file submission; GTK settings provide
@@ -13,9 +13,11 @@ blocked by default:
 - the `intelligence` extra is reserved and intentionally empty;
 - importing the package performs no network I/O and reads no secrets.
 
-VirusTotal remains opt-in. The maintainer eligibility constant remains false
-until applicable Public API terms and product/use-case eligibility have been
-reviewed. A user preference cannot bypass that administrative hard gate.
+VirusTotal remains opt-in. The maintainer eligibility constant blocks the
+Public profile until applicable Public API terms and product/use-case eligibility
+have been clarified in writing. Premium is an independently selected, licensed
+profile and is not inferred from key format. A user preference cannot bypass
+either profile's authorization requirements.
 
 ## Why network lookups remain gated
 
@@ -32,7 +34,7 @@ The active regression suite covers explicit opt-in, the independent maintainer
 gate, Secret Service reachability and fail-closed storage, hash-only requests,
 shared rate limiting, and preservation of the local ClamAV verdict.
 
-The provider is reachable only through the gated service and CLI. Credentials
+The provider is reachable through the service, CLI and GTK settings workflow. Credentials
 are stored only in Secret Service; no plaintext fallback exists. Availability
 checks exercise a D-Bus operation rather than merely importing the binding.
 Hash-only lookup is the default. Full-file submission is a separate optional
@@ -46,7 +48,8 @@ verdicts remain supplemental metadata and never replace the local ClamAV result.
 
 - explicit opt-in is required before lookup;
 - CLI checks opt-in before accessing Secret Service;
-- provider eligibility is a separate maintainer-controlled hard gate;
+- Public provider eligibility is a separate maintainer-controlled hard gate;
+- Premium access requires the user's valid Premium entitlement;
 - API keys require reachable Secret Service; plaintext fallback is prohibited;
 - rate limiting is shared across provider instances and processes;
 - hash-only lookup is the default; full-file upload requires a fresh absent-hash
