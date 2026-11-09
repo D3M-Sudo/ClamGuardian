@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 import stat
 import tempfile
-from pathlib import Path
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 
 
 class UnsafeRealtimeTarget(OSError):
@@ -72,7 +72,16 @@ def secure_file_snapshot(
         if not stat.S_ISREG(before.st_mode):
             raise UnsafeRealtimeTarget("realtime target is not a regular file")
 
-        with tempfile.TemporaryDirectory(prefix="clamguardian-realtime-") as private_dir:
+        cache_root = (
+            Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+            / "clamguardian"
+            / "realtime-snapshots"
+        )
+        cache_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(cache_root, 0o700)
+        with tempfile.TemporaryDirectory(
+            prefix="snapshot-", dir=cache_root
+        ) as private_dir:
             snapshot = Path(private_dir) / "scan-target"
             snapshot_fd = os.open(
                 snapshot,

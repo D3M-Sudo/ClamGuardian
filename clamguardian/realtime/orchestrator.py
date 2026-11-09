@@ -6,8 +6,8 @@ import asyncio
 import contextlib
 import logging
 import os
-from dataclasses import replace
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from pathlib import Path
 from time import time
 from typing import TYPE_CHECKING
@@ -54,7 +54,7 @@ class RealtimeScanOrchestrator:
         self.profile = profile
         self.debounce_seconds = debounce_seconds
         self.max_queue_depth = max_queue_depth
-        self.allowed_roots = tuple(Path(root).absolute() for root in allowed_roots)
+        self.allowed_roots = tuple(Path(os.path.abspath(os.fspath(root))) for root in allowed_roots)
 
         self._pending_events: dict[Path, float] = {}
         self._debounce_timers: dict[Path, asyncio.TimerHandle] = {}
@@ -191,7 +191,7 @@ class RealtimeScanOrchestrator:
                     on_complete(result)
 
             return result
-        except UnsafeRealtimeTarget as exc:
+        except OSError as exc:
             logger.warning("Rejected unsafe realtime target %s: %s", path, exc)
             return ScanResult(
                 target=str(path),

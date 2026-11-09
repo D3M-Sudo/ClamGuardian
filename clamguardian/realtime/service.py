@@ -40,7 +40,7 @@ class RealtimeMonitorService:
         self.runner = runner
         self.history_store = history_store
         self.profile = profile
-        self.monitored_paths = [Path(p).resolve() for p in monitored_paths]
+        self.monitored_paths = [Path(p).absolute() for p in monitored_paths]
         self.debounce_seconds = debounce_seconds
         self.max_queue_depth = max_queue_depth
         self.on_scan_complete = on_scan_complete
@@ -138,6 +138,8 @@ class RealtimeMonitorService:
         self._monitor = InotifyMonitor()
         try:
             for path in self.monitored_paths:
+                if path.is_symlink():
+                    raise RuntimeError(f"Configured realtime root must not be a symlink: {path}")
                 if not path.is_dir():
                     raise RuntimeError(
                         f"Configured realtime path is not an accessible directory: {path}"

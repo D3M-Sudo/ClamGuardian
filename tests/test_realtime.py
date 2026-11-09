@@ -55,7 +55,9 @@ async def test_realtime_trailing_edge_debounce(tmp_path: Path) -> None:
 
     engine = StubEngine(delay=0.01)
     runner = ScanTaskRunner(engine)
-    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.1, allowed_roots=(tmp_path,))
+    orchestrator = RealtimeScanOrchestrator(
+        runner, debounce_seconds=0.1, allowed_roots=(tmp_path,)
+    )
 
     completed: list[ScanResult] = []
 
@@ -78,7 +80,9 @@ async def test_realtime_trailing_edge_debounce(tmp_path: Path) -> None:
 async def test_realtime_strict_queue_bound(tmp_path: Path) -> None:
     engine = StubEngine(delay=0.1)
     runner = ScanTaskRunner(engine)
-    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.01, max_queue_depth=3, allowed_roots=(tmp_path,))
+    orchestrator = RealtimeScanOrchestrator(
+        runner, debounce_seconds=0.01, max_queue_depth=3, allowed_roots=(tmp_path,)
+    )
 
     files = [tmp_path / f"file_{i}.txt" for i in range(10)]
     for f in files:
@@ -100,7 +104,9 @@ async def test_realtime_events_arriving_during_active_scan(tmp_path: Path) -> No
 
     engine = StubEngine(delay=0.1)
     runner = ScanTaskRunner(engine)
-    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.01, allowed_roots=(tmp_path,))
+    orchestrator = RealtimeScanOrchestrator(
+        runner, debounce_seconds=0.01, allowed_roots=(tmp_path,)
+    )
 
     completed: list[ScanResult] = []
     event1 = FileEvent(path=test_file, event_type=FileEventType.MODIFY)
@@ -129,7 +135,9 @@ async def test_realtime_deterministic_shutdown(tmp_path: Path) -> None:
 
     engine = StubEngine(delay=0.2)
     runner = ScanTaskRunner(engine)
-    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.05, allowed_roots=(tmp_path,))
+    orchestrator = RealtimeScanOrchestrator(
+        runner, debounce_seconds=0.05, allowed_roots=(tmp_path,)
+    )
 
     event = FileEvent(path=test_file, event_type=FileEventType.CREATE)
     await orchestrator.handle_events([event])
@@ -324,3 +332,19 @@ async def test_realtime_scans_private_snapshot_not_mutable_event_path(tmp_path: 
     assert engine.scanned_paths[0] != str(target)
     assert completed[0].target == str(target)
     await orchestrator.close()
+
+
+
+@pytest.mark.asyncio
+async def test_realtime_service_rejects_symlinked_root(tmp_path: Path) -> None:
+    real_root = tmp_path / "real-root"
+    real_root.mkdir()
+    linked_root = tmp_path / "linked-root"
+    linked_root.symlink_to(real_root, target_is_directory=True)
+
+    service = RealtimeMonitorService(
+        ScanTaskRunner(StubEngine()), monitored_paths=[linked_root]
+    )
+    with pytest.raises(RuntimeError, match="must not be a symlink"):
+        await service.start()
+    assert service.is_running is False
