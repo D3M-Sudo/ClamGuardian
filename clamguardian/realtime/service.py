@@ -77,10 +77,30 @@ class RealtimeMonitorService:
         if self._running:
             return
 
+        # stop() closes the previous orchestrator permanently. A new
+        # lifecycle must receive a fresh orchestrator and its own queue state.
+        self.orchestrator = RealtimeScanOrchestrator(
+            runner=self.runner,
+            policy=self.policy,
+            history_store=self.history_store,
+            profile=self.profile,
+            debounce_seconds=self.debounce_seconds,
+            max_queue_depth=self.max_queue_depth,
+        )
         self._monitor = InotifyMonitor()
-        for p in self.monitored_paths:
-            if p.exists():
-                self._monitor.add_watch(p)
+        try:
+            for path in self.monitored_paths:
+                if path.exists():
+                    watch = self._monitor.add_watch(path)
+                    if watch < 0:
+                        raise RuntimeError(f"Could not watch configured path: {path}")
+            if self._monitor.watch_failures:
+                failures = ", ".join(str(path) for path in self._monitor.watch_failures)
+                raise RuntimeError(f"Realtime monitoring is incomplete; failed watches: {failures}")
+        except BaseException:
+            self._monitor.close()
+            self._monitor = None
+            raise
 
         self._running = True
         self._poll_task = asyncio.create_task(self._event_poll_loop())
