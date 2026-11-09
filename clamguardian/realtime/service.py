@@ -35,6 +35,7 @@ class RealtimeMonitorService:
         debounce_seconds: float = 0.5,
         max_queue_depth: int = 1000,
         on_scan_complete: Callable[[ScanResult], None] | None = None,
+        on_status_changed: Callable[[dict[str, object]], None] | None = None,
     ) -> None:
         self.runner = runner
         self.history_store = history_store
@@ -43,6 +44,10 @@ class RealtimeMonitorService:
         self.debounce_seconds = debounce_seconds
         self.max_queue_depth = max_queue_depth
         self.on_scan_complete = on_scan_complete
+        self.on_status_changed = on_status_changed
+        self._last_overflow_count = 0
+        self._last_dropped_events_count = 0
+        self._last_watch_failures: frozenset[Path] = frozenset()
 
         self.policy = RealtimePolicy()
         self.orchestrator = RealtimeScanOrchestrator(
@@ -65,27 +70,50 @@ class RealtimeMonitorService:
     @property
     def overflow_count(self) -> int:
         """Total inotify kernel queue overflow events detected."""
-        return self._monitor.overflow_count if self._monitor is not None else 0
+        return (
+            self._monitor.overflow_count
+            if self._monitor is not None
+            else self._last_overflow_count
+        )
 
     @property
     def dropped_events_count(self) -> int:
         """Total events dropped due to backpressure / max queue depth."""
-        return self.orchestrator.dropped_events_count
+        return (
+            self.orchestrator.dropped_events_count
+            if self._running
+            else self._last_dropped_events_count
+        )
 
     @property
     def watch_failures(self) -> frozenset[Path]:
         """Paths that could not be registered during the active monitor lifecycle."""
-        return self._monitor.watch_failures if self._monitor is not None else frozenset()
+        return (
+            self._monitor.watch_failures
+            if self._monitor is not None
+            else self._last_watch_failures
+        )
 
     @property
     def runtime_status(self) -> dict[str, object]:
         """Snapshot runtime health without exposing mutable internal collections."""
+        failures = self.watch_failures
         return {
             "running": self.is_running,
+            "health": (
+                "degraded"
+                if failures or self.overflow_count or self.dropped_events_count
+                else "healthy" if self.is_running else "stopped"
+            ),
             "overflow_count": self.overflow_count,
             "dropped_events_count": self.dropped_events_count,
-            "watch_failures": tuple(sorted(str(path) for path in self.watch_failures)),
+            "watch_failures": tuple(sorted(str(path) for path in failures)),
         }
+
+    def _notify_status_changed(self) -> None:
+        if self.on_status_changed is not None:
+            with contextlib.suppress(Exception):
+                self.on_status_changed(self.runtime_status)
 
     async def start(self) -> None:
         """Start filesystem event collection and monitoring."""
@@ -94,6 +122,9 @@ class RealtimeMonitorService:
 
         # stop() closes the previous orchestrator permanently. A new
         # lifecycle must receive a fresh orchestrator and its own queue state.
+        self._last_overflow_count = 0
+        self._last_dropped_events_count = 0
+        self._last_watch_failures = frozenset()
         self.orchestrator = RealtimeScanOrchestrator(
             runner=self.runner,
             policy=self.policy,
@@ -116,12 +147,15 @@ class RealtimeMonitorService:
                 failures = ", ".join(str(path) for path in self._monitor.watch_failures)
                 raise RuntimeError(f"Realtime monitoring is incomplete; failed watches: {failures}")
         except BaseException:
+            self._last_watch_failures = self._monitor.watch_failures
             self._monitor.close()
             self._monitor = None
+            self._notify_status_changed()
             raise
 
         self._running = True
         self._poll_task = asyncio.create_task(self._event_poll_loop())
+        self._notify_status_changed()
 
     async def stop(self) -> None:
         """Stop monitoring and shutdown orchestrator and inotify monitor."""
@@ -135,8 +169,12 @@ class RealtimeMonitorService:
         await self.orchestrator.close()
 
         if self._monitor is not None:
+            self._last_overflow_count = self._monitor.overflow_count
+            self._last_watch_failures = self._monitor.watch_failures
             self._monitor.close()
             self._monitor = None
+        self._last_dropped_events_count = self.orchestrator.dropped_events_count
+        self._notify_status_changed()
 
     async def _event_poll_loop(self) -> None:
         loop = asyncio.get_running_loop()
@@ -147,6 +185,7 @@ class RealtimeMonitorService:
                     await self.orchestrator.handle_events(
                         events, on_scan_complete=self.on_scan_complete
                     )
+                    self._notify_status_changed()
             except asyncio.CancelledError:
                 break
             except Exception as exc:

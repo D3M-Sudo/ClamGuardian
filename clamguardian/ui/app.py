@@ -133,6 +133,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             self._history_page: HistoryPage | None = None
             self._quarantine_page: QuarantinePage | None = None
             self._suppress_selection = False
+            self._settings_page: SettingsPage | None = None
 
             self._stack = Gtk.Stack(vexpand=True, hexpand=True)
             self._pages: dict[str, Gtk.Widget] = {}
@@ -355,6 +356,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     on_changed=self._on_settings_changed,
                     on_about=self.show_about,
                 )
+                self._settings_page = page
                 self._pages[page_id] = page.root
                 return page.root
             raise ValueError(f"unknown page id: {page_id}")
@@ -476,6 +478,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     self._service_runner,
                     history_store=self._service_history_store,
                     monitored_paths=settings.realtime_paths,
+                    on_status_changed=self._on_realtime_status_changed,
                 )
             else:
                 new_paths = [Path(path).resolve() for path in settings.realtime_paths]
@@ -532,6 +535,19 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     self._service_settings_store.save(
                         replace(settings, autostart_enabled=False)
                     )
+
+            if self._realtime_service is not None:
+                self._on_realtime_status_changed(
+                    self._realtime_service.runtime_status
+                )
+
+        def _on_realtime_status_changed(self, status: dict[str, object]) -> None:
+            GLib.idle_add(self._apply_realtime_status, status)
+
+        def _apply_realtime_status(self, status: dict[str, object]) -> bool:
+            if self._window is not None and self._window._settings_page is not None:
+                self._window._settings_page.set_realtime_runtime_status(status)
+            return False
 
         def _on_shutdown(self, _app: Adw.Application) -> None:
             loop = self._service_loop

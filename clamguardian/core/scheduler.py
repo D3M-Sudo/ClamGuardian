@@ -10,7 +10,7 @@ from datetime import datetime, time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .base import ScanResult
+from .base import ScanResult, ScanStatus
 from .profiles import DEFAULT_PROFILE, ScanProfile
 from .runner import ScanTaskRunner
 from .settings import AppSettings, SettingsStore
@@ -133,13 +133,20 @@ class ScheduledScanManager:
                     if now.time() >= sched_time and self._last_run_date != today_str:
                         logger.info("Executing scheduled daily scan on %s", self.target)
                         try:
-                            await self.trigger_now()
+                            result = await self.trigger_now()
                         except Exception as exc:
-                            # Do not persist a failed run: the loop retries
-                            # later in the same session and after a restart.
                             logger.error("Scheduled scan failed: %s", exc)
                         else:
-                            self._save_last_run_date(today_str)
+                            if result.status in (ScanStatus.CLEAN, ScanStatus.INFECTED):
+                                self._save_last_run_date(today_str)
+                            else:
+                                # ERROR, TIMEOUT and CANCELLED are not completed
+                                # daily scans; leave the date uncommitted so the
+                                # scheduler can retry later and after restart.
+                                logger.warning(
+                                    "Scheduled scan ended with %s; it will be retried",
+                                    result.status.value,
+                                )
 
                 await asyncio.sleep(10)
             except asyncio.CancelledError:

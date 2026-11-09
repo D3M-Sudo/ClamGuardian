@@ -138,7 +138,32 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             self._autostart_row = autostart_row
             group.add(autostart_row)
 
+            self._realtime_status_row = Adw.ActionRow(
+                title="Realtime runtime health",
+                subtitle="Not started",
+            )
+            group.add(self._realtime_status_row)
             self._root.add(group)
+
+        def set_realtime_runtime_status(self, status: dict[str, object]) -> None:
+            """Display live monitor health, including watch and event-loss counters."""
+            failures = status.get("watch_failures", ())
+            overflow = int(status.get("overflow_count", 0))
+            dropped = int(status.get("dropped_events_count", 0))
+            running = bool(status.get("running", False))
+            if failures:
+                subtitle = f"Degraded — {len(failures)} watch registration failure(s)"
+            elif running:
+                subtitle = (
+                    f"Active — {overflow} kernel overflow(s), "
+                    f"{dropped} event(s) dropped"
+                )
+            else:
+                subtitle = (
+                    f"Stopped — {overflow} kernel overflow(s), "
+                    f"{dropped} event(s) dropped in the last run"
+                )
+            self._realtime_status_row.set_subtitle(subtitle)
 
         def _build_notifications_group(self) -> None:
             group = Adw.PreferencesGroup(

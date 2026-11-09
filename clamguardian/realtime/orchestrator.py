@@ -224,4 +224,3 @@ class RealtimeScanOrchestrator:
 
         self._active_tasks.clear()
         self._active_scans.clear()
-        await self.runner.cancel_all()
