@@ -66,7 +66,8 @@ def test_removable_mount_detector_uses_sysfs_and_udev_evidence(
     (sysfs / "dev" / "block").mkdir(parents=True)
     (sysfs / "dev" / "block" / "8:1").symlink_to(device)
     monkeypatch.setattr(Path, "is_mount", lambda self: self == mount)
-    device_stat = lambda _path: SimpleNamespace(st_dev=os.makedev(8, 1))
+    def device_stat(_path):
+        return SimpleNamespace(st_dev=os.makedev(8, 1))
     assert _is_removable_device_mount(
         mount, sysfs_root=sysfs, udev_root=udev, device_stat=device_stat
     )
