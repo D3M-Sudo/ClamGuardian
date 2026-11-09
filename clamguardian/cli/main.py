@@ -989,11 +989,16 @@ def _cmd_intel_lookup(args: argparse.Namespace, streams: _Streams) -> int:
 
     settings = SettingsStore().load()
     if not settings.intelligence_enabled:
-        print("error: Threat Intelligence is disabled; run 'clamguardian intel enable' first", file=streams.err)
+        print(
+            "error: Threat Intelligence is disabled; run "
+            "'clamguardian intel enable' first",
+            file=streams.err,
+        )
         return EXIT_USAGE
     if not VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED:
         print(
-            "error: VirusTotal lookups are administratively blocked pending review of applicable Public API terms and product eligibility",
+            "error: VirusTotal lookups are administratively blocked pending review "
+            "of applicable Public API terms and product eligibility",
             file=streams.err,
         )
         return EXIT_ENGINE_ERROR
