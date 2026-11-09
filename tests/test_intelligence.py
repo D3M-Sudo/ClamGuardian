@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from io import StringIO
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -118,7 +118,7 @@ async def test_intelligence_service_reuses_provider_and_enforces_terms_gate(tmp_
     store = SettingsStore(tmp_path / "settings.json")
     store.save(AppSettings(intelligence_enabled=True))
     provider = AsyncMock(spec=VirusTotalProvider)
-    secret_store = AsyncMock()
+    secret_store = Mock()
     secret_store.get_api_key.return_value = "test-api-key"
     service = ThreatIntelligenceService(settings_store=store, secret_store=secret_store)
 
@@ -138,7 +138,7 @@ async def test_intelligence_service_reuses_provider_and_enforces_terms_gate(tmp_
     )
     assert service.get_provider() is provider
     assert service.get_provider() is provider
-    secret_store.get_api_key.assert_awaited_once()
+    secret_store.get_api_key.assert_called_once()
 
 
 def test_virustotal_default_rate_limit_is_at_least_four_per_minute() -> None:
