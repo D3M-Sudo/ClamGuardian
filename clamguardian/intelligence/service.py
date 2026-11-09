@@ -8,7 +8,10 @@ from typing import Any
 from ..core.base import ScanResult
 from ..core.settings import SettingsStore
 from .secrets import IntelligenceSecretStore, SecretStorageError
-from .virustotal import VirusTotalProvider
+from .virustotal import (
+    VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED,
+    VirusTotalProvider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +39,7 @@ class ThreatIntelligenceService:
         """Return initialized provider if enabled and credentials exist, else None."""
         if not self.is_enabled():
             return None
-        if not self.is_enabled():
+        if not self.is_enabled() or not VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED:
             return None
         if self._provider_initialized:
             return self._provider
@@ -60,7 +63,7 @@ class ThreatIntelligenceService:
         - Directory scans (sha256 is None): no request.
         - Never overrides or alters the local ClamAV scan result.
         """
-        if not self.is_enabled():
+        if not self.is_enabled() or not VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED:
             return None
 
         sha256 = result.metadata.get("sha256")
