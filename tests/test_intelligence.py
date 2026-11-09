@@ -345,7 +345,11 @@ def test_public_profile_gate_does_not_implicitly_block_premium(tmp_path, monkeyp
     provider = AsyncMock(spec=VirusTotalProvider)
     secret_store = Mock()
     secret_store.get_credential.return_value = "premium-test-key"
-    monkeypatch.setattr(intelligence_service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", False)
+    monkeypatch.setattr(
+        intelligence_service_module,
+        "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED",
+        False,
+    )
     monkeypatch.setattr(
         intelligence_service_module, "VirusTotalProvider", lambda key, profile: provider
     )

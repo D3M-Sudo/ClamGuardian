@@ -121,7 +121,10 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 subtitle="Select the credential and subscription explicitly",
                 model=intel_profile_model,
             )
-            intel_profile_row.set_selected(1 if self._settings.intelligence_profile == "premium" else 0)
+            selected_profile = (
+                1 if self._settings.intelligence_profile == "premium" else 0
+            )
+            intel_profile_row.set_selected(selected_profile)
             intel_profile_row.connect("notify::selected", self._on_intelligence_profile_changed)
             self._intel_profile_row = intel_profile_row
             group.add(intel_profile_row)

@@ -95,7 +95,10 @@ class VirusTotalProvider(BaseThreatProvider):
             try:
                 requester = getattr(session, method.lower(), None)
                 if requester is None:
-                    requester = lambda target, **options: session.request(method, target, **options)
+                    def request_with_method(target, **options):
+                        return session.request(method, target, **options)
+
+                    requester = request_with_method
                 async with requester(url, **kwargs) as response:
                     if response.status == 404:
                         return {"_http_status": 404}
@@ -103,10 +106,13 @@ class VirusTotalProvider(BaseThreatProvider):
                         retry = self._retry_after(response.headers.get("Retry-After"))
                         if retry:
                             await asyncio.to_thread(self._limiter.defer, retry)
-                        raise VirusTotalAPIError(429, "VirusTotal API rate/quota limit reached", retry)
+                        raise VirusTotalAPIError(
+                            429, "VirusTotal API rate/quota limit reached", retry
+                        )
                     if response.status >= 400:
                         raise VirusTotalAPIError(
-                            response.status, f"VirusTotal API request failed (HTTP {response.status})"
+                            response.status,
+                            f"VirusTotal API request failed (HTTP {response.status})",
                         )
                     payload = await response.json()
                     if not isinstance(payload, dict):
@@ -116,9 +122,13 @@ class VirusTotalProvider(BaseThreatProvider):
                 raise RuntimeError("VirusTotal network request failed or timed out") from exc
 
     def _ensure_profile_eligible(self) -> None:
-        if self.profile is APIProfile.PUBLIC and not VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED:
+        if (
+            self.profile is APIProfile.PUBLIC
+            and not VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED
+        ):
             raise PermissionError(
-                "VirusTotal Public API access is administratively blocked pending written eligibility authorization"
+                "VirusTotal Public API access is administratively blocked pending "
+                "written eligibility authorization"
             )
 
     async def lookup_hash(self, sha256: str) -> dict[str, Any]:
@@ -147,7 +157,8 @@ class VirusTotalProvider(BaseThreatProvider):
         existing = await self.lookup_hash(expected_sha256.lower())
         if existing.get("found") is not False:
             raise PermissionError(
-                "Upload is allowed only when a fresh VirusTotal hash lookup reports no existing file"
+                "Upload is allowed only when a fresh VirusTotal hash lookup "
+                "reports no existing file"
             )
 
         target = Path(path)
@@ -194,7 +205,8 @@ class VirusTotalProvider(BaseThreatProvider):
                     raise RuntimeError("VirusTotal upload failed or timed out") from exc
 
             snapshot.seek(0)
-            if await asyncio.to_thread(_sha256_fileobj, snapshot) != expected_sha256.lower():
+            snapshot_digest = await asyncio.to_thread(_sha256_fileobj, snapshot)
+            if snapshot_digest != expected_sha256.lower():
                 raise RuntimeError("Upload snapshot changed during transmission; result is indeterminate")
             data = payload.get("data") if isinstance(payload, dict) else None
             analysis_id = data.get("id") if isinstance(data, dict) else None
@@ -247,7 +259,7 @@ def _create_upload_snapshot(path: Path, expected_sha256: str):
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     source_fd = os.open(target, flags)
     try:
-        snapshot = tempfile.TemporaryFile(mode="w+b")
+        snapshot = tempfile.TemporaryFile(mode="w+b")  # noqa: SIM115 - caller closes it
     except BaseException:
         os.close(source_fd)
         raise
