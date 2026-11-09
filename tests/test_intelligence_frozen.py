@@ -60,20 +60,17 @@ def _load_pyproject() -> dict[str, Any]:
     return tomllib.loads((_PACKAGE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
 
-def test_no_production_module_imports_the_frozen_package() -> None:
+def test_core_and_engine_do_not_import_intelligence() -> None:
+    """Core and engines remain decoupled from the intelligence package."""
     offenders: list[str] = []
     for path in _production_modules():
+        rel = path.relative_to(_ROOT_PACKAGE)
+        if rel.parts[0] not in ("core", "engines"):
+            continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for name in _imported_names(tree):
             if _is_intelligence(name):
                 offenders.append(f"{path.relative_to(_PACKAGE_ROOT)}: import {name}")
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Constant)
-                and isinstance(node.value, str)
-                and "clamguardian.intelligence" in node.value
-            ):
-                offenders.append(f"{path.relative_to(_PACKAGE_ROOT)}: string constant")
     assert offenders == []
 
 
@@ -147,12 +144,14 @@ def _fake_session(monkeypatch: pytest.MonkeyPatch, response: _FakeResponse) -> d
 
 
 def test_virustotal_404_returns_not_found_and_sends_hash_only(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     digest = "a" * 64
     captured = _fake_session(monkeypatch, _FakeResponse(404))
 
-    result = asyncio.run(VirusTotalProvider("secret-key").lookup_hash(digest))
+    result = asyncio.run(VirusTotalProvider(
+        "secret-key", min_request_interval=0.01, rate_limit_path=tmp_path / "rate-limit"
+    ).lookup_hash(digest))
 
     assert result == {"provider": "virustotal", "found": False, "sha256": digest}
     assert str(captured["url"]).endswith(f"/files/{digest}")
@@ -161,11 +160,17 @@ def test_virustotal_404_returns_not_found_and_sends_hash_only(
     assert headers["x-apikey"] == "secret-key"
 
 
-def test_virustotal_error_does_not_echo_the_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_virustotal_error_does_not_echo_the_api_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     _fake_session(monkeypatch, _FakeResponse(500, text="upstream boom"))
 
     with pytest.raises(RuntimeError) as excinfo:
-        asyncio.run(VirusTotalProvider("secret-key").lookup_hash("b" * 64))
+        asyncio.run(
+            VirusTotalProvider(
+                "secret-key", min_request_interval=0.01, rate_limit_path=tmp_path / "rate-limit"
+            ).lookup_hash("b" * 64)
+        )
 
     message = str(excinfo.value)
     assert "secret-key" not in message

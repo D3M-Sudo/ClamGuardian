@@ -18,7 +18,9 @@ the shim pattern of :mod:`clamguardian.ui.database_pages`.
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
+import threading
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -27,6 +29,7 @@ from ..core.diagnostics import CheckResult, critical_missing, run_dependency_che
 from ..core.quarantine import QuarantineEntry, QuarantineVault
 from ..core.settings import AppSettings, SettingsStore
 from ..history.backend import SqliteHistoryStore, default_history_db_path
+from ..intelligence.service import ThreatIntelligenceService
 from .controller import ShieldTaskController
 from .database_pages import GTK_AVAILABLE
 from .diagnostics_page import DiagnosticsPage
@@ -119,6 +122,9 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 settings_store if settings_store is not None else SettingsStore()
             )
             self._settings = self._settings_store.load()
+            self._intelligence_service = ThreatIntelligenceService(
+                settings_store=self._settings_store
+            )
             self._vault = QuarantineVault(
                 self._key_manager.directory,
                 self._key_manager.load_or_create(),
@@ -127,6 +133,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             self._history_page: HistoryPage | None = None
             self._quarantine_page: QuarantinePage | None = None
             self._suppress_selection = False
+            self._settings_page: SettingsPage | None = None
 
             self._stack = Gtk.Stack(vexpand=True, hexpand=True)
             self._pages: dict[str, Gtk.Widget] = {}
@@ -280,13 +287,22 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             if self._scan_page is not None:
                 self._scan_page.set_default_profile(settings.default_profile_id)
             apply_color_scheme(settings.color_scheme)
+            application = self.get_application()
+            sync_services = getattr(application, "_sync_background_services", None)
+            if callable(sync_services):
+                sync_services(settings)
 
         def _on_active_changed(self, window: Gtk.Window, _pspec: object) -> None:
             if window.is_active():
                 withdraw_scan_notification(self.get_application())
 
         async def _store_scan_result(self, result: ScanResult) -> None:
-            """Persist *result* to the history store off the GTK loop."""
+            """Enrich a completed local scan with optional hash-only intelligence."""
+            report = await self._intelligence_service.lookup_scan_result(result)
+            if report is not None:
+                # Keep the remote assessment explicitly separate from ClamAV's
+                # local verdict; it is supplemental metadata, never a rewrite.
+                result.metadata["threat_intelligence"] = report
             await self._history_store.record_scan(result)
             GLib.idle_add(self._after_scan_recorded, result)
 
@@ -340,6 +356,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     on_changed=self._on_settings_changed,
                     on_about=self.show_about,
                 )
+                self._settings_page = page
                 self._pages[page_id] = page.root
                 return page.root
             raise ValueError(f"unknown page id: {page_id}")
@@ -353,6 +370,13 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             )
             self._window: MainWindow | None = None
             self._css_loaded = False
+            self._service_loop: asyncio.AbstractEventLoop | None = None
+            self._service_thread: threading.Thread | None = None
+            self._service_ready = threading.Event()
+            self._usb_monitor = None
+            self._realtime_service = None
+            self._scheduler = None
+            self.connect("shutdown", self._on_shutdown)
             self._add_action("about", self._on_about_action)
             self._add_action("quit", self._on_quit_action)
             self.set_accels_for_action("app.about", ["F1"])
@@ -372,12 +396,17 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 settings_store = SettingsStore()
                 apply_color_scheme(settings_store.load().color_scheme)
                 manager = _default_database_manager()
+                controller = ShieldTaskController()
+                history_store = SqliteHistoryStore(default_history_db_path())
                 self._window = MainWindow(
                     self,
                     manager=manager,
-                    controller=ShieldTaskController(),
-                    history_store=SqliteHistoryStore(default_history_db_path()),
+                    controller=controller,
+                    history_store=history_store,
                     settings_store=settings_store,
+                )
+                self._start_service_runtime(
+                    settings_store, history_store, controller._runner
                 )
                 self._window.present()
                 missing = critical_missing(self._window._checks)
@@ -385,6 +414,161 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     self._window.show_diagnostics(missing)
             else:
                 self._window.present()
+
+        def _start_service_runtime(self, settings_store, history_store, runner) -> None:
+            """Run long-lived automation services on a dedicated asyncio loop.
+
+            GTK owns the UI thread; the service loop owns USB polling,
+            realtime inotify and scheduled scans. Both share the application's
+            ScanTaskRunner and HistoryStore, avoiding parallel scan engines.
+            """
+            if self._service_thread is not None:
+                return
+
+            def run_loop() -> None:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                self._service_loop = loop
+                self._service_ready.set()
+                loop.run_forever()
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                loop.close()
+
+            self._service_thread = threading.Thread(
+                target=run_loop, name="clamguardian-services", daemon=True
+            )
+            self._service_thread.start()
+            self._service_ready.wait(timeout=5)
+            if self._service_loop is None:
+                logging.getLogger(__name__).error("Background service loop failed to start")
+                return
+            self._service_settings_store = settings_store
+            self._service_history_store = history_store
+            self._service_runner = runner
+            self._sync_background_services(settings_store.load())
+
+        def _sync_background_services(self, settings) -> None:
+            """Apply persisted service switches without blocking the GTK loop."""
+            loop = self._service_loop
+            if loop is None or loop.is_closed():
+                return
+            asyncio.run_coroutine_threadsafe(
+                self._configure_background_services(settings), loop
+            )
+
+        async def _configure_background_services(self, settings) -> None:
+            from ..core.autostart import AutostartManager
+            from ..core.scheduler import ScheduledScanManager
+            from ..core.usb import USBDeviceScanner, USBMountMonitor
+            from ..realtime import RealtimeMonitorService
+
+            if self._usb_monitor is None:
+                scanner = USBDeviceScanner(
+                    self._service_runner,
+                    history_store=self._service_history_store,
+                )
+                self._usb_monitor = USBMountMonitor(scanner)
+            paths_changed = False
+            if self._realtime_service is None:
+                self._realtime_service = RealtimeMonitorService(
+                    self._service_runner,
+                    history_store=self._service_history_store,
+                    monitored_paths=settings.realtime_paths,
+                    on_status_changed=self._on_realtime_status_changed,
+                )
+            else:
+                new_paths = [Path(path).resolve() for path in settings.realtime_paths]
+                paths_changed = new_paths != self._realtime_service.monitored_paths
+                if paths_changed and self._realtime_service.is_running:
+                    await self._realtime_service.stop()
+                self._realtime_service.monitored_paths = new_paths
+            if self._scheduler is None:
+                self._scheduler = ScheduledScanManager(
+                    self._service_runner,
+                    self._service_settings_store,
+                    history_store=self._service_history_store,
+                )
+
+            if settings.usb_autoscan_enabled and not self._usb_monitor._running:
+                await self._usb_monitor.start()
+            elif not settings.usb_autoscan_enabled and self._usb_monitor._running:
+                await self._usb_monitor.stop()
+
+            realtime_ready = bool(settings.realtime_enabled and settings.realtime_paths)
+            if realtime_ready and not self._realtime_service.is_running:
+                try:
+                    await self._realtime_service.start()
+                except (OSError, RuntimeError) as error:
+                    logging.getLogger(__name__).error(
+                        "Realtime monitoring could not start: %s", error
+                    )
+            elif not realtime_ready and self._realtime_service.is_running:
+                await self._realtime_service.stop()
+
+            self._scheduler.set_schedule(
+                settings.scheduled_scans_enabled,
+                settings.scheduled_hour,
+                settings.scheduled_minute,
+            )
+            if settings.scheduled_scans_enabled and not self._scheduler.is_running:
+                await self._scheduler.start()
+            elif not settings.scheduled_scans_enabled and self._scheduler.is_running:
+                await self._scheduler.stop()
+
+            autostart = AutostartManager()
+            try:
+                if settings.autostart_enabled:
+                    autostart.enable()
+                else:
+                    autostart.disable()
+            except (OSError, RuntimeError) as error:
+                logging.getLogger(__name__).error(
+                    "Autostart setting could not be applied: %s", error
+                )
+                if settings.autostart_enabled:
+                    from dataclasses import replace
+
+                    self._service_settings_store.save(
+                        replace(settings, autostart_enabled=False)
+                    )
+
+            if self._realtime_service is not None:
+                self._on_realtime_status_changed(
+                    self._realtime_service.runtime_status
+                )
+
+        def _on_realtime_status_changed(self, status: dict[str, object]) -> None:
+            GLib.idle_add(self._apply_realtime_status, status)
+
+        def _apply_realtime_status(self, status: dict[str, object]) -> bool:
+            if self._window is not None and self._window._settings_page is not None:
+                self._window._settings_page.set_realtime_runtime_status(status)
+            return False
+
+        def _on_shutdown(self, _app: Adw.Application) -> None:
+            loop = self._service_loop
+            if loop is None or loop.is_closed():
+                return
+
+            async def stop_services() -> None:
+                for service in (self._usb_monitor, self._realtime_service, self._scheduler):
+                    if service is not None:
+                        await service.stop()
+
+            future = asyncio.run_coroutine_threadsafe(stop_services(), loop)
+            try:
+                future.result(timeout=8)
+            except Exception as error:
+                logging.getLogger(__name__).error(
+                    "Background service shutdown did not complete cleanly: %s", error
+                )
+            loop.call_soon_threadsafe(loop.stop)
+            if self._service_thread is not None:
+                self._service_thread.join(timeout=2)
 
         def _on_about_action(self, _action: object, _parameter: object) -> None:
             if self._window is not None:

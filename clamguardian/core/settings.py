@@ -66,6 +66,14 @@ class AppSettings:
     default_profile_id: str = DEFAULT_PROFILE_ID
     notifications_enabled: bool = True
     color_scheme: str = "system"
+    usb_autoscan_enabled: bool = False
+    intelligence_enabled: bool = False
+    realtime_enabled: bool = False
+    realtime_paths: tuple[str, ...] = ()
+    scheduled_scans_enabled: bool = False
+    scheduled_hour: int = 2
+    scheduled_minute: int = 0
+    autostart_enabled: bool = False
 
     def normalized(self) -> AppSettings:
         """Return a copy with every field forced into a valid state.
@@ -82,6 +90,14 @@ class AppSettings:
             default_profile_id=profile_id,
             notifications_enabled=bool(self.notifications_enabled),
             color_scheme=scheme,
+            usb_autoscan_enabled=bool(self.usb_autoscan_enabled),
+            intelligence_enabled=bool(self.intelligence_enabled),
+            realtime_enabled=bool(self.realtime_enabled),
+            realtime_paths=tuple(str(p) for p in self.realtime_paths),
+            scheduled_scans_enabled=bool(self.scheduled_scans_enabled),
+            scheduled_hour=int(self.scheduled_hour) % 24,
+            scheduled_minute=int(self.scheduled_minute) % 60,
+            autostart_enabled=bool(self.autostart_enabled),
         )
 
 
@@ -109,12 +125,29 @@ def _settings_from_mapping(raw: Mapping[str, Any]) -> AppSettings:
     profile = raw.get("default_profile_id", DEFAULT_PROFILE_ID)
     notifications = raw.get("notifications_enabled", True)
     scheme = raw.get("color_scheme", "system")
+    usb = raw.get("usb_autoscan_enabled", False)
+    intel = raw.get("intelligence_enabled", False)
+    rt = raw.get("realtime_enabled", False)
+    rt_paths = raw.get("realtime_paths", ())
+    sched = raw.get("scheduled_scans_enabled", False)
+    s_hour = raw.get("scheduled_hour", 2)
+    s_min = raw.get("scheduled_minute", 0)
+    autostart = raw.get("autostart_enabled", False)
+
+    paths_tuple = tuple(str(p) for p in rt_paths) if isinstance(rt_paths, (list, tuple)) else ()
+
     return AppSettings(
         default_profile_id=profile if isinstance(profile, str) else DEFAULT_PROFILE_ID,
-        notifications_enabled=(
-            notifications if isinstance(notifications, bool) else True
-        ),
+        notifications_enabled=notifications if isinstance(notifications, bool) else True,
         color_scheme=scheme if isinstance(scheme, str) else "system",
+        usb_autoscan_enabled=usb if isinstance(usb, bool) else False,
+        intelligence_enabled=intel if isinstance(intel, bool) else False,
+        realtime_enabled=rt if isinstance(rt, bool) else False,
+        realtime_paths=paths_tuple,
+        scheduled_scans_enabled=sched if isinstance(sched, bool) else False,
+        scheduled_hour=int(s_hour) if isinstance(s_hour, int) else 2,
+        scheduled_minute=int(s_min) if isinstance(s_min, int) else 0,
+        autostart_enabled=autostart if isinstance(autostart, bool) else False,
     ).normalized()
 
 

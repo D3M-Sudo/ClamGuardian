@@ -51,6 +51,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             self._root.set_hexpand(True)
 
             self._build_scanning_group()
+            self._build_automation_group()
             self._build_notifications_group()
             self._build_appearance_group()
             self._build_about_group()
@@ -82,6 +83,90 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             self._profile_row = row
             group.add(row)
             self._root.add(group)
+
+        def _build_automation_group(self) -> None:
+            group = Adw.PreferencesGroup(
+                title="Automation & Protection",
+                description="Background protection and scheduled scan settings.",
+            )
+            usb_row = Adw.SwitchRow(
+                title="USB Auto-Scan",
+                subtitle="Automatically scan removable media upon mount",
+            )
+            usb_row.set_active(self._settings.usb_autoscan_enabled)
+            usb_row.connect("notify::active", self._on_usb_changed)
+            self._usb_row = usb_row
+            group.add(usb_row)
+
+            intel_row = Adw.SwitchRow(
+                title="Threat Intelligence",
+                subtitle=(
+                    "Opt-in hash-only VirusTotal lookups; API key: "
+                    "'clamguardian intel set-key'. Network access remains gated "
+                    "pending maintainer terms review."
+                ),
+            )
+            intel_row.set_active(self._settings.intelligence_enabled)
+            intel_row.connect("notify::active", self._on_intelligence_changed)
+            self._intel_row = intel_row
+            group.add(intel_row)
+
+            rt_row = Adw.SwitchRow(
+                title="Realtime Monitoring",
+                subtitle="Event-driven filesystem monitoring for configured directories",
+            )
+            rt_row.set_active(self._settings.realtime_enabled)
+            rt_row.connect("notify::active", self._on_realtime_changed)
+            self._rt_row = rt_row
+            group.add(rt_row)
+
+            sched_row = Adw.SwitchRow(
+                title="Scheduled Daily Scans",
+                subtitle="Run automated scans daily during user sessions",
+            )
+            sched_row.set_active(self._settings.scheduled_scans_enabled)
+            sched_row.connect("notify::active", self._on_scheduled_changed)
+            self._sched_row = sched_row
+            group.add(sched_row)
+
+            autostart_row = Adw.SwitchRow(
+                title="Start ClamGuardian at Login",
+                subtitle="Automatically start background protection at login",
+            )
+            autostart_row.set_active(self._settings.autostart_enabled)
+            autostart_row.connect("notify::active", self._on_autostart_changed)
+            self._autostart_row = autostart_row
+            group.add(autostart_row)
+
+            self._realtime_status_row = Adw.ActionRow(
+                title="Realtime runtime health",
+                subtitle="Not started",
+            )
+            group.add(self._realtime_status_row)
+            self._root.add(group)
+
+        def set_realtime_runtime_status(self, status: dict[str, object]) -> None:
+            """Display live monitor health, including watch and event-loss counters."""
+            failures_obj = status.get("watch_failures", ())
+            failures = failures_obj if isinstance(failures_obj, (list, tuple, set)) else ()
+            raw_overflow = status.get("overflow_count", 0)
+            overflow = int(raw_overflow) if isinstance(raw_overflow, (int, float, str)) else 0
+            raw_dropped = status.get("dropped_events_count", 0)
+            dropped = int(raw_dropped) if isinstance(raw_dropped, (int, float, str)) else 0
+            running = bool(status.get("running", False))
+            if failures:
+                subtitle = f"Degraded — {len(failures)} watch registration failure(s)"
+            elif running:
+                subtitle = (
+                    f"Active — {overflow} kernel overflow(s), "
+                    f"{dropped} event(s) dropped"
+                )
+            else:
+                subtitle = (
+                    f"Stopped — {overflow} kernel overflow(s), "
+                    f"{dropped} event(s) dropped in the last run"
+                )
+            self._realtime_status_row.set_subtitle(subtitle)
 
         def _build_notifications_group(self) -> None:
             group = Adw.PreferencesGroup(
@@ -135,6 +220,110 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     default_profile_id=profiles[index].id,
                     notifications_enabled=self._settings.notifications_enabled,
                     color_scheme=self._settings.color_scheme,
+                    usb_autoscan_enabled=self._settings.usb_autoscan_enabled,
+                    intelligence_enabled=self._settings.intelligence_enabled,
+                    realtime_enabled=self._settings.realtime_enabled,
+                    realtime_paths=self._settings.realtime_paths,
+                    scheduled_scans_enabled=self._settings.scheduled_scans_enabled,
+                    scheduled_hour=self._settings.scheduled_hour,
+                    scheduled_minute=self._settings.scheduled_minute,
+                    autostart_enabled=self._settings.autostart_enabled,
+                )
+            )
+
+        def _on_usb_changed(self, row: Adw.SwitchRow, _pspec: object) -> None:
+            self._persist(
+                AppSettings(
+                    default_profile_id=self._settings.default_profile_id,
+                    notifications_enabled=self._settings.notifications_enabled,
+                    color_scheme=self._settings.color_scheme,
+                    usb_autoscan_enabled=row.get_active(),
+                    intelligence_enabled=self._settings.intelligence_enabled,
+                    realtime_enabled=self._settings.realtime_enabled,
+                    realtime_paths=self._settings.realtime_paths,
+                    scheduled_scans_enabled=self._settings.scheduled_scans_enabled,
+                    scheduled_hour=self._settings.scheduled_hour,
+                    scheduled_minute=self._settings.scheduled_minute,
+                    autostart_enabled=self._settings.autostart_enabled,
+                )
+            )
+
+        def _on_intelligence_changed(self, row: Adw.SwitchRow, _pspec: object) -> None:
+            self._persist(
+                AppSettings(
+                    default_profile_id=self._settings.default_profile_id,
+                    notifications_enabled=self._settings.notifications_enabled,
+                    color_scheme=self._settings.color_scheme,
+                    usb_autoscan_enabled=self._settings.usb_autoscan_enabled,
+                    intelligence_enabled=row.get_active(),
+                    realtime_enabled=self._settings.realtime_enabled,
+                    realtime_paths=self._settings.realtime_paths,
+                    scheduled_scans_enabled=self._settings.scheduled_scans_enabled,
+                    scheduled_hour=self._settings.scheduled_hour,
+                    scheduled_minute=self._settings.scheduled_minute,
+                    autostart_enabled=self._settings.autostart_enabled,
+                )
+            )
+
+        def _on_realtime_changed(self, row: Adw.SwitchRow, _pspec: object) -> None:
+            self._persist(
+                AppSettings(
+                    default_profile_id=self._settings.default_profile_id,
+                    notifications_enabled=self._settings.notifications_enabled,
+                    color_scheme=self._settings.color_scheme,
+                    usb_autoscan_enabled=self._settings.usb_autoscan_enabled,
+                    intelligence_enabled=self._settings.intelligence_enabled,
+                    realtime_enabled=row.get_active(),
+                    realtime_paths=self._settings.realtime_paths,
+                    scheduled_scans_enabled=self._settings.scheduled_scans_enabled,
+                    scheduled_hour=self._settings.scheduled_hour,
+                    scheduled_minute=self._settings.scheduled_minute,
+                    autostart_enabled=self._settings.autostart_enabled,
+                )
+            )
+
+        def _on_scheduled_changed(self, row: Adw.SwitchRow, _pspec: object) -> None:
+            self._persist(
+                AppSettings(
+                    default_profile_id=self._settings.default_profile_id,
+                    notifications_enabled=self._settings.notifications_enabled,
+                    color_scheme=self._settings.color_scheme,
+                    usb_autoscan_enabled=self._settings.usb_autoscan_enabled,
+                    intelligence_enabled=self._settings.intelligence_enabled,
+                    realtime_enabled=self._settings.realtime_enabled,
+                    realtime_paths=self._settings.realtime_paths,
+                    scheduled_scans_enabled=row.get_active(),
+                    scheduled_hour=self._settings.scheduled_hour,
+                    scheduled_minute=self._settings.scheduled_minute,
+                    autostart_enabled=self._settings.autostart_enabled,
+                )
+            )
+
+        def _on_autostart_changed(self, row: Adw.SwitchRow, _pspec: object) -> None:
+            if row.get_active():
+                from ..core.autostart import AutostartManager
+
+                if AutostartManager._inside_flatpak():
+                    self._show_error(
+                        "Autostart unavailable in Flatpak",
+                        "Host XDG autostart cannot be written from the sandbox. "
+                        "A supported desktop Background portal integration is not yet available.",
+                    )
+                    row.set_active(False)
+                    return
+            self._persist(
+                AppSettings(
+                    default_profile_id=self._settings.default_profile_id,
+                    notifications_enabled=self._settings.notifications_enabled,
+                    color_scheme=self._settings.color_scheme,
+                    usb_autoscan_enabled=self._settings.usb_autoscan_enabled,
+                    intelligence_enabled=self._settings.intelligence_enabled,
+                    realtime_enabled=self._settings.realtime_enabled,
+                    realtime_paths=self._settings.realtime_paths,
+                    scheduled_scans_enabled=self._settings.scheduled_scans_enabled,
+                    scheduled_hour=self._settings.scheduled_hour,
+                    scheduled_minute=self._settings.scheduled_minute,
+                    autostart_enabled=row.get_active(),
                 )
             )
 
@@ -144,6 +333,14 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     default_profile_id=self._settings.default_profile_id,
                     notifications_enabled=row.get_active(),
                     color_scheme=self._settings.color_scheme,
+                    usb_autoscan_enabled=self._settings.usb_autoscan_enabled,
+                    intelligence_enabled=self._settings.intelligence_enabled,
+                    realtime_enabled=self._settings.realtime_enabled,
+                    realtime_paths=self._settings.realtime_paths,
+                    scheduled_scans_enabled=self._settings.scheduled_scans_enabled,
+                    scheduled_hour=self._settings.scheduled_hour,
+                    scheduled_minute=self._settings.scheduled_minute,
+                    autostart_enabled=self._settings.autostart_enabled,
                 )
             )
 
@@ -157,6 +354,14 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     default_profile_id=self._settings.default_profile_id,
                     notifications_enabled=self._settings.notifications_enabled,
                     color_scheme=schemes[index],
+                    usb_autoscan_enabled=self._settings.usb_autoscan_enabled,
+                    intelligence_enabled=self._settings.intelligence_enabled,
+                    realtime_enabled=self._settings.realtime_enabled,
+                    realtime_paths=self._settings.realtime_paths,
+                    scheduled_scans_enabled=self._settings.scheduled_scans_enabled,
+                    scheduled_hour=self._settings.scheduled_hour,
+                    scheduled_minute=self._settings.scheduled_minute,
+                    autostart_enabled=self._settings.autostart_enabled,
                 )
             )
 
