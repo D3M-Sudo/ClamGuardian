@@ -43,7 +43,9 @@
 | 🖥️ | **Native GTK4 desktop app** — scan, history, quarantine and extra signature databases in one place |
 | ⌨️ | **Scriptable CLI** — human and `--json` output, stable exit codes, clean Ctrl+C cancellation |
 | 📦 | **Flatpak-first install** — sandboxed app that reaches your host ClamAV safely |
-| 🧪 | **Tested & gated** — full pytest suite, lint, type checks and a 7-job automated release gate |
+| 🧪 | **Tested & gated** — full pytest suite, lint, type checks and an automated release gate |
+| 🔌 | **Optional automation (under remediation)** — removable-media scanning, realtime monitoring and scheduled scans |
+| 🌐 | **Optional hash-only intelligence (administratively blocked)** — VirusTotal integration remains disabled until applicable Public API terms and product eligibility are reviewed |
 
 ## Quick start
 
@@ -173,6 +175,45 @@ Pressing **Ctrl+C** during a scan shuts the ClamAV subprocess group down cleanly
 (`SIGTERM`, then `SIGKILL` after a grace period) and exits with code 5 — no
 zombies, no orphans.
 
+### Optional automation and threat intelligence
+
+The following commands configure optional user preferences; long-running
+USB/realtime/scheduled services run only while the GTK desktop application is
+active. They are part of the unreleased PR #18 remediation and are not included
+in the published `v1.0.0` bundle.
+
+```bash
+clamguardian usb status
+clamguardian usb enable
+clamguardian usb disable
+clamguardian monitor status
+clamguardian monitor enable
+clamguardian monitor add DIRECTORY
+clamguardian monitor remove DIRECTORY
+clamguardian schedule status
+clamguardian schedule enable --time 02:00
+clamguardian schedule disable
+clamguardian autostart status
+clamguardian autostart enable
+clamguardian autostart disable
+```
+
+VirusTotal is hash-only: file contents are never uploaded. Configure the API
+key through the hidden-input prompt and inspect the provider status:
+
+```bash
+clamguardian intel set-key
+clamguardian intel status
+clamguardian intel enable
+clamguardian intel lookup SHA256
+```
+
+**Important:** outbound VirusTotal lookups are currently blocked by a
+maintainer-controlled eligibility gate. They remain unavailable until the
+applicable Public API terms and ClamGuardian's product/use-case eligibility
+have been reviewed. Enabling the preference or storing a key does not bypass
+that gate. No legal or terms-compliance conclusion is implied.
+
 ## Desktop app (GTK4)
 
 The desktop app wraps the same core in a native GTK4/Libadwaita interface:
@@ -182,7 +223,7 @@ The desktop app wraps the same core in a native GTK4/Libadwaita interface:
 - **Quarantine** — encrypted detections with detail view, restore and delete
 - **Databases** — official signatures (owned by `freshclam`) plus manageable third-party sources (see below)
 - **Diagnostics** — dependency checks with per-distro remedies, presented at first run when a critical dependency is missing
-- **Settings** — default scan profile, desktop notifications and system/light/dark theme, plus the About dialog
+- **Settings** — default scan profile, desktop notifications and system/light/dark theme, plus optional automation switches (USB, realtime, scheduled scans and autostart)
 
 Scan-completion notifications can be disabled in Settings and are content-free:
 they report the status and the number of files/threats, never file names or
@@ -254,7 +295,7 @@ vault.restore(entry.item_id)
 | Tamper-evident metadata | metadata sealed as AES-GCM associated data |
 | Owner-only storage | vault dirs `0700`, record and restored files `0600` |
 | No shell, no injection | external commands run without a shell |
-| No remote lookups in 1.x | the threat-intelligence package is frozen and unwired; Phase 11 (`v1.2.0`) will add opt-in, hash-only lookups |
+| VirusTotal egress gate | hash-only lookup integration is opt-in and administratively blocked until applicable Public API terms and product eligibility are reviewed; no file contents are uploaded |
 | Known issue in 1.0.0 | AUD-01: `clamd` directory scans could miss an infected file after a clean one; fixed in 1.0.1 — see [`SECURITY.md`](SECURITY.md) |
 | Sandboxed desktop app | Flatpak manifest grants only what the app needs (host ClamAV via `flatpak-spawn`, read-only host FS, app-data dir) |
 
@@ -290,11 +331,11 @@ Development flows `feature → testing → development → main`:
 
 ## Roadmap & scope
 
-This repository is the core framework. A complete desktop product can build its
-presentation layer, USB monitoring, real-time/on-access monitoring and operational
-policy on top of these primitives — see [`docs/ROADMAP.md`](docs/ROADMAP.md)
-for the sequence (1.0.x stabilization → 1.1 USB Auto-Scan → 1.2 Threat
-Intelligence → 2.x), and [`docs/`](docs/) for reports, checklists and design notes.
+This repository contains the core framework and the GTK desktop application.
+The USB, realtime, scheduling and threat-intelligence additions are under
+remediation in PR #18; their CI, Release Gate and real-host validation must pass
+before release promotion. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for current
+milestone status and [`docs/`](docs/) for reports, checklists and design notes.
 
 ## License
 

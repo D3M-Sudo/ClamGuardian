@@ -1,6 +1,6 @@
 # ClamGuardian Implementation Roadmap
 
-*Last updated: 2026-10-20 — PR #13 merged to `feature` @ `144e89f` (audit P1/P2 remediation closed: clamd AUD-01/AUD-04, quarantine key AUD-02/AUD-03, CI hardening AUD-05/07/13 applied in `a315082`, runtime exposure AUD-06 accepted, intelligence frozen Phase 11). Release engineering for `v1.0.1` is prepared (version, AppStream release, Flatpak manifest pin, `CHANGELOG.md`, `SECURITY.md`, release-gate patch ready to apply); the tag is blocked on the manual desktop validation. Local release verification green (350 passed / 8 skipped, mypy 42 files, ruff clean, real clamd EICAR infected exit 1, newline exit 3, `pip-audit` clean, no listener on 8080/8081/15001). Future versions are planning targets, not promised releases or dates.*
+*Last updated: 2026-11-09 — PR #18 is under P1/P2 remediation following an independent audit. The existing CI/Release Gate baseline was green at the pre-remediation head; the new remediation commits still require full CI and release-gate validation. USB, VirusTotal and realtime phases must not be treated as release-complete until the updated gates pass. VirusTotal network access remains administratively blocked pending maintainer review of applicable Public API terms and product eligibility. Future versions are planning targets, not promised releases or dates.*
 
 This document outlines the authoritative development roadmap for ClamGuardian, tracking completed milestones, in-progress targets, and future architectural phases.
 
@@ -28,9 +28,9 @@ Phase 9: 1.0 Release Gate [COMPLETED 2026-10-16 — tag v1.0.0 @ 8ee8a56, instal
     ↓
 Desktop Application (GTK4/Libadwaita) [D1..D4 IMPLEMENTED 2026-10-19 on `feature` — manual desktop validation pending]
     ↓
-Phase 10: 1.1 USB Auto-Scan [COMPLETED]
-Phase 11: Threat Intelligence Integration [COMPLETED]
-Phase 12: 2.x-A Event-Driven Monitoring [COMPLETED]
+Phase 10: 1.1 USB Auto-Scan [REMEDIATION IN PROGRESS — PR #18]
+Phase 11: Threat Intelligence Integration [BLOCKED — terms eligibility review required]
+Phase 12: 2.x-A Event-Driven Monitoring [REMEDIATION IN PROGRESS — PR #18]
     ↓
 2.x-B / 2.x-C [DEFERRED]
 ```
@@ -47,9 +47,9 @@ Future versions are planning targets, not implemented releases or promised dates
 | **Current** | `1.0.x` | Coherent documentation; recorded manual desktop test; Flatpak restore verified — `v1.0.1` prepared, tag blocked on the manual validation (`reports/RELEASE-1.0.1.md`) |
 | **Implemented** | Desktop App — Phases D1 + D2 + D3 + D4 | Foundations + diagnostics, Scan page, History, Quarantine, Databases, Diagnostics and Settings; window chrome, About, opt-in notifications, accent stylesheet, default-profile settings, quarantine ingest from scan results — committed on `feature`, CI smoke covers every page |
 | **Next** | Manual desktop validation | Recorded on-desktop click-through of the D4 pages (`docs/validation/DESKTOP-TEST-1.0.md`) and Flatpak restore verification |
-| **Minor release** | `v1.1.0` | Integrated USB Auto-Scan, target safety, tests and dedicated gate |
-| **Minor release** | `v1.2.0` | VirusTotal lookup over SHA-256, opt-in, rate limiting, privacy and tests |
-| **Major release** | `v2.0.0` | Reliable realtime after P1 remediation and independent audit |
+| **Blocked** | `v1.1.0` | Actual mount validation, cancellation/lifecycle fixes, integration tests and dedicated gate |
+| **Blocked** | `v1.2.0` | VirusTotal SHA-256 lookup, explicit opt-in, 4/minute Public API limit, Secret Service and documented terms eligibility review |
+| **Blocked** | `v2.0.0` | Reliable realtime after P1 remediation, watch coverage and independent audit |
 | **2.x extension** | `v2.1.x` | `fanotify`/`clamonacc` access-prevention evaluation, privileges and threat model |
 | **2.x extension** | `v2.2.x` | Privileged service/IPC/Polkit only if justified by a use case |
 
@@ -168,22 +168,22 @@ Future versions are planning targets, not implemented releases or promised dates
 - **Exit criterion:** installable Flatpak presenting all five pages, diagnostics dialog blocking-on-missing-dependencies at first run, desktop validation recorded.
 
 ### Phase 10: 1.1 USB Auto-Scan
-- **Status:** COMPLETED
-- **Scope:** Removable media mount monitoring (`clamguardian/core/usb.py`), target safety validation strictly under allowed mount roots (`/media`, `/run/media`, `/mnt`), symlink traversal prevention, duplicate event suppression, and device disappearance handling.
-- **Integration:** Wired to `ScanTaskRunner`, `HistoryStore`, desktop Settings toggle (`usb_autoscan_enabled`), and CLI commands (`clamguardian usb status/enable/disable/scan`).
-- **Evidence:** `tests/test_usb.py` (all tests passing).
+- **Status:** REMEDIATION IN PROGRESS — PR #18.
+- **Scope:** Require an actual mount point beneath the configured roots; track/cancel auto-scan tasks on unmount and shutdown; verify service lifecycle and host integration.
+- **Integration:** GTK background service runtime starts the USB monitor when enabled and shares the application runner/history store; CLI configuration remains available.
+- **Evidence:** Regression tests were added/updated in `tests/test_usb.py`; post-remediation CI and Release Gate are pending.
 
 ### Phase 11: Threat Intelligence Integration
-- **Status:** COMPLETED
-- **Scope:** Opt-in VirusTotal v3 SHA-256 hash lookup integration with rate limiting, strict separation between local ClamAV verdicts and remote verdicts, OS Secret Service integration (`libsecret`), fail-closed security policy without plaintext fallback, and zero network requests when disabled.
-- **Integration:** Wired to `ThreatIntelligenceService`, desktop Settings toggle (`intelligence_enabled`), and CLI commands (`clamguardian intel status/enable/disable/lookup`).
-- **Evidence:** `tests/test_intelligence.py` (all tests passing).
+- **Status:** BLOCKED pending maintainer review of applicable VirusTotal Public API terms and product eligibility; technical remediation is in PR #18.
+- **Scope:** Keep hash-only VirusTotal v3 integration opt-in; enforce a 15.1-second minimum interval; cache one provider per service lifetime; require Secret Service D-Bus availability; keep outbound lookups disabled behind `VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED=False` until the terms review is completed.
+- **Integration:** Scan-result enrichment uses `ThreatIntelligenceService`; CLI enforces `intelligence_enabled` and provides hidden-input `intel set-key`. Remote intelligence remains supplemental metadata and never changes the local ClamAV verdict.
+- **Evidence:** Regression tests updated in `tests/test_intelligence.py`; post-remediation CI pending. No claim of legal/terms compliance is made.
 
 ### Phase 12: 2.x-A Event-Driven Monitoring
-- **Status:** COMPLETED
-- **Scope:** Linux inotify monitoring module (`clamguardian/realtime/`) using native libc syscalls, event normalization, `RealtimePolicy`, and `RealtimeScanOrchestrator` enforcing queue bound `pending + dispatched + active <= max_queue_depth`, trailing-edge push debouncing, same-path coalescing, dirty/retrigger active scan tracking, recursive watch tracking and cleanup, explicit `IN_Q_OVERFLOW` detection, and deterministic shutdown.
-- **Integration:** Wired to `RealtimeMonitorService`, `ScanTaskRunner`, desktop Settings toggle (`realtime_enabled`), and CLI subcommands (`clamguardian monitor status/enable/disable/add/remove`).
-- **Evidence:** `tests/test_realtime.py` (all tests passing).
+- **Status:** REMEDIATION IN PROGRESS — PR #18.
+- **Scope:** Preserve queue invariants and debounce/coalescing behavior; recreate the orchestrator on restart; fail startup on missing/inaccessible watches; expose watch-registration failures and retain overflow/drop counters.
+- **Integration:** GTK background runtime starts/stops the monitor and applies path changes; runtime shares the app runner/history store.
+- **Evidence:** Restart regression coverage added in `tests/test_realtime.py`; full CI and host validation pending.
 
 ---
 

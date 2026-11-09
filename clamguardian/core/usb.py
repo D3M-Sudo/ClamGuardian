@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,32 @@ if TYPE_CHECKING:
     from ..history import HistoryStore
 
 logger = logging.getLogger(__name__)
+
+
+def _is_removable_device_mount(path: Path) -> bool:
+    """Fail closed unless the mount resolves to removable/USB block media."""
+    try:
+        if not path.is_mount():
+            return False
+        device = os.stat(path).st_dev
+        major, minor = os.major(device), os.minor(device)
+        device_id = f"{major}:{minor}"
+        sys_device = (Path("/sys/dev/block") / device_id).resolve(strict=True)
+        for parent in (sys_device, *sys_device.parents):
+            removable = parent / "removable"
+            if removable.is_file() and removable.read_text(encoding="ascii").strip() == "1":
+                return True
+        # Some USB bridges report removable=0; udev's persistent database
+        # provides a second read-only identification signal.
+        udev_record = Path("/run/udev/data") / f"b{device_id}"
+        if udev_record.is_file():
+            return any(
+                line.strip() == "E:ID_BUS=usb"
+                for line in udev_record.read_text(encoding="utf-8", errors="replace").splitlines()
+            )
+    except (OSError, ValueError):
+        return False
+    return False
 
 
 class USBScanError(RuntimeError):
@@ -57,7 +84,7 @@ class USBDeviceScanner:
         self.profile = default_profile or DEFAULT_PROFILE
         roots = allowed_mount_roots or self.DEFAULT_MOUNT_ROOTS
         self.mount_roots = tuple(Path(root).resolve() for root in roots)
-        self._mount_detector = mount_detector or (lambda path: path.is_mount())
+        self._mount_detector = mount_detector or _is_removable_device_mount
         self._active_mounts: set[Path] = set()
         self._lock = asyncio.Lock()
 
@@ -178,7 +205,15 @@ class USBMountMonitor:
             for line in lines:
                 parts = line.split()
                 if len(parts) >= 2:
-                    mount_path = Path(parts[1])
+                    mount_field = parts[1]
+                    for escaped, decoded in (
+                        (r"\040", " "),
+                        (r"\011", "\t"),
+                        (r"\012", "\n"),
+                        (r"\134", "\\"),
+                    ):
+                        mount_field = mount_field.replace(escaped, decoded)
+                    mount_path = Path(mount_field)
                     if self.scanner.is_removable_mount(mount_path):
                         mounts.add(mount_path)
         except OSError as err:
@@ -228,12 +263,10 @@ class USBMountMonitor:
                     if self._running and not self.scanner.is_scanning(mount):
                         task = asyncio.create_task(self._handle_new_mount(mount))
                         self._scan_tasks[mount] = task
-
-                        def _cleanup_task(done: asyncio.Task[None], key: Path = mount) -> None:
-                            if self._scan_tasks.get(key) is done:
-                                self._scan_tasks.pop(key, None)
-
-                        task.add_done_callback(_cleanup_task)
+                        task.add_done_callback(
+                            lambda done, key=mount: self._scan_tasks.pop(key, None)
+                            if self._scan_tasks.get(key) is done else None
+                        )
             except asyncio.CancelledError:
                 break
             except Exception as err:

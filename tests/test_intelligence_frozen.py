@@ -144,12 +144,14 @@ def _fake_session(monkeypatch: pytest.MonkeyPatch, response: _FakeResponse) -> d
 
 
 def test_virustotal_404_returns_not_found_and_sends_hash_only(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     digest = "a" * 64
     captured = _fake_session(monkeypatch, _FakeResponse(404))
 
-    result = asyncio.run(VirusTotalProvider("secret-key").lookup_hash(digest))
+    result = asyncio.run(VirusTotalProvider(
+        "secret-key", min_request_interval=0.01, rate_limit_path=tmp_path / "rate-limit"
+    ).lookup_hash(digest))
 
     assert result == {"provider": "virustotal", "found": False, "sha256": digest}
     assert str(captured["url"]).endswith(f"/files/{digest}")
@@ -158,11 +160,17 @@ def test_virustotal_404_returns_not_found_and_sends_hash_only(
     assert headers["x-apikey"] == "secret-key"
 
 
-def test_virustotal_error_does_not_echo_the_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_virustotal_error_does_not_echo_the_api_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     _fake_session(monkeypatch, _FakeResponse(500, text="upstream boom"))
 
     with pytest.raises(RuntimeError) as excinfo:
-        asyncio.run(VirusTotalProvider("secret-key").lookup_hash("b" * 64))
+        asyncio.run(
+            VirusTotalProvider(
+                "secret-key", min_request_interval=0.01, rate_limit_path=tmp_path / "rate-limit"
+            ).lookup_hash("b" * 64)
+        )
 
     message = str(excinfo.value)
     assert "secret-key" not in message

@@ -72,6 +72,21 @@ class RealtimeMonitorService:
         """Total events dropped due to backpressure / max queue depth."""
         return self.orchestrator.dropped_events_count
 
+    @property
+    def watch_failures(self) -> frozenset[Path]:
+        """Paths that could not be registered during the active monitor lifecycle."""
+        return self._monitor.watch_failures if self._monitor is not None else frozenset()
+
+    @property
+    def runtime_status(self) -> dict[str, object]:
+        """Snapshot runtime health without exposing mutable internal collections."""
+        return {
+            "running": self.is_running,
+            "overflow_count": self.overflow_count,
+            "dropped_events_count": self.dropped_events_count,
+            "watch_failures": tuple(sorted(str(path) for path in self.watch_failures)),
+        }
+
     async def start(self) -> None:
         """Start filesystem event collection and monitoring."""
         if self._running:
@@ -90,10 +105,13 @@ class RealtimeMonitorService:
         self._monitor = InotifyMonitor()
         try:
             for path in self.monitored_paths:
-                if path.exists():
-                    watch = self._monitor.add_watch(path)
-                    if watch < 0:
-                        raise RuntimeError(f"Could not watch configured path: {path}")
+                if not path.is_dir():
+                    raise RuntimeError(
+                        f"Configured realtime path is not an accessible directory: {path}"
+                    )
+                watch = self._monitor.add_watch(path)
+                if watch < 0:
+                    raise RuntimeError(f"Could not watch configured path: {path}")
             if self._monitor.watch_failures:
                 failures = ", ".join(str(path) for path in self._monitor.watch_failures)
                 raise RuntimeError(f"Realtime monitoring is incomplete; failed watches: {failures}")

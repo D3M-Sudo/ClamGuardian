@@ -58,7 +58,7 @@ class ScheduledScanManager:
         path = self._last_run_path()
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         temporary = path.with_name(f".{path.name}.tmp")
-        temporary.write_text(value + "\\n", encoding="ascii")
+        temporary.write_text(value + "\n", encoding="ascii")
         temporary.replace(path)
         self._last_run_date = value
 
