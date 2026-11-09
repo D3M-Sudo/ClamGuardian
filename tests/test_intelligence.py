@@ -232,7 +232,11 @@ def test_cli_set_key_uses_hidden_input_and_secret_service(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_virustotal_rate_limiting(tmp_path) -> None:
+async def test_virustotal_rate_limiting(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "clamguardian.intelligence.virustotal.VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED",
+        True,
+    )
     provider = VirusTotalProvider(
         "fake_key",
         min_request_interval=0.05,
