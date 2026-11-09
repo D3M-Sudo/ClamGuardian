@@ -263,10 +263,12 @@ class USBMountMonitor:
                     if self._running and not self.scanner.is_scanning(mount):
                         task = asyncio.create_task(self._handle_new_mount(mount))
                         self._scan_tasks[mount] = task
-                        task.add_done_callback(
-                            lambda done, key=mount: self._scan_tasks.pop(key, None)
-                            if self._scan_tasks.get(key) is done else None
-                        )
+
+                        def _cleanup_task(done: asyncio.Task[None], key: Path = mount) -> None:
+                            if self._scan_tasks.get(key) is done:
+                                self._scan_tasks.pop(key, None)
+
+                        task.add_done_callback(_cleanup_task)
             except asyncio.CancelledError:
                 break
             except Exception as err:

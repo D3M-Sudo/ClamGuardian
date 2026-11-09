@@ -9,10 +9,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ..core.base import BaseThreatProvider
-
 import aiohttp
 
+from ..core.base import BaseThreatProvider
 
 # Keep outbound VirusTotal lookups disabled until the maintainer has
 # reviewed the applicable Public API terms and recorded eligibility for this
