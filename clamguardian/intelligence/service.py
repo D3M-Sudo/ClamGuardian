@@ -37,19 +37,17 @@ class ThreatIntelligenceService:
 
     def get_provider(self) -> VirusTotalProvider | None:
         """Return initialized provider if enabled and credentials exist, else None."""
-        if not self.is_enabled():
-            return None
         if not self.is_enabled() or not VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED:
             return None
         if self._provider_initialized:
             return self._provider
-        self._provider_initialized = True
         try:
             api_key = self.secret_store.get_api_key()
             if not api_key:
                 logger.warning("Threat intelligence enabled but no API key configured.")
                 return None
             self._provider = VirusTotalProvider(api_key)
+            self._provider_initialized = True
             return self._provider
         except SecretStorageError as exc:
             logger.error("Threat intelligence secret retrieval failed: %s", exc)
