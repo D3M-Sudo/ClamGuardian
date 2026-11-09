@@ -389,7 +389,7 @@ async def test_clamd_fildes_passes_the_open_file_descriptor(tmp_path: Path) -> N
                     descriptors.frombytes(payload[: descriptors.itemsize])
                     with os.fdopen(descriptors[0], "rb") as transferred:
                         received.append(transferred.read())
-            connection.sendall(b"private-snapshot: OK\\n")
+            connection.sendall(b"private-snapshot: OK\n")
         finally:
             connection.close()
             server.close()
