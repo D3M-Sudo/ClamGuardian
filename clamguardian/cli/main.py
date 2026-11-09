@@ -792,7 +792,11 @@ def _cmd_autostart_enable(args: argparse.Namespace, streams: _Streams) -> int:
     from ..core.settings import AppSettings, SettingsStore
 
     manager = AutostartManager()
-    manager.enable()
+    try:
+        manager.enable()
+    except (OSError, RuntimeError) as exc:
+        print(f"error: cannot enable host autostart: {exc}", file=streams.err)
+        return EXIT_ENGINE_ERROR
 
     store = SettingsStore()
     settings = store.load()
