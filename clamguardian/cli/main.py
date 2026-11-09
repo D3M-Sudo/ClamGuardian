@@ -330,12 +330,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     intel_lookup.set_defaults(func=_cmd_intel_lookup)
 
+    intel_upload = intel_sub.add_parser(
+        "upload",
+        help="submit a file after hash lookup and explicit per-file consent",
+        description=(
+            "Look up the file SHA-256 first; upload only if absent and the user types UPLOAD."
+        ),
+    )
+    intel_upload.add_argument("path", metavar="PATH")
+    intel_upload.set_defaults(func=_cmd_intel_upload)
+
     intel_set_key = intel_sub.add_parser(
         "set-key",
         help="store the VirusTotal API key in Secret Service",
         description="Read an API key without echo and store it in the OS Secret Service.",
     )
+    intel_set_key.add_argument("--profile", choices=("public", "premium"), default="public")
     intel_set_key.set_defaults(func=_cmd_intel_set_key)
+
+    intel_profile = intel_sub.add_parser("profile", help="select Public or Premium API profile")
+    intel_profile.add_argument("profile", choices=("public", "premium"))
+    intel_profile.set_defaults(func=_cmd_intel_profile)
 
     intel_status = intel_sub.add_parser(
         "status",
@@ -558,6 +573,7 @@ def _cmd_usb_enable(args: argparse.Namespace, streams: _Streams) -> int:
         color_scheme=settings.color_scheme,
         usb_autoscan_enabled=True,
         intelligence_enabled=settings.intelligence_enabled,
+        intelligence_profile=settings.intelligence_profile,
         realtime_enabled=settings.realtime_enabled,
         realtime_paths=settings.realtime_paths,
         scheduled_scans_enabled=settings.scheduled_scans_enabled,
@@ -582,6 +598,7 @@ def _cmd_usb_disable(args: argparse.Namespace, streams: _Streams) -> int:
         color_scheme=settings.color_scheme,
         usb_autoscan_enabled=False,
         intelligence_enabled=settings.intelligence_enabled,
+        intelligence_profile=settings.intelligence_profile,
         realtime_enabled=settings.realtime_enabled,
         realtime_paths=settings.realtime_paths,
         scheduled_scans_enabled=settings.scheduled_scans_enabled,
@@ -626,6 +643,7 @@ def _cmd_monitor_enable(args: argparse.Namespace, streams: _Streams) -> int:
         color_scheme=settings.color_scheme,
         usb_autoscan_enabled=settings.usb_autoscan_enabled,
         intelligence_enabled=settings.intelligence_enabled,
+        intelligence_profile=settings.intelligence_profile,
         realtime_enabled=True,
         realtime_paths=settings.realtime_paths,
         scheduled_scans_enabled=settings.scheduled_scans_enabled,
@@ -650,6 +668,7 @@ def _cmd_monitor_disable(args: argparse.Namespace, streams: _Streams) -> int:
         color_scheme=settings.color_scheme,
         usb_autoscan_enabled=settings.usb_autoscan_enabled,
         intelligence_enabled=settings.intelligence_enabled,
+        intelligence_profile=settings.intelligence_profile,
         realtime_enabled=False,
         realtime_paths=settings.realtime_paths,
         scheduled_scans_enabled=settings.scheduled_scans_enabled,
@@ -683,6 +702,7 @@ def _cmd_monitor_add(args: argparse.Namespace, streams: _Streams) -> int:
         color_scheme=settings.color_scheme,
         usb_autoscan_enabled=settings.usb_autoscan_enabled,
         intelligence_enabled=settings.intelligence_enabled,
+        intelligence_profile=settings.intelligence_profile,
         realtime_enabled=settings.realtime_enabled,
         realtime_paths=tuple(current),
         scheduled_scans_enabled=settings.scheduled_scans_enabled,
@@ -737,6 +757,7 @@ def _cmd_sched_enable(args: argparse.Namespace, streams: _Streams) -> int:
         color_scheme=settings.color_scheme,
         usb_autoscan_enabled=settings.usb_autoscan_enabled,
         intelligence_enabled=settings.intelligence_enabled,
+        intelligence_profile=settings.intelligence_profile,
         realtime_enabled=settings.realtime_enabled,
         realtime_paths=settings.realtime_paths,
         scheduled_scans_enabled=True,
@@ -761,6 +782,7 @@ def _cmd_sched_disable(args: argparse.Namespace, streams: _Streams) -> int:
         color_scheme=settings.color_scheme,
         usb_autoscan_enabled=settings.usb_autoscan_enabled,
         intelligence_enabled=settings.intelligence_enabled,
+        intelligence_profile=settings.intelligence_profile,
         realtime_enabled=settings.realtime_enabled,
         realtime_paths=settings.realtime_paths,
         scheduled_scans_enabled=False,
@@ -806,6 +828,7 @@ def _cmd_autostart_enable(args: argparse.Namespace, streams: _Streams) -> int:
         color_scheme=settings.color_scheme,
         usb_autoscan_enabled=settings.usb_autoscan_enabled,
         intelligence_enabled=settings.intelligence_enabled,
+        intelligence_profile=settings.intelligence_profile,
         realtime_enabled=settings.realtime_enabled,
         realtime_paths=settings.realtime_paths,
         scheduled_scans_enabled=settings.scheduled_scans_enabled,
@@ -834,6 +857,7 @@ def _cmd_autostart_disable(args: argparse.Namespace, streams: _Streams) -> int:
         color_scheme=settings.color_scheme,
         usb_autoscan_enabled=settings.usb_autoscan_enabled,
         intelligence_enabled=settings.intelligence_enabled,
+        intelligence_profile=settings.intelligence_profile,
         realtime_enabled=settings.realtime_enabled,
         realtime_paths=settings.realtime_paths,
         scheduled_scans_enabled=settings.scheduled_scans_enabled,
@@ -862,6 +886,7 @@ def _cmd_monitor_remove(args: argparse.Namespace, streams: _Streams) -> int:
         color_scheme=settings.color_scheme,
         usb_autoscan_enabled=settings.usb_autoscan_enabled,
         intelligence_enabled=settings.intelligence_enabled,
+        intelligence_profile=settings.intelligence_profile,
         realtime_enabled=settings.realtime_enabled,
         realtime_paths=tuple(current),
         scheduled_scans_enabled=settings.scheduled_scans_enabled,
@@ -875,18 +900,41 @@ def _cmd_monitor_remove(args: argparse.Namespace, streams: _Streams) -> int:
 
 
 def _cmd_intel_set_key(args: argparse.Namespace, streams: _Streams) -> int:
-    del args
     import getpass
 
     from ..intelligence.secrets import IntelligenceSecretStore, SecretStorageError
 
     try:
         api_key = getpass.getpass("VirusTotal API key (input hidden): ")
-        IntelligenceSecretStore().set_api_key(api_key)
+        IntelligenceSecretStore().set_credential(args.profile, api_key)
     except (SecretStorageError, ValueError) as exc:
         print(f"error: could not store VirusTotal API key: {exc}", file=streams.err)
         return EXIT_ENGINE_ERROR
-    print("VirusTotal API key stored in OS Secret Service", file=streams.out)
+    print(f"VirusTotal {args.profile} credential stored in OS Secret Service", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_intel_profile(args: argparse.Namespace, streams: _Streams) -> int:
+    from ..core.settings import AppSettings, SettingsStore
+
+    store = SettingsStore()
+    settings = store.load()
+    updated = AppSettings(
+        default_profile_id=settings.default_profile_id,
+        notifications_enabled=settings.notifications_enabled,
+        color_scheme=settings.color_scheme,
+        usb_autoscan_enabled=settings.usb_autoscan_enabled,
+        intelligence_enabled=settings.intelligence_enabled,
+        intelligence_profile=args.profile,
+        realtime_enabled=settings.realtime_enabled,
+        realtime_paths=settings.realtime_paths,
+        scheduled_scans_enabled=settings.scheduled_scans_enabled,
+        scheduled_hour=settings.scheduled_hour,
+        scheduled_minute=settings.scheduled_minute,
+        autostart_enabled=settings.autostart_enabled,
+    )
+    store.save(updated)
+    print(f"VirusTotal API profile set to {args.profile}", file=streams.out)
     return EXIT_OK
 
 
@@ -895,37 +943,39 @@ def _cmd_intel_status(args: argparse.Namespace, streams: _Streams) -> int:
     from ..intelligence.secrets import IntelligenceSecretStore
     from ..intelligence.virustotal import VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED
 
-    store = SettingsStore()
-    settings = store.load()
+    settings = SettingsStore().load()
     secret_store = IntelligenceSecretStore()
     secret_avail = secret_store.is_available()
-
-    has_key = False
+    credentials = {"public": False, "premium": False}
     if secret_avail:
-        try:
-            has_key = bool(secret_store.get_api_key())
-        except Exception:
-            has_key = False
+        for profile in credentials:
+            try:
+                credentials[profile] = bool(secret_store.get_credential(profile))
+            except Exception:
+                credentials[profile] = False
 
     if args.json:
         payload = {
             "intelligence_enabled": settings.intelligence_enabled,
+            "selected_profile": settings.intelligence_profile,
             "secret_service_available": secret_avail,
-            "api_key_configured": has_key,
-            "provider_eligible": VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED,
+            "api_credentials_configured": credentials,
+            "public_api_eligible": VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED,
         }
         print(json.dumps(payload, indent=2), file=streams.out)
     else:
         status_str = "enabled" if settings.intelligence_enabled else "disabled"
         print(f"Threat Intelligence: {status_str}", file=streams.out)
+        print(f"Selected API Profile: {settings.intelligence_profile}", file=streams.out)
         print(f"Secret Service Available: {secret_avail}", file=streams.out)
-        print(f"API Key Configured: {has_key}", file=streams.out)
+        print(f"Public Credential Configured: {credentials['public']}", file=streams.out)
+        print(f"Premium Credential Configured: {credentials['premium']}", file=streams.out)
         gate_status = (
             "cleared"
             if VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED
-            else "BLOCKED — maintainer review required"
+            else "BLOCKED — written authorization required"
         )
-        print(f"VirusTotal terms eligibility gate: {gate_status}", file=streams.out)
+        print(f"VirusTotal Public API eligibility gate: {gate_status}", file=streams.out)
     return EXIT_OK
 
 
@@ -941,6 +991,7 @@ def _cmd_intel_enable(args: argparse.Namespace, streams: _Streams) -> int:
         color_scheme=settings.color_scheme,
         usb_autoscan_enabled=settings.usb_autoscan_enabled,
         intelligence_enabled=True,
+        intelligence_profile=settings.intelligence_profile,
         realtime_enabled=settings.realtime_enabled,
         realtime_paths=settings.realtime_paths,
         scheduled_scans_enabled=settings.scheduled_scans_enabled,
@@ -951,8 +1002,8 @@ def _cmd_intel_enable(args: argparse.Namespace, streams: _Streams) -> int:
     store.save(updated)
     print("Threat Intelligence preference enabled", file=streams.out)
     print(
-        "VirusTotal network lookups remain blocked until the maintainer verifies "
-        "applicable Public API terms and product eligibility.",
+        "Public API lookups remain blocked until written VirusTotal eligibility "
+        "authorization is recorded. Premium requires a valid Premium entitlement.",
         file=streams.out,
     )
     return EXIT_OK
@@ -970,6 +1021,7 @@ def _cmd_intel_disable(args: argparse.Namespace, streams: _Streams) -> int:
         color_scheme=settings.color_scheme,
         usb_autoscan_enabled=settings.usb_autoscan_enabled,
         intelligence_enabled=False,
+        intelligence_profile=settings.intelligence_profile,
         realtime_enabled=settings.realtime_enabled,
         realtime_paths=settings.realtime_paths,
         scheduled_scans_enabled=settings.scheduled_scans_enabled,
@@ -980,6 +1032,56 @@ def _cmd_intel_disable(args: argparse.Namespace, streams: _Streams) -> int:
     store.save(updated)
     print("Threat Intelligence disabled", file=streams.out)
     return EXIT_OK
+
+
+def _cmd_intel_upload(args: argparse.Namespace, streams: _Streams) -> int:
+    from ..intelligence.service import ThreatIntelligenceService
+
+    service = ThreatIntelligenceService()
+
+    async def _workflow() -> tuple[int, dict[str, object] | None]:
+        preview = service.preview_file_upload(Path(args.path))
+        print(f"File: {preview.filename}", file=streams.out)
+        print(f"Size: {preview.size} bytes", file=streams.out)
+        print(f"SHA-256: {preview.sha256}", file=streams.out)
+        lookup = await service.lookup_upload_candidate(preview)
+        if lookup.get("found") is True:
+            print(
+                "VirusTotal already has a report for this hash; upload skipped.",
+                file=streams.out,
+            )
+            return EXIT_OK, lookup
+        if lookup.get("found") is not False:
+            print(
+                "error: hash lookup did not establish that the file is absent; upload blocked",
+                file=streams.err,
+            )
+            return EXIT_ENGINE_ERROR, None
+        print(preview.warning, file=streams.out)
+        print("This action transmits the complete file to VirusTotal.", file=streams.out)
+        try:
+            confirmation = input("Type UPLOAD to consent to this file submission: ")
+        except (EOFError, KeyboardInterrupt):
+            confirmation = ""
+        if confirmation != "UPLOAD":
+            print("Upload cancelled; no file contents were transmitted.", file=streams.out)
+            return EXIT_CANCELLED, None
+        report = await service.upload_file(
+            preview, consent=True, lookup_report=lookup
+        )
+        return EXIT_OK, report
+
+    try:
+        code, report = asyncio.run(_workflow())
+    except Exception as exc:
+        print(
+            f"error: VirusTotal upload workflow failed ({type(exc).__name__})",
+            file=streams.err,
+        )
+        return EXIT_ENGINE_ERROR
+    if report is not None:
+        print(json.dumps(report, indent=2), file=streams.out)
+    return code
 
 
 def _cmd_intel_lookup(args: argparse.Namespace, streams: _Streams) -> int:
@@ -998,7 +1100,8 @@ def _cmd_intel_lookup(args: argparse.Namespace, streams: _Streams) -> int:
             file=streams.err,
         )
         return EXIT_USAGE
-    if not VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED:
+    profile = settings.intelligence_profile
+    if profile == "public" and not VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED:
         print(
             "error: VirusTotal lookups are administratively blocked pending review "
             "of applicable Public API terms and product eligibility",
@@ -1016,7 +1119,7 @@ def _cmd_intel_lookup(args: argparse.Namespace, streams: _Streams) -> int:
 
     secret_store = IntelligenceSecretStore()
     try:
-        api_key = secret_store.get_api_key()
+        api_key = secret_store.get_credential(profile)
     except SecretStorageError as exc:
         print(f"error: {exc}", file=streams.err)
         return EXIT_ENGINE_ERROR
@@ -1025,7 +1128,7 @@ def _cmd_intel_lookup(args: argparse.Namespace, streams: _Streams) -> int:
         print("error: no VirusTotal API key configured in Secret Service", file=streams.err)
         return EXIT_ENGINE_ERROR
 
-    provider = VirusTotalProvider(api_key)
+    provider = VirusTotalProvider(api_key, profile=profile)
     try:
         result = asyncio.run(provider.lookup_hash(sha256))
     except Exception as exc:

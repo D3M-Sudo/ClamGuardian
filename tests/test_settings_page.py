@@ -64,3 +64,22 @@ def test_changing_the_profile_persists_it(tmp_path: Path) -> None:
     except Exception:  # pragma: no cover - needs a working X server/Adw
         pytest.skip("GTK/Adw widget construction failed in this environment")
     assert store.load() == page.settings
+
+
+
+@pytest.mark.skipif(not gtk_works(), reason="requires PyGObject + display/Xvfb")
+def test_virustotal_controls_reflect_settings_and_credentials_ui(tmp_path: Path) -> None:
+    store = SettingsStore(tmp_path / "settings.json")
+    store.save(
+        AppSettings(
+            intelligence_enabled=True,
+            intelligence_profile="premium",
+        )
+    )
+    try:
+        page = settings_page_module.SettingsPage(store)
+    except Exception:  # pragma: no cover - needs a working X server/Adw
+        pytest.skip("GTK/Adw widget construction failed in this environment")
+    assert page._intel_profile_row.get_selected() == 1
+    assert set(page._credential_rows) == {"public", "premium"}
+    assert page._intel_upload_button.get_sensitive() is True

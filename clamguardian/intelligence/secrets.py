@@ -1,20 +1,10 @@
-"""Secure secret storage for Threat Intelligence API keys.
-
-Adheres strictly to the security requirement:
-- Credentials managed via the operating system's Secret Service (libsecret).
-- Absolutely NO plaintext fallback on disk.
-- Fail closed if Secret Service is unavailable and explain the limitation.
-"""
-
+"""Fail-closed OS Secret Service storage for separate VirusTotal profiles."""
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
+from .profiles import APIProfile, profile_secret_attribute
 
 SECRET_SCHEMA_NAME = "io.github.clamguardian.ThreatIntelligence"
-SECRET_ATTRIBUTES = {"service": "virustotal-api-key"}
-SECRET_LABEL = "ClamGuardian VirusTotal API Key"
+SECRET_LABEL = "ClamGuardian VirusTotal API Credential"
 
 
 class SecretStorageError(RuntimeError):
@@ -22,103 +12,102 @@ class SecretStorageError(RuntimeError):
 
 
 class IntelligenceSecretStore:
-    """Manage VirusTotal API key in OS Secret Service with fail-closed policy."""
+    """Store Public and Premium credentials independently in Secret Service."""
 
     @staticmethod
-    def is_available() -> bool:
-        """Check if libsecret / Secret Service is functional in this environment."""
+    def _secret_api():
         try:
             import gi
-
             gi.require_version("Secret", "1")
             from gi.repository import Secret
+            return Secret
+        except Exception as exc:
+            raise SecretStorageError(
+                "Secure credential storage (Secret Service / libsecret) is unavailable. "
+                "Plaintext credential storage is prohibited."
+            ) from exc
 
-            # Importability is not availability: Flatpak may filter the
-            # session bus or the user's Secret Service may be stopped.
+    @classmethod
+    def _schema(cls, Secret):
+        return Secret.Schema.new(
+            SECRET_SCHEMA_NAME,
+            Secret.SchemaFlags.NONE,
+            {"service": Secret.SchemaAttributeType.STRING},
+        )
+
+    @staticmethod
+    def _attributes(profile: APIProfile | str) -> dict[str, str]:
+        return {"service": profile_secret_attribute(profile)}
+
+    @classmethod
+    def is_available(cls) -> bool:
+        try:
+            Secret = cls._secret_api()
             Secret.password_lookup_sync(
-                Secret.Schema.new(
-                    SECRET_SCHEMA_NAME,
-                    Secret.SchemaFlags.NONE,
-                    {"service": Secret.SchemaAttributeType.STRING},
-                ),
-                dict(SECRET_ATTRIBUTES),
-                None,
+                cls._schema(Secret), cls._attributes(APIProfile.PUBLIC), None
             )
             return True
         except Exception:
             return False
 
-    def get_api_key(self) -> str | None:
-        """Retrieve the API key from Secret Service.
-
-        Raises SecretStorageError if Secret Service is unavailable.
-        """
+    def get_credential(self, profile: APIProfile | str) -> str | None:
+        Secret = self._secret_api()
         try:
-            import gi
-
-            gi.require_version("Secret", "1")
-            from gi.repository import Secret
-
-            schema = Secret.Schema.new(
-                SECRET_SCHEMA_NAME,
-                Secret.SchemaFlags.NONE,
-                {"service": Secret.SchemaAttributeType.STRING},
+            value = Secret.password_lookup_sync(
+                self._schema(Secret), self._attributes(profile), None
             )
-            val = Secret.password_lookup_sync(schema, dict(SECRET_ATTRIBUTES), None)
-            return val if val else None
+            if not value and APIProfile.parse(profile) is APIProfile.PUBLIC:
+                # Migrate credentials written by the pre-dual-profile release.
+                value = Secret.password_lookup_sync(
+                    self._schema(Secret), {"service": "virustotal-api-key"}, None
+                )
+                if value:
+                    self.set_credential(APIProfile.PUBLIC, value)
+            return value or None
         except Exception as exc:
             raise SecretStorageError(
-                "Secure credential storage (Secret Service / libsecret) is unavailable. "
-                "Plaintext credential storage is prohibited by security policy."
+                "Could not retrieve VirusTotal credential from Secret Service"
             ) from exc
 
-    def set_api_key(self, api_key: str) -> None:
-        """Store the API key in Secret Service.
-
-        Raises SecretStorageError if Secret Service is unavailable or fails.
-        """
-        if not api_key or not api_key.strip():
+    def set_credential(self, profile: APIProfile | str, api_key: str) -> None:
+        if not isinstance(api_key, str) or not api_key.strip():
             raise ValueError("API key cannot be empty")
+        Secret = self._secret_api()
         try:
-            import gi
-
-            gi.require_version("Secret", "1")
-            from gi.repository import Secret
-
-            schema = Secret.Schema.new(
-                SECRET_SCHEMA_NAME,
-                Secret.SchemaFlags.NONE,
-                {"service": Secret.SchemaAttributeType.STRING},
-            )
-            success = Secret.password_store_sync(
-                schema,
-                dict(SECRET_ATTRIBUTES),
+            ok = Secret.password_store_sync(
+                self._schema(Secret),
+                self._attributes(profile),
                 Secret.COLLECTION_DEFAULT,
-                SECRET_LABEL,
+                f"{SECRET_LABEL} ({APIProfile.parse(profile).value})",
                 api_key.strip(),
                 None,
             )
-            if not success:
-                raise SecretStorageError("Failed to store API key in Secret Service")
+            if not ok:
+                raise SecretStorageError("Secret Service refused to store the credential")
+        except SecretStorageError:
+            raise
         except Exception as exc:
             raise SecretStorageError(
-                "Secure credential storage (Secret Service / libsecret) is unavailable. "
-                "Plaintext credential storage is prohibited by security policy."
+                "Could not store VirusTotal credential in Secret Service"
             ) from exc
 
-    def clear_api_key(self) -> None:
-        """Clear the stored API key from Secret Service."""
+    def clear_credential(self, profile: APIProfile | str) -> None:
+        Secret = self._secret_api()
         try:
-            import gi
-
-            gi.require_version("Secret", "1")
-            from gi.repository import Secret
-
-            schema = Secret.Schema.new(
-                SECRET_SCHEMA_NAME,
-                Secret.SchemaFlags.NONE,
-                {"service": Secret.SchemaAttributeType.STRING},
+            Secret.password_clear_sync(
+                self._schema(Secret), self._attributes(profile), None
             )
-            Secret.password_clear_sync(schema, dict(SECRET_ATTRIBUTES), None)
         except Exception as exc:
-            raise SecretStorageError("Failed to clear API key in Secret Service") from exc
+            raise SecretStorageError(
+                "Could not clear VirusTotal credential from Secret Service"
+            ) from exc
+
+    # Backwards-compatible Public profile methods.
+    def get_api_key(self) -> str | None:
+        return self.get_credential(APIProfile.PUBLIC)
+
+    def set_api_key(self, api_key: str) -> None:
+        self.set_credential(APIProfile.PUBLIC, api_key)
+
+    def clear_api_key(self) -> None:
+        self.clear_credential(APIProfile.PUBLIC)

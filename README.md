@@ -45,7 +45,7 @@
 | 📦 | **Flatpak-first install** — sandboxed app that reaches your host ClamAV safely |
 | 🧪 | **Tested & gated** — full pytest suite, lint, type checks and an automated release gate |
 | 🔌 | **Optional automation (under remediation)** — removable-media scanning, realtime monitoring and scheduled scans |
-| 🌐 | **Optional hash-only intelligence (administratively blocked)** — VirusTotal integration remains disabled until applicable Public API terms and product eligibility are reviewed |
+| 🌐 | **Optional VirusTotal intelligence** — explicit Public/Premium profiles, hash-first lookup and separately consent-gated file submission; Public remains administratively blocked pending written eligibility authorization |
 
 ## Quick start
 
@@ -198,21 +198,33 @@ clamguardian autostart enable
 clamguardian autostart disable
 ```
 
-VirusTotal is hash-only: file contents are never uploaded. Configure the API
-key through the hidden-input prompt and inspect the provider status:
+VirusTotal hash lookup is the default. Public and Premium profiles use separate
+credentials stored only in the OS Secret Service. The Public API remains blocked
+until written VirusTotal eligibility clarification is recorded; Premium requires
+a valid Premium entitlement. No profile fallback is performed.
 
 ```bash
-clamguardian intel set-key
+clamguardian intel profile premium
+clamguardian intel set-key --profile premium
 clamguardian intel status
 clamguardian intel enable
 clamguardian intel lookup SHA256
+clamguardian intel upload /path/to/file
 ```
 
-**Important:** outbound VirusTotal lookups are currently blocked by a
-maintainer-controlled eligibility gate. They remain unavailable until the
-applicable Public API terms and ClamGuardian's product/use-case eligibility
-have been reviewed. Enabling the preference or storing a key does not bypass
-that gate. No legal or terms-compliance conclusion is implied.
+The upload command performs a hash lookup first. If no report exists, it shows
+the file metadata and privacy warning, then requires typing `UPLOAD` before
+transmitting file contents. The GTK Settings page provides equivalent profile,
+credential and consent-gated upload controls. Never submit sensitive or
+confidential files. VirusTotal may retain, analyze and share submitted samples
+under its policies.
+
+**Important:** Public API requests remain blocked by a maintainer-controlled
+eligibility gate until written VirusTotal clarification and ClamGuardian's
+product/use-case eligibility are recorded. Premium access is separately
+license-dependent. Enabling the preference or storing a key does not bypass
+either provider's authorization requirements. No legal or terms-compliance
+conclusion is implied.
 
 ## Desktop app (GTK4)
 
@@ -295,7 +307,7 @@ vault.restore(entry.item_id)
 | Tamper-evident metadata | metadata sealed as AES-GCM associated data |
 | Owner-only storage | vault dirs `0700`, record and restored files `0600` |
 | No shell, no injection | external commands run without a shell |
-| VirusTotal egress gate | hash-only lookup integration is opt-in and administratively blocked until applicable Public API terms and product eligibility are reviewed; no file contents are uploaded |
+| VirusTotal egress gate | hash lookup is opt-in; Public requests remain blocked pending written eligibility authorization; optional file submission requires a fresh absent-hash result and explicit per-file consent; ClamAV verdicts remain unchanged |
 | Known issue in 1.0.0 | AUD-01: `clamd` directory scans could miss an infected file after a clean one; fixed in 1.0.1 — see [`SECURITY.md`](SECURITY.md) |
 | Sandboxed desktop app | Flatpak manifest grants only what the app needs (host ClamAV via `flatpak-spawn`, read-only host FS, app-data dir) |
 
