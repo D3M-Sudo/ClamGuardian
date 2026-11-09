@@ -89,7 +89,12 @@ async def test_usb_scan_successful_execution(tmp_path: Path) -> None:
 
     store = SqliteHistoryStore(tmp_path / "history.db")
     runner = ScanTaskRunner(StubEngine())
-    scanner = USBDeviceScanner(runner, history_store=store, allowed_mount_roots=(media_root,))
+    scanner = USBDeviceScanner(
+        runner,
+        history_store=store,
+        allowed_mount_roots=(media_root,),
+        mount_detector=lambda path: path == mount.resolve(),
+    )
 
     started: list[bool] = []
     result = await scanner.scan_device(mount, on_start=lambda: started.append(True))
@@ -175,3 +180,32 @@ async def test_usb_mount_monitor_lifecycle(tmp_path: Path) -> None:
 
     await monitor.stop()
     assert monitor._running is False
+
+
+@pytest.mark.asyncio
+async def test_usb_mount_monitor_cancels_scan_on_unmount(tmp_path: Path) -> None:
+    media_root = tmp_path / "media"
+    media_root.mkdir()
+    mount = media_root / "usb_drive"
+    mount.mkdir()
+
+    runner = ScanTaskRunner(StubEngine(delay=0.5))
+    scanner = USBDeviceScanner(
+        runner,
+        allowed_mount_roots=(media_root,),
+        mount_detector=lambda path: path == mount.resolve(),
+    )
+    monitor = USBMountMonitor(scanner, poll_interval=0.01)
+    current: set[Path] = set()
+    monitor.get_current_mounts = lambda: set(current)
+
+    await monitor.start()
+    current.add(mount)
+    await asyncio.sleep(0.05)
+    assert mount in monitor._scan_tasks
+
+    current.remove(mount)
+    await asyncio.sleep(0.05)
+    assert mount not in monitor._scan_tasks
+    assert runner.active_count == 0
+    await monitor.stop()
