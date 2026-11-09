@@ -4,9 +4,13 @@ from __future__ import annotations
 import asyncio
 import email.utils
 import hashlib
+import os
+import stat
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import aiohttp
 
@@ -87,6 +91,7 @@ class VirusTotalProvider(BaseThreatProvider):
     async def _request(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
         await self._reserve()
         headers = {"x-apikey": self._api_key, "accept": "application/json"}
+        kwargs.setdefault("allow_redirects", False)
         async with self._session_factory(timeout=self._timeout, headers=headers) as session:
             try:
                 requester = getattr(session, method.lower(), None)
@@ -128,30 +133,47 @@ class VirusTotalProvider(BaseThreatProvider):
         return normalize_file_report(payload, digest)
 
     async def upload_file(self, path: Path, expected_sha256: str) -> str:
+        """Upload only after a fresh hash lookup proves no report exists."""
         self._ensure_profile_eligible()
-        """Upload a file after caller-side consent and TOCTOU validation."""
-        path = Path(path)
-        if not path.is_file():
-            raise ValueError("Upload target must be a regular file")
-        if path.stat().st_size > MAX_UPLOAD_SIZE:
-            raise ValueError("VirusTotal file upload limit is 650 MiB")
-        actual = await asyncio.to_thread(_sha256_file, path)
-        if actual != expected_sha256.lower():
-            raise RuntimeError("File changed after consent; upload cancelled")
-        upload_url = f"{self.BASE_URL}/files"
-        if path.stat().st_size > STANDARD_UPLOAD_SIZE:
-            target = await self._request("GET", f"{self.BASE_URL}/files/upload_url")
-            upload_url = target.get("data")
-            if not isinstance(upload_url, str) or not upload_url.startswith("https://"):
-                raise RuntimeError("VirusTotal did not return a valid one-time upload URL")
-        await self._reserve()
-        form = aiohttp.FormData()
-        with path.open("rb") as handle:
-            form.add_field("file", handle, filename=path.name, content_type="application/octet-stream")
+        if (
+            not isinstance(expected_sha256, str)
+            or len(expected_sha256) != 64
+            or any(ch not in "0123456789abcdefABCDEF" for ch in expected_sha256)
+        ):
+            raise ValueError("expected_sha256 must be a 64-character hexadecimal digest")
+        existing = await self.lookup_hash(expected_sha256.lower())
+        if existing.get("found") is not False:
+            raise PermissionError(
+                "Upload is allowed only when a fresh VirusTotal hash lookup reports no existing file"
+            )
+
+        target = Path(path)
+        snapshot, size = await asyncio.to_thread(
+            _create_upload_snapshot, target, expected_sha256.lower()
+        )
+        try:
+            upload_url = f"{self.BASE_URL}/files"
+            if size > STANDARD_UPLOAD_SIZE:
+                response = await self._request("GET", f"{self.BASE_URL}/files/upload_url")
+                upload_url = self._validate_upload_url(response.get("data"))
+
+            await self._reserve()
+            snapshot.seek(0)
+            form = aiohttp.FormData()
+            form.add_field(
+                "file", snapshot, filename=target.name,
+                content_type="application/octet-stream",
+            )
             headers = {"x-apikey": self._api_key}
             async with self._session_factory(timeout=self._timeout, headers=headers) as session:
                 try:
-                    async with session.post(upload_url, data=form) as response:
+                    async with session.post(
+                        upload_url, data=form, allow_redirects=False
+                    ) as response:
+                        if 300 <= response.status < 400:
+                            raise VirusTotalAPIError(
+                                response.status, "VirusTotal upload redirect refused"
+                            )
                         if response.status == 429:
                             retry = self._retry_after(response.headers.get("Retry-After"))
                             if retry:
@@ -160,16 +182,45 @@ class VirusTotalProvider(BaseThreatProvider):
                                 429, "VirusTotal upload rate/quota limit reached", retry
                             )
                         if response.status >= 400:
-                            raise VirusTotalAPIError(response.status, f"VirusTotal upload failed (HTTP {response.status})")
+                            raise VirusTotalAPIError(
+                                response.status,
+                                f"VirusTotal upload failed (HTTP {response.status})",
+                            )
                         payload = await response.json()
                 except (aiohttp.ClientError, TimeoutError) as exc:
                     raise RuntimeError("VirusTotal upload failed or timed out") from exc
-        if _sha256_file(path) != expected_sha256.lower():
-            raise RuntimeError("File changed during upload; result must be treated as indeterminate")
-        analysis_id = payload.get("data", {}).get("id")
-        if not isinstance(analysis_id, str) or not analysis_id:
-            raise RuntimeError("VirusTotal upload response did not include an analysis ID")
-        return analysis_id
+
+            snapshot.seek(0)
+            if await asyncio.to_thread(_sha256_fileobj, snapshot) != expected_sha256.lower():
+                raise RuntimeError("Upload snapshot changed during transmission; result is indeterminate")
+            data = payload.get("data") if isinstance(payload, dict) else None
+            analysis_id = data.get("id") if isinstance(data, dict) else None
+            if not isinstance(analysis_id, str) or not analysis_id:
+                raise RuntimeError("VirusTotal upload response did not include an analysis ID")
+            return analysis_id
+        finally:
+            snapshot.close()
+
+    @staticmethod
+    def _validate_upload_url(value: Any) -> str:
+        if not isinstance(value, str):
+            raise RuntimeError("VirusTotal did not return a valid one-time upload URL")
+        parsed = urlsplit(value)
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise RuntimeError("VirusTotal returned an unsafe upload URL") from exc
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "www.virustotal.com"
+            or parsed.username is not None
+            or parsed.password is not None
+            or port not in (None, 443)
+            or parsed.path != "/api/v3/files"
+            or parsed.fragment
+        ):
+            raise RuntimeError("VirusTotal returned an unsafe upload URL; refusing transmission")
+        return value
 
     async def get_analysis(self, analysis_id: str) -> dict[str, Any]:
         self._ensure_profile_eligible()
@@ -184,4 +235,59 @@ def _sha256_file(path: Path) -> str:
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _create_upload_snapshot(path: Path, expected_sha256: str):
+    """Create a private, unlinked snapshot from a stable regular-file descriptor."""
+    target = Path(path)
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    source_fd = os.open(target, flags)
+    try:
+        snapshot = tempfile.TemporaryFile(mode="w+b")
+    except BaseException:
+        os.close(source_fd)
+        raise
+    try:
+        with os.fdopen(source_fd, "rb", closefd=False) as source:
+            before = os.fstat(source.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                raise ValueError("Upload target must be a regular file")
+            if before.st_size > MAX_UPLOAD_SIZE:
+                raise ValueError("VirusTotal file upload limit is 650 MiB")
+            digest = hashlib.sha256()
+            total = 0
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                total += len(chunk)
+                if total > MAX_UPLOAD_SIZE:
+                    raise ValueError("VirusTotal file upload limit is 650 MiB")
+                digest.update(chunk)
+                snapshot.write(chunk)
+            after = os.fstat(source.fileno())
+            before_state = (
+                before.st_dev, before.st_ino, before.st_size,
+                before.st_mtime_ns, before.st_ctime_ns,
+            )
+            after_state = (
+                after.st_dev, after.st_ino, after.st_size,
+                after.st_mtime_ns, after.st_ctime_ns,
+            )
+            if before_state != after_state or total != before.st_size:
+                raise RuntimeError("File changed while preparing the upload snapshot")
+            if digest.hexdigest() != expected_sha256:
+                raise RuntimeError("File changed after consent; upload cancelled")
+        snapshot.flush()
+        snapshot.seek(0)
+        return snapshot, total
+    except BaseException:
+        snapshot.close()
+        raise
+    finally:
+        os.close(source_fd)
+
+
+def _sha256_fileobj(handle) -> str:
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        digest.update(chunk)
     return digest.hexdigest()

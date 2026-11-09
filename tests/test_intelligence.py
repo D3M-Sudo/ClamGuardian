@@ -212,7 +212,10 @@ def test_cli_set_key_uses_hidden_input_and_secret_service(monkeypatch) -> None:
     class FakeSecretStore:
         stored: str | None = None
 
-        def set_api_key(self, value: str) -> None:
+        profile: str | None = None
+
+        def set_credential(self, profile: str, value: str) -> None:
+            self.profile = profile
             self.stored = value
 
     fake = FakeSecretStore()
@@ -362,3 +365,15 @@ def test_retry_after_cooldown_is_persisted_across_limiter_instances(tmp_path):
     first.defer(2)
     second = PersistentRateLimiter("premium", state_path=state, min_interval=0)
     assert second.reserve() > 1.0
+
+
+
+def test_provider_upload_requires_fresh_absent_hash_lookup(monkeypatch, tmp_path):
+    provider = VirusTotalProvider("test-key", profile="premium")
+    monkeypatch.setattr(
+        provider, "lookup_hash", AsyncMock(return_value={"found": True})
+    )
+    sample = tmp_path / "already-known.bin"
+    sample.write_bytes(b"fixture")
+    with pytest.raises(PermissionError, match="fresh VirusTotal hash lookup"):
+        asyncio.run(provider.upload_file(sample, "0" * 64))

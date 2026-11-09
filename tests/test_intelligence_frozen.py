@@ -127,8 +127,9 @@ class _FakeSession:
     async def __aexit__(self, *exc: object) -> bool:
         return False
 
-    def get(self, url: str) -> _FakeResponse:
+    def get(self, url: str, **kwargs: Any) -> _FakeResponse:
         self._captured["url"] = url
+        self._captured["request_options"] = kwargs
         return self._response
 
 
