@@ -54,6 +54,11 @@ class ScheduledScanManager:
             return None
         return value if len(value) == 10 else None
 
+    @staticmethod
+    def _is_successful_daily_result(result: ScanResult) -> bool:
+        """Only clean or infected terminal scans count as completed daily work."""
+        return result.status in (ScanStatus.CLEAN, ScanStatus.INFECTED)
+
     def _save_last_run_date(self, value: str) -> None:
         path = self._last_run_path()
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -137,7 +142,7 @@ class ScheduledScanManager:
                         except Exception as exc:
                             logger.error("Scheduled scan failed: %s", exc)
                         else:
-                            if result.status in (ScanStatus.CLEAN, ScanStatus.INFECTED):
+                            if self._is_successful_daily_result(result):
                                 self._save_last_run_date(today_str)
                             else:
                                 # ERROR, TIMEOUT and CANCELLED are not completed
