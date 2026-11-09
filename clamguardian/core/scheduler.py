@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from .base import ScanResult, ScanStatus
 from .profiles import DEFAULT_PROFILE, ScanProfile
 from .runner import ScanTaskRunner
-from .settings import AppSettings, SettingsStore
+from .settings import SettingsStore
 
 if TYPE_CHECKING:
     from ..history import HistoryStore

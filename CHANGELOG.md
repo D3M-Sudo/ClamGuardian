@@ -42,6 +42,7 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - **Engineering Handoff**: Comprehensive technical documentation in `docs/engineering/CLAMGUARDIAN-AUTONOMOUS-COMPLETION-HANDOFF.md`.
 
 ## [1.0.1] — release candidate (tag cut after the manual desktop validation)
+
 Security and desktop update. Prepared on 2026-10-20; the `v1.0.1` tag is created
 from `main` only after the desktop validation recorded in
 `docs/validation/DESKTOP-TEST-D4-2026-10-19.md` and the promotion PRs
