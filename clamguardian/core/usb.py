@@ -160,6 +160,7 @@ class USBMountMonitor:
         self.on_mount_scanned = on_mount_scanned
         self._known_mounts: set[Path] = set()
         self._task: asyncio.Task[None] | None = None
+        self._scan_tasks: dict[Path, asyncio.Task[None]] = {}
         self._running = False
 
     def get_current_mounts(self) -> set[Path]:
@@ -196,6 +197,12 @@ class USBMountMonitor:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
             self._task = None
+        scans = list(self._scan_tasks.values())
+        for task in scans:
+            task.cancel()
+        if scans:
+            await asyncio.gather(*scans, return_exceptions=True)
+        self._scan_tasks.clear()
 
     async def _poll_loop(self) -> None:
         while self._running:
@@ -203,11 +210,24 @@ class USBMountMonitor:
                 await asyncio.sleep(self.poll_interval)
                 current = self.get_current_mounts()
                 new_mounts = current - self._known_mounts
+                removed_mounts = self._known_mounts - current
                 self._known_mounts = current
+
+                # An unmount invalidates the scan target: cancel the runner
+                # task rather than continuing against a disappearing device.
+                for mount in removed_mounts:
+                    task = self._scan_tasks.get(mount)
+                    if task is not None:
+                        task.cancel()
 
                 for mount in new_mounts:
                     if self._running and not self.scanner.is_scanning(mount):
-                        asyncio.create_task(self._handle_new_mount(mount))
+                        task = asyncio.create_task(self._handle_new_mount(mount))
+                        self._scan_tasks[mount] = task
+                        task.add_done_callback(
+                            lambda done, key=mount: self._scan_tasks.pop(key, None)
+                            if self._scan_tasks.get(key) is done else None
+                        )
             except asyncio.CancelledError:
                 break
             except Exception as err:
