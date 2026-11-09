@@ -24,6 +24,9 @@ finish-args:
   # reached over its UNIX socket on the host, so the sandbox needs to talk to
   # the flatpak portal and to read the host filesystem (socket + definitions).
   - --talk-name=org.freedesktop.Flatpak
+  # Required for libsecret-backed VirusTotal credentials; the feature remains
+  # opt-in and fail-closed when the service is unavailable.
+  - --talk-name=org.freedesktop.secrets
   - --filesystem=host:ro
   # --- Network ---------------------------------------------------------
   # Only used for explicit, user-initiated third-party database downloads.
