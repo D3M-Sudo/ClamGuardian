@@ -53,7 +53,9 @@ def test_is_removable_mount_detection(tmp_path: Path) -> None:
     assert scanner.is_removable_mount(Path("/etc")) is False
 
 
-def test_removable_mount_detector_uses_sysfs_and_udev_evidence(tmp_path: Path, monkeypatch) -> None:
+def test_removable_mount_detector_uses_sysfs_and_udev_evidence(
+    tmp_path: Path, monkeypatch
+) -> None:
     mount = tmp_path / "media" / "usb"
     mount.mkdir(parents=True)
     sysfs = tmp_path / "sys"
