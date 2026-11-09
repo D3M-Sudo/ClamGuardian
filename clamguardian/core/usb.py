@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,32 @@ if TYPE_CHECKING:
     from ..history import HistoryStore
 
 logger = logging.getLogger(__name__)
+
+
+def _is_removable_device_mount(path: Path) -> bool:
+    """Fail closed unless the mount resolves to removable/USB block media."""
+    try:
+        if not path.is_mount():
+            return False
+        device = os.stat(path).st_dev
+        major, minor = os.major(device), os.minor(device)
+        device_id = f"{major}:{minor}"
+        sys_device = (Path("/sys/dev/block") / device_id).resolve(strict=True)
+        for parent in (sys_device, *sys_device.parents):
+            removable = parent / "removable"
+            if removable.is_file() and removable.read_text(encoding="ascii").strip() == "1":
+                return True
+        # Some USB bridges report removable=0; udev's persistent database
+        # provides a second read-only identification signal.
+        udev_record = Path("/run/udev/data") / f"b{device_id}"
+        if udev_record.is_file():
+            return any(
+                line.strip() == "E:ID_BUS=usb"
+                for line in udev_record.read_text(encoding="utf-8", errors="replace").splitlines()
+            )
+    except (OSError, ValueError):
+        return False
+    return False
 
 
 class USBScanError(RuntimeError):
@@ -56,7 +83,7 @@ class USBDeviceScanner:
         self.history_store = history_store
         self.profile = default_profile or DEFAULT_PROFILE
         self.mount_roots = tuple(Path(root).resolve() for root in (allowed_mount_roots or self.DEFAULT_MOUNT_ROOTS))
-        self._mount_detector = mount_detector or (lambda path: path.is_mount())
+        self._mount_detector = mount_detector or _is_removable_device_mount
         self._active_mounts: set[Path] = set()
         self._lock = asyncio.Lock()
 
