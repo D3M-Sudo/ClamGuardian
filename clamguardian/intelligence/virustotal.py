@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any
 
 import aiohttp
@@ -15,16 +17,34 @@ class VirusTotalProvider(BaseThreatProvider):
     name = "virustotal"
     BASE_URL = "https://www.virustotal.com/api/v3"
 
-    def __init__(self, api_key: str, *, timeout: float = 20.0) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        timeout: float = 20.0,
+        min_request_interval: float = 0.25,
+    ) -> None:
         if not api_key or not api_key.strip():
             raise ValueError("VirusTotal API key is required")
         self._api_key = api_key.strip()
         self._timeout = aiohttp.ClientTimeout(total=timeout)
+        self._min_interval = min_request_interval
+        self._last_request_time = 0.0
+        self._rate_lock = asyncio.Lock()
+
+    async def _enforce_rate_limit(self) -> None:
+        async with self._rate_lock:
+            now = time.monotonic()
+            elapsed = now - self._last_request_time
+            if elapsed < self._min_interval:
+                await asyncio.sleep(self._min_interval - elapsed)
+            self._last_request_time = time.monotonic()
 
     async def lookup_hash(self, sha256: str) -> dict[str, Any]:
         """Return VirusTotal file attributes for a SHA-256 digest."""
         if len(sha256) != 64 or any(ch not in "0123456789abcdefABCDEF" for ch in sha256):
             raise ValueError("sha256 must be a 64-character hexadecimal digest")
+        await self._enforce_rate_limit()
         headers = {"x-apikey": self._api_key, "accept": "application/json"}
         url = f"{self.BASE_URL}/files/{sha256.lower()}"
         async with aiohttp.ClientSession(timeout=self._timeout, headers=headers) as session:

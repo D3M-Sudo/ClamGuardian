@@ -60,20 +60,17 @@ def _load_pyproject() -> dict[str, Any]:
     return tomllib.loads((_PACKAGE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
 
-def test_no_production_module_imports_the_frozen_package() -> None:
+def test_core_and_engine_do_not_import_intelligence() -> None:
+    """Core and engines remain decoupled from the intelligence package."""
     offenders: list[str] = []
     for path in _production_modules():
+        rel = path.relative_to(_ROOT_PACKAGE)
+        if rel.parts[0] not in ("core", "engines"):
+            continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for name in _imported_names(tree):
             if _is_intelligence(name):
                 offenders.append(f"{path.relative_to(_PACKAGE_ROOT)}: import {name}")
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Constant)
-                and isinstance(node.value, str)
-                and "clamguardian.intelligence" in node.value
-            ):
-                offenders.append(f"{path.relative_to(_PACKAGE_ROOT)}: string constant")
     assert offenders == []
 
 

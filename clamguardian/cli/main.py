@@ -258,6 +258,227 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ui_cmd.set_defaults(func=_cmd_ui)
 
+    usb_cmd = sub.add_parser(
+        "usb",
+        help="scan removable media or manage USB auto-scan",
+        description="Scan removable media mount points or inspect/configure USB auto-scan.",
+    )
+    usb_sub = usb_cmd.add_subparsers(dest="usb_action", required=True, metavar="ACTION")
+
+    usb_scan = usb_sub.add_parser(
+        "scan",
+        help="scan a removable media mount point",
+        description="Scan a removable media mount point safely.",
+    )
+    usb_scan.add_argument("mount_point", metavar="MOUNT", help="removable media mount point")
+    usb_scan.add_argument(
+        "--profile",
+        metavar="PROFILE",
+        default=None,
+        help="scan profile id from Core registry",
+    )
+    usb_scan.add_argument(
+        "--json",
+        action="store_true",
+        help="emit machine-readable JSON report",
+    )
+    usb_scan.set_defaults(func=_cmd_usb_scan)
+
+    usb_status = usb_sub.add_parser(
+        "status",
+        help="show USB auto-scan configuration",
+        description="Show whether USB auto-scan is enabled and active mount roots.",
+    )
+    usb_status.add_argument(
+        "--json",
+        action="store_true",
+        help="emit status as JSON on stdout",
+    )
+    usb_status.set_defaults(func=_cmd_usb_status)
+
+    usb_enable = usb_sub.add_parser(
+        "enable",
+        help="enable USB auto-scan setting",
+        description="Enable automatic scanning of removable media upon mount.",
+    )
+    usb_enable.set_defaults(func=_cmd_usb_enable)
+
+    usb_disable = usb_sub.add_parser(
+        "disable",
+        help="disable USB auto-scan setting",
+        description="Disable automatic scanning of removable media.",
+    )
+    usb_disable.set_defaults(func=_cmd_usb_disable)
+
+    intel_cmd = sub.add_parser(
+        "intel",
+        help="threat intelligence lookups and configuration",
+        description="Query threat intelligence for file hashes or configure VirusTotal.",
+    )
+    intel_sub = intel_cmd.add_subparsers(dest="intel_action", required=True, metavar="ACTION")
+
+    intel_lookup = intel_sub.add_parser(
+        "lookup",
+        help="lookup SHA-256 hash in VirusTotal",
+        description="Query VirusTotal for a file's SHA-256 digest without uploading the file.",
+    )
+    intel_lookup.add_argument("hash", metavar="SHA256", help="64-character SHA-256 hash")
+    intel_lookup.add_argument(
+        "--json",
+        action="store_true",
+        help="emit machine-readable JSON report",
+    )
+    intel_lookup.set_defaults(func=_cmd_intel_lookup)
+
+    intel_status = intel_sub.add_parser(
+        "status",
+        help="show threat intelligence status",
+        description="Check if threat intelligence is enabled and secret storage is available.",
+    )
+    intel_status.add_argument(
+        "--json",
+        action="store_true",
+        help="emit status as JSON on stdout",
+    )
+    intel_status.set_defaults(func=_cmd_intel_status)
+
+    intel_enable = intel_sub.add_parser(
+        "enable",
+        help="enable threat intelligence",
+        description="Enable threat intelligence lookups.",
+    )
+    intel_enable.set_defaults(func=_cmd_intel_enable)
+
+    intel_disable = intel_sub.add_parser(
+        "disable",
+        help="disable threat intelligence",
+        description="Disable threat intelligence lookups.",
+    )
+    intel_disable.set_defaults(func=_cmd_intel_disable)
+
+    rt_cmd = sub.add_parser(
+        "monitor",
+        help="realtime filesystem monitoring",
+        description="Inspect or control event-driven realtime filesystem monitoring.",
+    )
+    rt_sub = rt_cmd.add_subparsers(dest="monitor_action", required=True, metavar="ACTION")
+
+    rt_status = rt_sub.add_parser(
+        "status",
+        help="show realtime monitoring status and paths",
+        description="Show whether realtime monitoring is enabled and configured paths.",
+    )
+    rt_status.add_argument(
+        "--json",
+        action="store_true",
+        help="emit status as JSON on stdout",
+    )
+    rt_status.set_defaults(func=_cmd_monitor_status)
+
+    rt_enable = rt_sub.add_parser(
+        "enable",
+        help="enable realtime monitoring setting",
+        description="Enable realtime event-driven filesystem monitoring.",
+    )
+    rt_enable.set_defaults(func=_cmd_monitor_enable)
+
+    rt_disable = rt_sub.add_parser(
+        "disable",
+        help="disable realtime monitoring setting",
+        description="Disable realtime event-driven filesystem monitoring.",
+    )
+    rt_disable.set_defaults(func=_cmd_monitor_disable)
+
+    rt_add = rt_sub.add_parser(
+        "add",
+        help="add a directory to monitored paths",
+        description="Add a directory to the realtime monitoring paths list.",
+    )
+    rt_add.add_argument("path", metavar="PATH", help="directory path to monitor")
+    rt_add.set_defaults(func=_cmd_monitor_add)
+
+    rt_remove = rt_sub.add_parser(
+        "remove",
+        help="remove a directory from monitored paths",
+        description="Remove a directory from the realtime monitoring paths list.",
+    )
+    rt_remove.add_argument("path", metavar="PATH", help="directory path to stop monitoring")
+    rt_remove.set_defaults(func=_cmd_monitor_remove)
+
+    sched_cmd = sub.add_parser(
+        "schedule",
+        help="manage scheduled scan configuration",
+        description="Inspect or configure unprivileged daily scheduled scans.",
+    )
+    sched_sub = sched_cmd.add_subparsers(dest="sched_action", required=True, metavar="ACTION")
+
+    sched_status = sched_sub.add_parser(
+        "status",
+        help="show scheduled scan settings",
+        description="Show whether daily scheduled scans are enabled and scheduled time.",
+    )
+    sched_status.add_argument(
+        "--json",
+        action="store_true",
+        help="emit status as JSON on stdout",
+    )
+    sched_status.set_defaults(func=_cmd_sched_status)
+
+    sched_enable = sched_sub.add_parser(
+        "enable",
+        help="enable daily scheduled scans",
+        description="Enable daily scheduled scans with optional --time HH:MM.",
+    )
+    sched_enable.add_argument(
+        "--time",
+        metavar="HH:MM",
+        default="02:00",
+        help="daily scan time in 24h format (default: 02:00)",
+    )
+    sched_enable.set_defaults(func=_cmd_sched_enable)
+
+    sched_disable = sched_sub.add_parser(
+        "disable",
+        help="disable daily scheduled scans",
+        description="Disable daily scheduled scans.",
+    )
+    sched_disable.set_defaults(func=_cmd_sched_disable)
+
+    autostart_cmd = sub.add_parser(
+        "autostart",
+        help="manage user-session autostart",
+        description="Enable, disable, or inspect desktop user-session autostart.",
+    )
+    autostart_sub = autostart_cmd.add_subparsers(
+        dest="autostart_action", required=True, metavar="ACTION"
+    )
+
+    auto_status = autostart_sub.add_parser(
+        "status",
+        help="show autostart status",
+        description="Show whether desktop user-session autostart is enabled.",
+    )
+    auto_status.add_argument(
+        "--json",
+        action="store_true",
+        help="emit status as JSON on stdout",
+    )
+    auto_status.set_defaults(func=_cmd_autostart_status)
+
+    auto_enable = autostart_sub.add_parser(
+        "enable",
+        help="enable user-session autostart",
+        description="Install autostart desktop entry into ~/.config/autostart.",
+    )
+    auto_enable.set_defaults(func=_cmd_autostart_enable)
+
+    auto_disable = autostart_sub.add_parser(
+        "disable",
+        help="disable user-session autostart",
+        description="Remove autostart desktop entry from ~/.config/autostart.",
+    )
+    auto_disable.set_defaults(func=_cmd_autostart_disable)
+
     return parser
 
 
@@ -296,6 +517,513 @@ def _cmd_ui(args: argparse.Namespace, streams: _Streams) -> int:
     from ..ui.app import run_ui
 
     return EXIT_OK if run_ui() == 0 else EXIT_ENGINE_ERROR
+
+
+def _cmd_usb_status(args: argparse.Namespace, streams: _Streams) -> int:
+    from ..core.settings import SettingsStore
+    from ..core.usb import USBDeviceScanner
+
+    store = SettingsStore()
+    settings = store.load()
+    mount_roots = [str(r) for r in USBDeviceScanner.DEFAULT_MOUNT_ROOTS]
+    if args.json:
+        payload = {
+            "usb_autoscan_enabled": settings.usb_autoscan_enabled,
+            "allowed_mount_roots": mount_roots,
+        }
+        print(json.dumps(payload, indent=2), file=streams.out)
+    else:
+        status_str = "enabled" if settings.usb_autoscan_enabled else "disabled"
+        print(f"USB Auto-Scan: {status_str}", file=streams.out)
+        print(f"Allowed mount roots: {', '.join(mount_roots)}", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_usb_enable(args: argparse.Namespace, streams: _Streams) -> int:
+    del args
+    from ..core.settings import AppSettings, SettingsStore
+
+    store = SettingsStore()
+    settings = store.load()
+    updated = AppSettings(
+        default_profile_id=settings.default_profile_id,
+        notifications_enabled=settings.notifications_enabled,
+        color_scheme=settings.color_scheme,
+        usb_autoscan_enabled=True,
+        intelligence_enabled=settings.intelligence_enabled,
+        realtime_enabled=settings.realtime_enabled,
+        realtime_paths=settings.realtime_paths,
+        scheduled_scans_enabled=settings.scheduled_scans_enabled,
+        scheduled_hour=settings.scheduled_hour,
+        scheduled_minute=settings.scheduled_minute,
+        autostart_enabled=settings.autostart_enabled,
+    )
+    store.save(updated)
+    print("USB Auto-Scan enabled", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_usb_disable(args: argparse.Namespace, streams: _Streams) -> int:
+    del args
+    from ..core.settings import AppSettings, SettingsStore
+
+    store = SettingsStore()
+    settings = store.load()
+    updated = AppSettings(
+        default_profile_id=settings.default_profile_id,
+        notifications_enabled=settings.notifications_enabled,
+        color_scheme=settings.color_scheme,
+        usb_autoscan_enabled=False,
+        intelligence_enabled=settings.intelligence_enabled,
+        realtime_enabled=settings.realtime_enabled,
+        realtime_paths=settings.realtime_paths,
+        scheduled_scans_enabled=settings.scheduled_scans_enabled,
+        scheduled_hour=settings.scheduled_hour,
+        scheduled_minute=settings.scheduled_minute,
+        autostart_enabled=settings.autostart_enabled,
+    )
+    store.save(updated)
+    print("USB Auto-Scan disabled", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_monitor_status(args: argparse.Namespace, streams: _Streams) -> int:
+    from ..core.settings import SettingsStore
+
+    store = SettingsStore()
+    settings = store.load()
+
+    if args.json:
+        payload = {
+            "realtime_enabled": settings.realtime_enabled,
+            "monitored_paths": list(settings.realtime_paths),
+        }
+        print(json.dumps(payload, indent=2), file=streams.out)
+    else:
+        status_str = "enabled" if settings.realtime_enabled else "disabled"
+        print(f"Realtime Monitoring: {status_str}", file=streams.out)
+        paths_str = ", ".join(settings.realtime_paths) if settings.realtime_paths else "(none)"
+        print(f"Monitored paths: {paths_str}", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_monitor_enable(args: argparse.Namespace, streams: _Streams) -> int:
+    del args
+    from ..core.settings import AppSettings, SettingsStore
+
+    store = SettingsStore()
+    settings = store.load()
+    updated = AppSettings(
+        default_profile_id=settings.default_profile_id,
+        notifications_enabled=settings.notifications_enabled,
+        color_scheme=settings.color_scheme,
+        usb_autoscan_enabled=settings.usb_autoscan_enabled,
+        intelligence_enabled=settings.intelligence_enabled,
+        realtime_enabled=True,
+        realtime_paths=settings.realtime_paths,
+        scheduled_scans_enabled=settings.scheduled_scans_enabled,
+        scheduled_hour=settings.scheduled_hour,
+        scheduled_minute=settings.scheduled_minute,
+        autostart_enabled=settings.autostart_enabled,
+    )
+    store.save(updated)
+    print("Realtime monitoring enabled", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_monitor_disable(args: argparse.Namespace, streams: _Streams) -> int:
+    del args
+    from ..core.settings import AppSettings, SettingsStore
+
+    store = SettingsStore()
+    settings = store.load()
+    updated = AppSettings(
+        default_profile_id=settings.default_profile_id,
+        notifications_enabled=settings.notifications_enabled,
+        color_scheme=settings.color_scheme,
+        usb_autoscan_enabled=settings.usb_autoscan_enabled,
+        intelligence_enabled=settings.intelligence_enabled,
+        realtime_enabled=False,
+        realtime_paths=settings.realtime_paths,
+        scheduled_scans_enabled=settings.scheduled_scans_enabled,
+        scheduled_hour=settings.scheduled_hour,
+        scheduled_minute=settings.scheduled_minute,
+        autostart_enabled=settings.autostart_enabled,
+    )
+    store.save(updated)
+    print("Realtime monitoring disabled", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_monitor_add(args: argparse.Namespace, streams: _Streams) -> int:
+    from ..core.settings import AppSettings, SettingsStore
+
+    path = Path(args.path).expanduser().resolve()
+    if not path.exists() or not path.is_dir():
+        print(f"error: monitored path must be an existing directory: {path}", file=streams.err)
+        return EXIT_USAGE
+
+    store = SettingsStore()
+    settings = store.load()
+    current = list(settings.realtime_paths)
+    path_str = str(path)
+    if path_str not in current:
+        current.append(path_str)
+
+    updated = AppSettings(
+        default_profile_id=settings.default_profile_id,
+        notifications_enabled=settings.notifications_enabled,
+        color_scheme=settings.color_scheme,
+        usb_autoscan_enabled=settings.usb_autoscan_enabled,
+        intelligence_enabled=settings.intelligence_enabled,
+        realtime_enabled=settings.realtime_enabled,
+        realtime_paths=tuple(current),
+        scheduled_scans_enabled=settings.scheduled_scans_enabled,
+        scheduled_hour=settings.scheduled_hour,
+        scheduled_minute=settings.scheduled_minute,
+        autostart_enabled=settings.autostart_enabled,
+    )
+    store.save(updated)
+    print(f"Added to monitored paths: {path_str}", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_sched_status(args: argparse.Namespace, streams: _Streams) -> int:
+    from ..core.settings import SettingsStore
+
+    store = SettingsStore()
+    settings = store.load()
+    time_str = f"{settings.scheduled_hour:02d}:{settings.scheduled_minute:02d}"
+
+    if args.json:
+        payload = {
+            "scheduled_scans_enabled": settings.scheduled_scans_enabled,
+            "scheduled_time": time_str,
+        }
+        print(json.dumps(payload, indent=2), file=streams.out)
+    else:
+        status_str = "enabled" if settings.scheduled_scans_enabled else "disabled"
+        print(f"Daily Scheduled Scans: {status_str}", file=streams.out)
+        print(f"Scheduled Time: {time_str}", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_sched_enable(args: argparse.Namespace, streams: _Streams) -> int:
+    from ..core.settings import AppSettings, SettingsStore
+
+    time_raw = args.time.strip()
+    try:
+        parts = time_raw.split(":")
+        hour = int(parts[0])
+        minute = int(parts[1]) if len(parts) > 1 else 0
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError
+    except Exception:
+        print(f"error: invalid time format: {time_raw} (expected HH:MM)", file=streams.err)
+        return EXIT_USAGE
+
+    store = SettingsStore()
+    settings = store.load()
+    updated = AppSettings(
+        default_profile_id=settings.default_profile_id,
+        notifications_enabled=settings.notifications_enabled,
+        color_scheme=settings.color_scheme,
+        usb_autoscan_enabled=settings.usb_autoscan_enabled,
+        intelligence_enabled=settings.intelligence_enabled,
+        realtime_enabled=settings.realtime_enabled,
+        realtime_paths=settings.realtime_paths,
+        scheduled_scans_enabled=True,
+        scheduled_hour=hour,
+        scheduled_minute=minute,
+        autostart_enabled=settings.autostart_enabled,
+    )
+    store.save(updated)
+    print(f"Daily scheduled scan enabled for {hour:02d}:{minute:02d}", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_sched_disable(args: argparse.Namespace, streams: _Streams) -> int:
+    del args
+    from ..core.settings import AppSettings, SettingsStore
+
+    store = SettingsStore()
+    settings = store.load()
+    updated = AppSettings(
+        default_profile_id=settings.default_profile_id,
+        notifications_enabled=settings.notifications_enabled,
+        color_scheme=settings.color_scheme,
+        usb_autoscan_enabled=settings.usb_autoscan_enabled,
+        intelligence_enabled=settings.intelligence_enabled,
+        realtime_enabled=settings.realtime_enabled,
+        realtime_paths=settings.realtime_paths,
+        scheduled_scans_enabled=False,
+        scheduled_hour=settings.scheduled_hour,
+        scheduled_minute=settings.scheduled_minute,
+        autostart_enabled=settings.autostart_enabled,
+    )
+    store.save(updated)
+    print("Daily scheduled scans disabled", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_autostart_status(args: argparse.Namespace, streams: _Streams) -> int:
+    from ..core.autostart import AutostartManager
+
+    manager = AutostartManager()
+    is_on = manager.is_enabled()
+    if args.json:
+        print(json.dumps({"autostart_enabled": is_on}, indent=2), file=streams.out)
+    else:
+        status_str = "enabled" if is_on else "disabled"
+        print(f"Autostart at Login: {status_str}", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_autostart_enable(args: argparse.Namespace, streams: _Streams) -> int:
+    del args
+    from ..core.autostart import AutostartManager
+    from ..core.settings import AppSettings, SettingsStore
+
+    manager = AutostartManager()
+    manager.enable()
+
+    store = SettingsStore()
+    settings = store.load()
+    updated = AppSettings(
+        default_profile_id=settings.default_profile_id,
+        notifications_enabled=settings.notifications_enabled,
+        color_scheme=settings.color_scheme,
+        usb_autoscan_enabled=settings.usb_autoscan_enabled,
+        intelligence_enabled=settings.intelligence_enabled,
+        realtime_enabled=settings.realtime_enabled,
+        realtime_paths=settings.realtime_paths,
+        scheduled_scans_enabled=settings.scheduled_scans_enabled,
+        scheduled_hour=settings.scheduled_hour,
+        scheduled_minute=settings.scheduled_minute,
+        autostart_enabled=True,
+    )
+    store.save(updated)
+    print("Autostart at login enabled", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_autostart_disable(args: argparse.Namespace, streams: _Streams) -> int:
+    del args
+    from ..core.autostart import AutostartManager
+    from ..core.settings import AppSettings, SettingsStore
+
+    manager = AutostartManager()
+    manager.disable()
+
+    store = SettingsStore()
+    settings = store.load()
+    updated = AppSettings(
+        default_profile_id=settings.default_profile_id,
+        notifications_enabled=settings.notifications_enabled,
+        color_scheme=settings.color_scheme,
+        usb_autoscan_enabled=settings.usb_autoscan_enabled,
+        intelligence_enabled=settings.intelligence_enabled,
+        realtime_enabled=settings.realtime_enabled,
+        realtime_paths=settings.realtime_paths,
+        scheduled_scans_enabled=settings.scheduled_scans_enabled,
+        scheduled_hour=settings.scheduled_hour,
+        scheduled_minute=settings.scheduled_minute,
+        autostart_enabled=False,
+    )
+    store.save(updated)
+    print("Autostart at login disabled", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_monitor_remove(args: argparse.Namespace, streams: _Streams) -> int:
+    from ..core.settings import AppSettings, SettingsStore
+
+    path = Path(args.path).expanduser().resolve()
+    path_str = str(path)
+
+    store = SettingsStore()
+    settings = store.load()
+    current = [p for p in settings.realtime_paths if p != path_str]
+
+    updated = AppSettings(
+        default_profile_id=settings.default_profile_id,
+        notifications_enabled=settings.notifications_enabled,
+        color_scheme=settings.color_scheme,
+        usb_autoscan_enabled=settings.usb_autoscan_enabled,
+        intelligence_enabled=settings.intelligence_enabled,
+        realtime_enabled=settings.realtime_enabled,
+        realtime_paths=tuple(current),
+        scheduled_scans_enabled=settings.scheduled_scans_enabled,
+        scheduled_hour=settings.scheduled_hour,
+        scheduled_minute=settings.scheduled_minute,
+        autostart_enabled=settings.autostart_enabled,
+    )
+    store.save(updated)
+    print(f"Removed from monitored paths: {path_str}", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_intel_status(args: argparse.Namespace, streams: _Streams) -> int:
+    from ..core.settings import SettingsStore
+    from ..intelligence.secrets import IntelligenceSecretStore
+
+    store = SettingsStore()
+    settings = store.load()
+    secret_store = IntelligenceSecretStore()
+    secret_avail = secret_store.is_available()
+
+    has_key = False
+    if secret_avail:
+        try:
+            has_key = bool(secret_store.get_api_key())
+        except Exception:
+            has_key = False
+
+    if args.json:
+        payload = {
+            "intelligence_enabled": settings.intelligence_enabled,
+            "secret_service_available": secret_avail,
+            "api_key_configured": has_key,
+        }
+        print(json.dumps(payload, indent=2), file=streams.out)
+    else:
+        status_str = "enabled" if settings.intelligence_enabled else "disabled"
+        print(f"Threat Intelligence: {status_str}", file=streams.out)
+        print(f"Secret Service Available: {secret_avail}", file=streams.out)
+        print(f"API Key Configured: {has_key}", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_intel_enable(args: argparse.Namespace, streams: _Streams) -> int:
+    del args
+    from ..core.settings import AppSettings, SettingsStore
+
+    store = SettingsStore()
+    settings = store.load()
+    updated = AppSettings(
+        default_profile_id=settings.default_profile_id,
+        notifications_enabled=settings.notifications_enabled,
+        color_scheme=settings.color_scheme,
+        usb_autoscan_enabled=settings.usb_autoscan_enabled,
+        intelligence_enabled=True,
+        realtime_enabled=settings.realtime_enabled,
+        realtime_paths=settings.realtime_paths,
+        scheduled_scans_enabled=settings.scheduled_scans_enabled,
+        scheduled_hour=settings.scheduled_hour,
+        scheduled_minute=settings.scheduled_minute,
+        autostart_enabled=settings.autostart_enabled,
+    )
+    store.save(updated)
+    print("Threat Intelligence enabled", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_intel_disable(args: argparse.Namespace, streams: _Streams) -> int:
+    del args
+    from ..core.settings import AppSettings, SettingsStore
+
+    store = SettingsStore()
+    settings = store.load()
+    updated = AppSettings(
+        default_profile_id=settings.default_profile_id,
+        notifications_enabled=settings.notifications_enabled,
+        color_scheme=settings.color_scheme,
+        usb_autoscan_enabled=settings.usb_autoscan_enabled,
+        intelligence_enabled=False,
+        realtime_enabled=settings.realtime_enabled,
+        realtime_paths=settings.realtime_paths,
+        scheduled_scans_enabled=settings.scheduled_scans_enabled,
+        scheduled_hour=settings.scheduled_hour,
+        scheduled_minute=settings.scheduled_minute,
+        autostart_enabled=settings.autostart_enabled,
+    )
+    store.save(updated)
+    print("Threat Intelligence disabled", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_intel_lookup(args: argparse.Namespace, streams: _Streams) -> int:
+    from ..intelligence.secrets import IntelligenceSecretStore, SecretStorageError
+    from ..intelligence.virustotal import VirusTotalProvider
+
+    sha256 = args.hash.strip().lower()
+    if len(sha256) != 64 or any(ch not in "0123456789abcdef" for ch in sha256):
+        print(
+            "error: argument must be a 64-character hexadecimal SHA-256 digest",
+            file=streams.err,
+        )
+        return EXIT_USAGE
+
+    secret_store = IntelligenceSecretStore()
+    try:
+        api_key = secret_store.get_api_key()
+    except SecretStorageError as exc:
+        print(f"error: {exc}", file=streams.err)
+        return EXIT_ENGINE_ERROR
+
+    if not api_key:
+        print("error: no VirusTotal API key configured in Secret Service", file=streams.err)
+        return EXIT_ENGINE_ERROR
+
+    provider = VirusTotalProvider(api_key)
+    try:
+        result = asyncio.run(provider.lookup_hash(sha256))
+    except Exception as exc:
+        print(f"error: lookup failed: {exc}", file=streams.err)
+        return EXIT_ENGINE_ERROR
+
+    if args.json:
+        print(json.dumps(result, indent=2), file=streams.out)
+    else:
+        found = result.get("found", False)
+        print(f"Hash: {sha256}", file=streams.out)
+        print(f"Found: {found}", file=streams.out)
+        if found:
+            malicious = result.get("malicious", False)
+            print(f"Malicious verdict: {malicious}", file=streams.out)
+            stats = result.get("last_analysis_stats", {})
+            total = sum(stats.values())
+            mal_count = stats.get("malicious", 0)
+            print(f"Detections: {mal_count} / {total}", file=streams.out)
+            print(f"Permalink: {result.get('permalink')}", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_usb_scan(args: argparse.Namespace, streams: _Streams) -> int:
+    from ..core.usb import USBDeviceScanner
+
+    profile = _resolve_profile(args.profile, streams)
+    if profile is None:
+        return EXIT_USAGE
+    mount_path = Path(args.mount_point)
+
+    engine = _default_engine()
+    runner = ScanTaskRunner(engine, max_concurrency=1)
+    history_store: HistoryStore | None = None
+    try:
+        history_store = _default_history_store()
+    except HistoryError as exc:
+        print(f"warning: history recording disabled: {exc}", file=streams.err)
+
+    scanner = USBDeviceScanner(runner, history_store=history_store, default_profile=profile)
+    if not args.json:
+        print(f"ClamGuardian USB Scan\nMount: {mount_path}", file=streams.out)
+        print("Scanning removable device...", file=streams.out)
+
+    try:
+        result = asyncio.run(scanner.scan_device(mount_path, profile=profile))
+    except KeyboardInterrupt:
+        print("Scan cancelled by user", file=streams.err)
+        return EXIT_CANCELLED
+    except Exception as exc:
+        print(f"error: USB scan failed: {exc}", file=streams.err)
+        return EXIT_ENGINE_ERROR
+    finally:
+        if history_store is not None:
+            with contextlib.suppress(Exception):
+                asyncio.run(history_store.close())
+
+    return _report_result(result, profile.id, args, streams)
 
 
 async def _history_list(

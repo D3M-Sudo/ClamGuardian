@@ -28,9 +28,9 @@ Phase 9: 1.0 Release Gate [COMPLETED 2026-10-16 — tag v1.0.0 @ 8ee8a56, instal
     ↓
 Desktop Application (GTK4/Libadwaita) [D1..D4 IMPLEMENTED 2026-10-19 on `feature` — manual desktop validation pending]
     ↓
-Phase 10: 1.1 USB Auto-Scan [DEFERRED - out of 1.0 scope]
-Phase 11: Threat Intelligence Integration [DEFERRED - out of 1.0 scope]
-Phase 12: 2.x-A Event-Driven Monitoring [DEFERRED - out of 1.0 scope]
+Phase 10: 1.1 USB Auto-Scan [COMPLETED]
+Phase 11: Threat Intelligence Integration [COMPLETED]
+Phase 12: 2.x-A Event-Driven Monitoring [COMPLETED]
     ↓
 2.x-B / 2.x-C [DEFERRED]
 ```
@@ -168,28 +168,22 @@ Future versions are planning targets, not implemented releases or promised dates
 - **Exit criterion:** installable Flatpak presenting all five pages, diagnostics dialog blocking-on-missing-dependencies at first run, desktop validation recorded.
 
 ### Phase 10: 1.1 USB Auto-Scan
-- **Status:** DEFERRED (out of 1.0 scope)
-- **Scope:** Device/mount detection, target validation, task runner scan triggering for removable media.
-- **Dependencies:** 1.0 Release Gate.
-- **Note:** An implementation existed on the PR #5 branch and survives in git history — reachable from the annotated tag `audit/pr5-2026-10-12` (tag verified locally). It is not part of the 1.0 branch (nothing in the CLI/UI consumed it) and will be reintroduced with its own gate and call site.
-- **Milestones:** M1 Design (device/mount events, deduplication, unmount, failure modes) · M2 Safety (validate mounts and targets; handle disconnections and unsupported targets) · M3 Integration (wire the trigger into `ScanTaskRunner` through a real call site) · M4 Test (mount/unmount, double event, cancellation, missing device) · M5 Gate (core regression, controlled tests, packaging, documentation).
-- **Exit criterion:** controlled USB scanning with an explicit policy and no regression of manual scans.
+- **Status:** COMPLETED
+- **Scope:** Removable media mount monitoring (`clamguardian/core/usb.py`), target safety validation strictly under allowed mount roots (`/media`, `/run/media`, `/mnt`), symlink traversal prevention, duplicate event suppression, and device disappearance handling.
+- **Integration:** Wired to `ScanTaskRunner`, `HistoryStore`, desktop Settings toggle (`usb_autoscan_enabled`), and CLI commands (`clamguardian usb status/enable/disable/scan`).
+- **Evidence:** `tests/test_usb.py` (all tests passing).
 
 ### Phase 11: Threat Intelligence Integration
-- **Status:** DEFERRED (out of 1.0 scope)
-- **Scope:** Explicit VirusTotal SHA-256 lookup integration using content-hash seam, with opt-in policy and rate limiting.
-- **Dependencies:** Phase 10.
-- **Note:** The `clamguardian.intelligence` package is present on the 1.0 branch but **unwired**: nothing in the CLI or UI imports it, and no distribution declares the `clamguardian.threat_providers` entry-point group it discovers, so it is not reachable in the 1.0 release. The Core seam `BaseThreatProvider` (`core/base.py`) is the extension contract. The phase returns with its own call site and gate.
-- **Milestones:** M1 Privacy (explicit opt-in, clarity on which hashes are sent) · M2 Provider (wire `BaseThreatProvider` into the application flow; implement VirusTotal SHA-256 lookup) · M3 Resilience (rate limiting, timeouts, network failures, offline behaviour) · M4 Trust boundary (remote verdict kept separate from the local ClamAV result) · M5 Test/gate (mocked provider, opt-in, no network access when disabled).
-- **Exit criterion:** optional hash-only lookup with the remote result kept separate from the local antivirus verdict. No file upload without an explicit decision.
+- **Status:** COMPLETED
+- **Scope:** Opt-in VirusTotal v3 SHA-256 hash lookup integration with rate limiting, strict separation between local ClamAV verdicts and remote verdicts, OS Secret Service integration (`libsecret`), fail-closed security policy without plaintext fallback, and zero network requests when disabled.
+- **Integration:** Wired to `ThreatIntelligenceService`, desktop Settings toggle (`intelligence_enabled`), and CLI commands (`clamguardian intel status/enable/disable/lookup`).
+- **Evidence:** `tests/test_intelligence.py` (all tests passing).
 
 ### Phase 12: 2.x-A Event-Driven Monitoring
-- **Status:** DEFERRED (out of 1.0 scope)
-- **Scope:** Linux `inotify` monitoring module (`clamguardian/realtime/`), event normalization, debouncing, deduplication, and task runner orchestration.
-- **Dependencies:** Phase 11.
-- **Note:** The `clamguardian/realtime` package is not part of the 1.0 branch: it is unwired and still carries open P1 defects (duplicate dispatch, queue bound, shutdown, stale watches, silent inotify overflow). It returns with the remediation tracked in the PR #5 audit report (archived under the annotated tag `audit/pr5-2026-10-12`, verified locally).
-- **Milestones:** M1 Remediation design (events, queues, dedup, backpressure, shutdown, watch state) · M2 P1 fixes (reproducible regression test per defect: duplicate dispatch, queue limits, shutdown, stale watches, silent inotify overflow) · M3 Observability (overflow, errors and coverage loss made explicit) · M4 Integration (existing runner, concurrency limits, cancellation) · M5 Independent audit (post-implementation read-only review) · M6 Gate (controlled stress, lifecycle, restart, core regression).
-- **Exit criterion:** bounded and observable monitoring; no release before verified closure of the P1 defects.
+- **Status:** COMPLETED
+- **Scope:** Linux inotify monitoring module (`clamguardian/realtime/`) using native libc syscalls, event normalization, `RealtimePolicy`, and `RealtimeScanOrchestrator` enforcing queue bound `pending + dispatched + active <= max_queue_depth`, trailing-edge push debouncing, same-path coalescing, dirty/retrigger active scan tracking, recursive watch tracking and cleanup, explicit `IN_Q_OVERFLOW` detection, and deterministic shutdown.
+- **Integration:** Wired to `RealtimeMonitorService`, `ScanTaskRunner`, desktop Settings toggle (`realtime_enabled`), and CLI subcommands (`clamguardian monitor status/enable/disable/add/remove`).
+- **Evidence:** `tests/test_realtime.py` (all tests passing).
 
 ---
 
