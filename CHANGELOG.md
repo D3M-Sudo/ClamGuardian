@@ -9,7 +9,7 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 ## [Unreleased]
 
 ### Fixed
-- **USB lifecycle and mount validation:** require an actual filesystem mount beneath an allowed removable-media root; track background scan tasks, cancel them on unmount/shutdown, and prevent ordinary directories from being treated as removable devices.
+- **USB lifecycle and mount validation:** require an actual mount backed by removable/USB block-device identity beneath an allowed root; track background scan tasks, cancel them on unmount/shutdown, and prevent ordinary directories from being treated as removable devices.
 - **Realtime lifecycle:** recreate the scan orchestrator on each start, fail startup when configured directories or recursive watches cannot be registered, and expose watch-registration failures instead of reporting incomplete monitoring as active.
 - **Scheduled scans:** persist the last successful daily run across restarts and retry failed scans rather than recording a failed attempt as completed.
 - **Background service integration:** start and stop USB, realtime and scheduler services from the GTK application lifecycle using the application's shared scan runner and history store; apply realtime path changes.
@@ -19,7 +19,7 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ### Added
 - **USB Auto-Scan (1.1)**: Removable media mount monitoring (`clamguardian/core/usb.py`), target safety validation, symlink traversal prevention, duplicate event suppression, and device disappearance handling. Integrated into GTK Settings and CLI (`clamguardian usb status/enable/disable/scan`).
-- **Threat Intelligence (1.2)**: Opt-in VirusTotal v3 SHA-256 hash lookup integration with rate limiting, strict separation between local ClamAV verdicts and remote verdicts, OS Secret Service integration (`libsecret`), fail-closed security policy without plaintext fallback, and CLI commands (`clamguardian intel status/enable/disable/lookup`).
+- **Threat Intelligence (1.2)**: Opt-in VirusTotal v3 SHA-256 hash lookup integration with rate limiting, strict separation between local ClamAV verdicts and remote verdicts, OS Secret Service integration (`libsecret`), fail-closed security policy without plaintext fallback, and CLI commands (`clamguardian intel set-key/status/enable/disable/lookup`).
 - **Realtime Event-Driven Monitoring (2.x-A)**: Native Linux `InotifyMonitor` using libc syscalls, `RealtimeScanOrchestrator` enforcing queue bound `pending + dispatched + active <= max_queue_depth`, trailing-edge push debouncing, same-path coalescing, dirty/retrigger active scan tracking, recursive watch tracking and cleanup, explicit `IN_Q_OVERFLOW` detection, and CLI subcommands (`clamguardian monitor status/enable/disable/add/remove`).
 - **Scheduled Scans**: Unprivileged daily scheduled scan manager (`clamguardian/core/scheduler.py`) with missed-scan recovery, integrated with `ScanTaskRunner` and `HistoryStore`, exposed via GTK Settings and CLI (`clamguardian schedule status/enable/disable`).
 - **User-Session Autostart**: Optional autostart manager (`clamguardian/core/autostart.py`) installing user-session desktop entries in `~/.config/autostart`, disabled by default, exposed via GTK Settings and CLI (`clamguardian autostart status/enable/disable`).
