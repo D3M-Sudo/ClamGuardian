@@ -330,6 +330,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     intel_lookup.set_defaults(func=_cmd_intel_lookup)
 
+    intel_set_key = intel_sub.add_parser(
+        "set-key",
+        help="store the VirusTotal API key in Secret Service",
+        description="Read an API key without echo and store it in the OS Secret Service.",
+    )
+    intel_set_key.set_defaults(func=_cmd_intel_set_key)
+
     intel_status = intel_sub.add_parser(
         "status",
         help="show threat intelligence status",
@@ -860,6 +867,22 @@ def _cmd_monitor_remove(args: argparse.Namespace, streams: _Streams) -> int:
     )
     store.save(updated)
     print(f"Removed from monitored paths: {path_str}", file=streams.out)
+    return EXIT_OK
+
+
+def _cmd_intel_set_key(args: argparse.Namespace, streams: _Streams) -> int:
+    del args
+    import getpass
+
+    from ..intelligence.secrets import IntelligenceSecretStore, SecretStorageError
+
+    try:
+        api_key = getpass.getpass("VirusTotal API key (input hidden): ")
+        IntelligenceSecretStore().set_api_key(api_key)
+    except (SecretStorageError, ValueError) as exc:
+        print(f"error: could not store VirusTotal API key: {exc}", file=streams.err)
+        return EXIT_ENGINE_ERROR
+    print("VirusTotal API key stored in OS Secret Service", file=streams.out)
     return EXIT_OK
 
 
