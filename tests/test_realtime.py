@@ -15,11 +15,11 @@ import asyncio
 from pathlib import Path
 
 import pytest
-from clamguardian.realtime.events import FileEvent, FileEventType
 
 from clamguardian.core.base import BaseAVEngine, ScanResult, ScanStatus
 from clamguardian.core.profiles import ScanProfile
 from clamguardian.core.runner import ScanTaskRunner
+from clamguardian.realtime.events import FileEvent, FileEventType
 from clamguardian.realtime.inotify import InotifyMonitor
 from clamguardian.realtime.orchestrator import RealtimeScanOrchestrator
 from clamguardian.realtime.service import RealtimeMonitorService
