@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import array
 import asyncio
 import os
 import signal
+import socket
+import stat
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -77,9 +80,16 @@ class ClamAVEngine(BaseAVEngine):
         started = datetime.now(UTC)
         if self.socket_path.exists():
             try:
-                output, exit_code, unsupported = await asyncio.wait_for(
-                    self._scan_socket(target, profile), self.command_timeout
+                socket_scan = (
+                    self._scan_socket_fd(target, profile)
+                    if target.is_file()
+                    else self._scan_socket(target, profile)
                 )
+                output, exit_code, unsupported = await asyncio.wait_for(
+                    socket_scan, self.command_timeout
+                )
+                if "UNKNOWN COMMAND" in output.upper():
+                    raise ValueError("clamd does not support descriptor-based FILDES scans")
                 result = self._result(target, started, output, exit_code, "clamd")
                 # Explicit policy for options clamd cannot honour per
                 # connection (they are clamd.conf server-side settings):
@@ -159,6 +169,64 @@ class ClamAVEngine(BaseAVEngine):
         if code != 0:
             raise EngineError(f"freshclam failed with exit code {code}: {output.strip()}")
         return output.strip()
+
+    async def _scan_socket_fd(
+        self, target: Path, profile: ScanProfile
+    ) -> tuple[str, int, tuple[str, ...]]:
+        """Send an already-open regular file to clamd with SCM_RIGHTS/FILDES.
+
+        The daemon reads the same inode opened by this process; it does not
+        reopen a pathname and therefore does not need access to a private
+        realtime snapshot directory.
+        """
+        fd = os.open(target, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM | socket.SOCK_CLOEXEC)
+        sock.setblocking(False)
+        loop = asyncio.get_running_loop()
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise ValueError("FILDES target is not a regular file")
+            await loop.sock_connect(sock, str(self.socket_path))
+            payload = b"FILDES\\n"
+            ancillary = [
+                (socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [fd]))
+            ]
+            while True:
+                try:
+                    sent = sock.sendmsg([payload], ancillary)
+                    break
+                except BlockingIOError:
+                    ready = loop.create_future()
+                    loop.add_writer(
+                        sock.fileno(),
+                        lambda: None if ready.done() else ready.set_result(None),
+                    )
+                    try:
+                        await ready
+                    finally:
+                        loop.remove_writer(sock.fileno())
+            if sent < len(payload):
+                await loop.sock_sendall(sock, payload[sent:])
+
+            response = bytearray()
+            while True:
+                chunk = await loop.sock_recv(sock, 65536)
+                if not chunk:
+                    break
+                response.extend(chunk)
+                if len(response) > MAX_RESPONSE_BYTES:
+                    raise ValueError("clamd response exceeded the size limit")
+            output = bytes(response).decode("utf-8", errors="replace")
+            if " ERROR" in output or output.strip().endswith("ERROR"):
+                raise ValueError("clamd FILDES scan failed")
+            code = 1 if any(
+                " ERROR" in line or line.endswith("ERROR")
+                for line in output.splitlines()
+            ) else 0
+            return output, code, self._clamd_unsupported_options(profile)
+        finally:
+            sock.close()
+            os.close(fd)
 
     async def _scan_socket(
         self, target: Path, profile: ScanProfile

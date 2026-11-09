@@ -166,7 +166,7 @@ async def test_clamd_branch_records_single_file_sha256(
     async def fake_socket(target, profile):
         return f"{target}: OK\n", 0, ()
 
-    monkeypatch.setattr(engine, "_scan_socket", fake_socket)
+    monkeypatch.setattr(engine, "_scan_socket_fd", fake_socket)
 
     result = await engine.scan(file_target)
     assert result.engine == "clamd"
