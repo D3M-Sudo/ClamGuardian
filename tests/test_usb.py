@@ -116,7 +116,9 @@ async def test_usb_scan_duplicate_event_suppression(tmp_path: Path) -> None:
 
     runner = ScanTaskRunner(StubEngine(delay=0.1))
     scanner = USBDeviceScanner(
-        runner, allowed_mount_roots=(media_root,), mount_detector=lambda path: path == mount.resolve()
+        runner,
+        allowed_mount_roots=(media_root,),
+        mount_detector=lambda path: path == mount.resolve(),
     )
 
     task1 = asyncio.create_task(scanner.scan_device(mount))
@@ -139,7 +141,9 @@ async def test_usb_scan_device_disappearance_during_scan(tmp_path: Path) -> None
 
     runner = ScanTaskRunner(StubEngine(fail=True))
     scanner = USBDeviceScanner(
-        runner, allowed_mount_roots=(media_root,), mount_detector=lambda path: path == mount.resolve()
+        runner,
+        allowed_mount_roots=(media_root,),
+        mount_detector=lambda path: path == mount.resolve(),
     )
 
     result = await scanner.scan_device(mount)
@@ -156,7 +160,9 @@ async def test_usb_mount_monitor_lifecycle(tmp_path: Path) -> None:
 
     runner = ScanTaskRunner(StubEngine())
     scanner = USBDeviceScanner(
-        runner, allowed_mount_roots=(media_root,), mount_detector=lambda path: path == mount.resolve()
+        runner,
+        allowed_mount_roots=(media_root,),
+        mount_detector=lambda path: path == mount.resolve(),
     )
 
     scanned_results: list[ScanResult] = []
