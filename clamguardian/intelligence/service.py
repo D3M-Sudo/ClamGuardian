@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from ..core.base import ScanResult
@@ -28,6 +29,7 @@ class ThreatIntelligenceService:
         self._custom_provider = provider
         self._provider: VirusTotalProvider | None = provider
         self._provider_initialized = provider is not None
+        self._upload_lookup: tuple[str, str, dict[str, Any], float] | None = None
 
     def is_enabled(self) -> bool:
         return self.settings_store.load().intelligence_enabled
@@ -41,12 +43,24 @@ class ThreatIntelligenceService:
         profile = self.selected_profile()
         if profile is APIProfile.PUBLIC and not VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED:
             return None
+        if (
+            self._provider_initialized
+            and self._custom_provider is None
+            and self._provider is not None
+            and getattr(self._provider, "profile", profile) is not profile
+        ):
+            self._provider = None
+            self._provider_initialized = False
+            self._upload_lookup = None
         if self._provider_initialized:
             return self._provider
         try:
             credential = self.secret_store.get_credential(profile)
             if not credential:
-                logger.warning("Threat intelligence enabled but no credential configured for %s", profile.value)
+                logger.warning(
+                    "Threat intelligence enabled but no credential configured for %s",
+                    profile.value,
+                )
                 return None
             self._provider = VirusTotalProvider(credential, profile=profile)
             self._provider_initialized = True
@@ -59,7 +73,11 @@ class ThreatIntelligenceService:
         if not self.is_enabled():
             return None
         sha256 = result.metadata.get("sha256")
-        if not isinstance(sha256, str) or len(sha256) != 64:
+        if (
+            not isinstance(sha256, str)
+            or len(sha256) != 64
+            or any(ch not in "0123456789abcdefABCDEF" for ch in sha256)
+        ):
             return None
         provider = self.get_provider()
         if provider is None:
@@ -67,11 +85,15 @@ class ThreatIntelligenceService:
         try:
             return await provider.lookup_hash(sha256)
         except Exception as exc:
-            # Do not log or return raw upstream bodies, credentials, or file paths.
             logger.error("Threat intelligence lookup failed (%s)", type(exc).__name__)
-            return {"provider": provider.name, "error": "VirusTotal lookup failed", "sha256": sha256}
+            return {
+                "provider": provider.name,
+                "error": "VirusTotal lookup failed",
+                "sha256": sha256,
+            }
 
     def preview_file_upload(self, path):
+        self._upload_lookup = None
         if not self.is_enabled():
             raise PermissionError("Threat Intelligence must be enabled before upload")
         if self.get_provider() is None:
@@ -79,19 +101,39 @@ class ThreatIntelligenceService:
         return preview_upload(path)
 
     async def lookup_upload_candidate(self, preview) -> dict[str, Any]:
+        self._upload_lookup = None
         provider = self.get_provider()
         if provider is None:
             raise PermissionError("Selected VirusTotal API profile is unavailable or blocked")
-        return await provider.lookup_hash(preview.sha256)
+        report = await provider.lookup_hash(preview.sha256)
+        self._upload_lookup = (
+            preview.sha256,
+            self.selected_profile().value,
+            report,
+            time.monotonic(),
+        )
+        return report
 
     async def upload_file(
         self, preview, *, consent: bool, lookup_report: dict[str, Any]
     ) -> dict[str, Any]:
-        if lookup_report.get("found") is not False:
+        if consent is not True:
+            raise PermissionError("Explicit per-file consent is required before upload")
+        cached = self._upload_lookup
+        if (
+            cached is None
+            or cached[0] != preview.sha256
+            or cached[1] != self.selected_profile().value
+            or time.monotonic() - cached[3] > 300
+            or cached[2].get("found") is not False
+            or not isinstance(lookup_report, dict)
+            or lookup_report.get("found") is not False
+        ):
             raise PermissionError(
-                "File upload is permitted only after a successful hash lookup reports no existing file"
+                "Upload requires a recent successful hash lookup for this exact file and API profile"
             )
+        self._upload_lookup = None
         provider = self.get_provider()
         if provider is None:
             raise PermissionError("Selected VirusTotal API profile is unavailable or blocked")
-        return await submit_after_consent(provider, preview, consent=consent)
+        return await submit_after_consent(provider, preview, consent=True)

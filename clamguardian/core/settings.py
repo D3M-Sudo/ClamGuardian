@@ -44,10 +44,12 @@ class AppSettings:
         if resolve_profile(profile_id) is None:
             profile_id = DEFAULT_PROFILE_ID
         scheme = self.color_scheme if self.color_scheme in VALID_COLOR_SCHEMES else "system"
-        try:
-            intel_profile = self.intelligence_profile if self.intelligence_profile in {"public", "premium"} else "public"
-        except ValueError:
-            intel_profile = APIProfile.PUBLIC.value
+        intel_profile = (
+            self.intelligence_profile
+            if isinstance(self.intelligence_profile, str)
+            and self.intelligence_profile in {"public", "premium"}
+            else "public"
+        )
         return AppSettings(
             default_profile_id=profile_id,
             notifications_enabled=bool(self.notifications_enabled),
