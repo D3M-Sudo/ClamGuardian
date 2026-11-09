@@ -147,10 +147,17 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
 
         def set_realtime_runtime_status(self, status: dict[str, object]) -> None:
             """Display live monitor health, including watch and event-loss counters."""
-            failures = status.get("watch_failures", ())
-            overflow = int(status.get("overflow_count", 0))
-            dropped = int(status.get("dropped_events_count", 0))
-            running = bool(status.get("running", False))
+            raw_failures = status.get("watch_failures", ())
+            failures = (
+                tuple(raw_failures)
+                if isinstance(raw_failures, (tuple, list))
+                else ()
+            )
+            raw_overflow = status.get("overflow_count", 0)
+            overflow = raw_overflow if isinstance(raw_overflow, int) else 0
+            raw_dropped = status.get("dropped_events_count", 0)
+            dropped = raw_dropped if isinstance(raw_dropped, int) else 0
+            running = status.get("running") is True
             if failures:
                 subtitle = f"Degraded — {len(failures)} watch registration failure(s)"
             elif running:
