@@ -268,6 +268,17 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             )
 
         def _on_autostart_changed(self, row: Adw.SwitchRow, _pspec: object) -> None:
+            if row.get_active():
+                from ..core.autostart import AutostartManager
+
+                if AutostartManager._inside_flatpak():
+                    self._show_error(
+                        "Autostart unavailable in Flatpak",
+                        "Host XDG autostart cannot be written from the sandbox. "
+                        "A supported desktop Background portal integration is not yet available.",
+                    )
+                    row.set_active(False)
+                    return
             self._persist(
                 AppSettings(
                     default_profile_id=self._settings.default_profile_id,
