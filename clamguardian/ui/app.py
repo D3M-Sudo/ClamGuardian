@@ -28,6 +28,7 @@ from ..core.base import ScanResult
 from ..core.diagnostics import CheckResult, critical_missing, run_dependency_checks
 from ..core.quarantine import QuarantineEntry, QuarantineVault
 from ..core.settings import AppSettings, SettingsStore
+from ..intelligence.service import ThreatIntelligenceService
 from ..history.backend import SqliteHistoryStore, default_history_db_path
 from .controller import ShieldTaskController
 from .database_pages import GTK_AVAILABLE
@@ -121,6 +122,9 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 settings_store if settings_store is not None else SettingsStore()
             )
             self._settings = self._settings_store.load()
+            self._intelligence_service = ThreatIntelligenceService(
+                settings_store=self._settings_store
+            )
             self._vault = QuarantineVault(
                 self._key_manager.directory,
                 self._key_manager.load_or_create(),
@@ -292,7 +296,12 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 withdraw_scan_notification(self.get_application())
 
         async def _store_scan_result(self, result: ScanResult) -> None:
-            """Persist *result* to the history store off the GTK loop."""
+            """Enrich a completed local scan with optional hash-only intelligence."""
+            report = await self._intelligence_service.lookup_scan_result(result)
+            if report is not None:
+                # Keep the remote assessment explicitly separate from ClamAV's
+                # local verdict; it is supplemental metadata, never a rewrite.
+                result.metadata["threat_intelligence"] = report
             await self._history_store.record_scan(result)
             GLib.idle_add(self._after_scan_recorded, result)
 
