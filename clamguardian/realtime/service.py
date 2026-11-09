@@ -91,7 +91,9 @@ class RealtimeMonitorService:
         try:
             for path in self.monitored_paths:
                 if not path.is_dir():
-                    raise RuntimeError(f"Configured realtime path is not an accessible directory: {path}")
+                    raise RuntimeError(
+                        f"Configured realtime path is not an accessible directory: {path}"
+                    )
                 watch = self._monitor.add_watch(path)
                 if watch < 0:
                     raise RuntimeError(f"Could not watch configured path: {path}")
