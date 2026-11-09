@@ -114,7 +114,9 @@ async def test_intelligence_service_lookup_when_enabled(tmp_path, monkeypatch) -
 
 
 @pytest.mark.asyncio
-async def test_intelligence_service_reuses_provider_and_enforces_terms_gate(tmp_path, monkeypatch) -> None:
+async def test_intelligence_service_reuses_provider_and_enforces_terms_gate(
+    tmp_path, monkeypatch
+) -> None:
     store = SettingsStore(tmp_path / "settings.json")
     store.save(AppSettings(intelligence_enabled=True))
     provider = AsyncMock(spec=VirusTotalProvider)
