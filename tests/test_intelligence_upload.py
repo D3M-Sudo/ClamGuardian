@@ -2,8 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock
+
+import pytest
 
 from clamguardian.intelligence.virustotal import VirusTotalProvider
 
@@ -41,12 +45,8 @@ class _FakeSession:
 
 
 def test_premium_upload_posts_only_after_absent_hash_lookup(tmp_path: Path) -> None:
-    from unittest.mock import AsyncMock
-
     sample = tmp_path / "fixture.bin"
     sample.write_bytes(b"non-sensitive test fixture")
-    import hashlib
-
     digest = hashlib.sha256(sample.read_bytes()).hexdigest()
     captured: dict[str, Any] = {}
     provider = VirusTotalProvider(
@@ -67,8 +67,6 @@ def test_premium_upload_posts_only_after_absent_hash_lookup(tmp_path: Path) -> N
 
 
 def test_upload_url_rejects_untrusted_hosts() -> None:
-    import pytest
-
     with pytest.raises(RuntimeError, match="unsafe upload URL"):
         VirusTotalProvider._validate_upload_url(
             "https://attacker.example/api/v3/files"
@@ -76,8 +74,6 @@ def test_upload_url_rejects_untrusted_hosts() -> None:
 
 
 def test_upload_url_rejects_unexpected_paths() -> None:
-    import pytest
-
     with pytest.raises(RuntimeError, match="unsafe upload URL"):
         VirusTotalProvider._validate_upload_url(
             "https://www.virustotal.com/api/v3/files/redirect"
