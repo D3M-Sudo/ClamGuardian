@@ -36,8 +36,17 @@ class AutostartManager:
         """Check if user-session autostart desktop entry exists."""
         return self.entry_path.is_file()
 
+    @staticmethod
+    def _inside_flatpak() -> bool:
+        return Path("/.flatpak-info").is_file()
+
     def enable(self) -> None:
-        """Install user-session autostart desktop entry."""
+        """Install user-session autostart desktop entry outside Flatpak."""
+        if self._inside_flatpak():
+            raise RuntimeError(
+                "XDG host autostart cannot be installed from the Flatpak sandbox; "
+                "use a supported desktop Background portal integration"
+            )
         self.autostart_dir.mkdir(parents=True, exist_ok=True)
         self.entry_path.write_text(DESKTOP_ENTRY_TEMPLATE, encoding="utf-8")
         with contextlib.suppress(OSError):
