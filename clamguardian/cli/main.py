@@ -920,10 +920,12 @@ def _cmd_intel_status(args: argparse.Namespace, streams: _Streams) -> int:
         print(f"Threat Intelligence: {status_str}", file=streams.out)
         print(f"Secret Service Available: {secret_avail}", file=streams.out)
         print(f"API Key Configured: {has_key}", file=streams.out)
-        print(
-            f"VirusTotal terms eligibility gate: {'cleared' if VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED else 'BLOCKED — maintainer review required'}",
-            file=streams.out,
+        gate_status = (
+            "cleared"
+            if VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED
+            else "BLOCKED — maintainer review required"
         )
+        print(f"VirusTotal terms eligibility gate: {gate_status}", file=streams.out)
     return EXIT_OK
 
 
@@ -949,7 +951,8 @@ def _cmd_intel_enable(args: argparse.Namespace, streams: _Streams) -> int:
     store.save(updated)
     print("Threat Intelligence preference enabled", file=streams.out)
     print(
-        "VirusTotal network lookups remain blocked until the maintainer verifies applicable Public API terms and product eligibility.",
+        "VirusTotal network lookups remain blocked until the maintainer verifies "
+        "applicable Public API terms and product eligibility.",
         file=streams.out,
     )
     return EXIT_OK
