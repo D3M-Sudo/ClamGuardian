@@ -50,11 +50,13 @@ class USBDeviceScanner:
         history_store: HistoryStore | None = None,
         default_profile: ScanProfile | None = None,
         allowed_mount_roots: tuple[Path, ...] | None = None,
+        mount_detector: Callable[[Path], bool] | None = None,
     ) -> None:
         self.runner = runner
         self.history_store = history_store
         self.profile = default_profile or DEFAULT_PROFILE
-        self.mount_roots = allowed_mount_roots or self.DEFAULT_MOUNT_ROOTS
+        self.mount_roots = tuple(Path(root).resolve() for root in (allowed_mount_roots or self.DEFAULT_MOUNT_ROOTS))
+        self._mount_detector = mount_detector or (lambda path: path.is_mount())
         self._active_mounts: set[Path] = set()
         self._lock = asyncio.Lock()
 
@@ -63,10 +65,11 @@ class USBDeviceScanner:
         try:
             target = Path(mount_point).expanduser()
             resolved = target.resolve(strict=False)
-            return any(
+            under_allowed_root = any(
                 resolved != root and root in resolved.parents
                 for root in self.mount_roots
             )
+            return under_allowed_root and self._mount_detector(resolved)
         except (OSError, ValueError):
             return False
 
