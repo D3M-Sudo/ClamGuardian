@@ -14,10 +14,19 @@ def normalize_file_report(payload: dict[str, Any], sha256: str) -> dict[str, Any
     stats = attributes.get("last_analysis_stats")
     if not isinstance(stats, dict):
         stats = {}
+    allowed_stats = {
+        "malicious",
+        "suspicious",
+        "harmless",
+        "undetected",
+        "timeout",
+        "failure",
+        "type-unsupported",
+    }
     normalized_stats = {
-        key: int(value) for key, value in stats.items()
-        if key in {"malicious", "suspicious", "harmless", "undetected", "timeout", "failure", "type-unsupported"}
-        and isinstance(value, (int, float))
+        key: int(value)
+        for key, value in stats.items()
+        if key in allowed_stats and isinstance(value, (int, float))
     }
     return {
         "provider": "virustotal",

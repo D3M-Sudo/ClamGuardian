@@ -65,7 +65,9 @@ class IntelligenceSecretStore:
                     self.set_credential(APIProfile.PUBLIC, value)
             return value or None
         except Exception as exc:
-            raise SecretStorageError("Could not retrieve VirusTotal credential from Secret Service") from exc
+            raise SecretStorageError(
+                "Could not retrieve VirusTotal credential from Secret Service"
+            ) from exc
 
     def set_credential(self, profile: APIProfile | str, api_key: str) -> None:
         if not isinstance(api_key, str) or not api_key.strip():
@@ -85,7 +87,9 @@ class IntelligenceSecretStore:
         except SecretStorageError:
             raise
         except Exception as exc:
-            raise SecretStorageError("Could not store VirusTotal credential in Secret Service") from exc
+            raise SecretStorageError(
+                "Could not store VirusTotal credential in Secret Service"
+            ) from exc
 
     def clear_credential(self, profile: APIProfile | str) -> None:
         Secret = self._secret_api()
@@ -94,7 +98,9 @@ class IntelligenceSecretStore:
                 self._schema(Secret), self._attributes(profile), None
             )
         except Exception as exc:
-            raise SecretStorageError("Could not clear VirusTotal credential from Secret Service") from exc
+            raise SecretStorageError(
+                "Could not clear VirusTotal credential from Secret Service"
+            ) from exc
 
     # Backwards-compatible Public profile methods.
     def get_api_key(self) -> str | None:

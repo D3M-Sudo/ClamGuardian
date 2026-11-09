@@ -130,7 +130,8 @@ class ThreatIntelligenceService:
             or lookup_report.get("found") is not False
         ):
             raise PermissionError(
-                "Upload requires a recent successful hash lookup for this exact file and API profile"
+                "Upload requires a recent successful hash lookup for this exact "
+                "file and API profile"
             )
         self._upload_lookup = None
         provider = self.get_provider()
