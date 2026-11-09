@@ -90,10 +90,11 @@ class RealtimeMonitorService:
         self._monitor = InotifyMonitor()
         try:
             for path in self.monitored_paths:
-                if path.exists():
-                    watch = self._monitor.add_watch(path)
-                    if watch < 0:
-                        raise RuntimeError(f"Could not watch configured path: {path}")
+                if not path.is_dir():
+                    raise RuntimeError(f"Configured realtime path is not an accessible directory: {path}")
+                watch = self._monitor.add_watch(path)
+                if watch < 0:
+                    raise RuntimeError(f"Could not watch configured path: {path}")
             if self._monitor.watch_failures:
                 failures = ", ".join(str(path) for path in self._monitor.watch_failures)
                 raise RuntimeError(f"Realtime monitoring is incomplete; failed watches: {failures}")
