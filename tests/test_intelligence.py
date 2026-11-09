@@ -130,7 +130,7 @@ async def test_intelligence_service_reuses_provider_and_enforces_terms_gate(
     result = ScanResult(target="/tmp/file", clean=True, metadata={"sha256": "a" * 64})
     assert await service.lookup_scan_result(result) is None
     provider.lookup_hash.assert_not_awaited()
-    secret_store.get_api_key.assert_not_awaited()
+    secret_store.get_api_key.assert_not_called()
 
     monkeypatch.setattr(
         intelligence_service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True
