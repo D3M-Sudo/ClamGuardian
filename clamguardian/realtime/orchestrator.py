@@ -174,13 +174,23 @@ class RealtimeScanOrchestrator:
         self, path: Path, on_complete: Callable[[ScanResult], None] | None = None
     ) -> ScanResult | None:
         try:
-            if not self.allowed_roots:
-                raise UnsafeRealtimeTarget("no configured realtime roots are available")
-            with secure_file_snapshot(path, self.allowed_roots) as snapshot:
-                result = await self.runner.submit(snapshot, profile=self.profile)
-                # The private snapshot is an implementation detail; retain the
-                # original event pathname in history and user-facing results.
-                result = replace(result, target=str(path))
+            try:
+                if not self.allowed_roots:
+                    raise UnsafeRealtimeTarget("no configured realtime roots are available")
+                with secure_file_snapshot(path, self.allowed_roots) as snapshot:
+                    result = await self.runner.submit(snapshot, profile=self.profile)
+                    # The private snapshot is an implementation detail; retain the
+                    # original event pathname in history and user-facing results.
+                    result = replace(result, target=str(path))
+            except OSError as exc:
+                logger.warning("Rejected unsafe realtime target %s: %s", path, exc)
+                result = ScanResult(
+                    target=str(path),
+                    clean=False,
+                    status=ScanStatus.ERROR,
+                    error=f"Realtime target rejected: {exc}",
+                    engine="realtime-policy",
+                )
 
             if self.history_store is not None:
                 with contextlib.suppress(Exception):
@@ -191,15 +201,6 @@ class RealtimeScanOrchestrator:
                     on_complete(result)
 
             return result
-        except OSError as exc:
-            logger.warning("Rejected unsafe realtime target %s: %s", path, exc)
-            return ScanResult(
-                target=str(path),
-                clean=False,
-                status=ScanStatus.ERROR,
-                error=f"Realtime target rejected: {exc}",
-                engine="realtime-policy",
-            )
         except asyncio.CancelledError:
             return ScanResult.cancelled(str(path))
         finally:
