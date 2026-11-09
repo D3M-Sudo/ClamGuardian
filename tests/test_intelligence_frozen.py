@@ -146,6 +146,7 @@ def _fake_session(monkeypatch: pytest.MonkeyPatch, response: _FakeResponse) -> d
 def test_virustotal_404_returns_not_found_and_sends_hash_only(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    monkeypatch.setattr(virustotal, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True)
     digest = "a" * 64
     captured = _fake_session(monkeypatch, _FakeResponse(404))
 
@@ -163,6 +164,7 @@ def test_virustotal_404_returns_not_found_and_sends_hash_only(
 def test_virustotal_error_does_not_echo_the_api_key(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    monkeypatch.setattr(virustotal, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True)
     _fake_session(monkeypatch, _FakeResponse(500, text="upstream boom"))
 
     with pytest.raises(RuntimeError) as excinfo:
@@ -174,4 +176,4 @@ def test_virustotal_error_does_not_echo_the_api_key(
 
     message = str(excinfo.value)
     assert "secret-key" not in message
-    assert "upstream boom" in message
+    assert "upstream boom" not in message

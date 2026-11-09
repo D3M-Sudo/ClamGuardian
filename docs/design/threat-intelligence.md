@@ -53,3 +53,31 @@ pytest -q tests/test_intelligence_frozen.py
 rg -n "intelligence" clamguardian --glob "!clamguardian/intelligence/**"
 git grep -n "clamguardian.threat_providers" -- pyproject.toml
 ```
+
+
+## Dual API profiles (v2)
+
+ClamGuardian supports explicit `public` and `premium` VirusTotal profiles.
+Select the profile with `clamguardian intel profile public|premium`, and store
+its credential independently with `clamguardian intel set-key --profile public|premium`.
+Credentials are stored only in the operating system Secret Service; there is no
+plaintext fallback. The selected profile is persisted in the owner-only settings
+file. A key's appearance or format is never used to infer subscription level.
+
+Hash lookup remains the default operation. Public API lookups remain blocked until
+written VirusTotal clarification/authorization is recorded by the maintainer.
+Premium use requires the user's actual Premium entitlement and credential. There
+is no automatic fallback between profiles.
+
+File submission is a separate, explicit operation. The UI/service must present
+the file name, size, SHA-256 and privacy warning, then obtain a fresh per-file
+affirmative consent immediately before upload. Sensitive, confidential, personal,
+or regulated files must not be submitted. The upload path rechecks the file digest
+to detect changes after preview. Uploads are limited to 650 MiB; files above 32 MiB
+use VirusTotal's one-time upload URL. Analysis is polled and reported separately
+from the local ClamAV verdict.
+
+Public request pacing is 4 requests/minute and 500 requests/day, tracked in an
+owner-only cross-process state file. Premium throughput and quotas remain subject
+to the subscription; HTTP 429 and `Retry-After` are surfaced without falling back
+to Public. Upstream response bodies and credentials are not copied into logs.

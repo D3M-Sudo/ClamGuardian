@@ -14,6 +14,7 @@ from clamguardian.intelligence import service as intelligence_service_module
 from clamguardian.intelligence.manager import ThreatProviderManager
 from clamguardian.intelligence.secrets import IntelligenceSecretStore, SecretStorageError
 from clamguardian.intelligence.service import ThreatIntelligenceService
+from clamguardian.intelligence import virustotal as virustotal_module
 from clamguardian.intelligence.virustotal import VirusTotalProvider
 
 
@@ -29,11 +30,10 @@ def test_virustotal_invalid_hash_rejection() -> None:
         asyncio.run(provider.lookup_hash("invalid_hash"))
 
 
-def test_virustotal_has_no_file_upload_methods() -> None:
-    """Guarantee VirusTotal provider only performs hash lookups and never uploads files."""
+def test_virustotal_upload_is_available_only_as_explicit_provider_operation() -> None:
     provider = VirusTotalProvider("fake_key")
     assert hasattr(provider, "lookup_hash")
-    assert not hasattr(provider, "upload_file")
+    assert hasattr(provider, "upload_file")
     assert not hasattr(provider, "submit_file")
 
 
@@ -121,7 +121,7 @@ async def test_intelligence_service_reuses_provider_and_enforces_terms_gate(
     store.save(AppSettings(intelligence_enabled=True))
     provider = AsyncMock(spec=VirusTotalProvider)
     secret_store = Mock()
-    secret_store.get_api_key.return_value = "test-api-key"
+    secret_store.get_credential.return_value = "test-api-key"
     service = ThreatIntelligenceService(settings_store=store, secret_store=secret_store)
 
     monkeypatch.setattr(
@@ -130,17 +130,17 @@ async def test_intelligence_service_reuses_provider_and_enforces_terms_gate(
     result = ScanResult(target="/tmp/file", clean=True, metadata={"sha256": "a" * 64})
     assert await service.lookup_scan_result(result) is None
     provider.lookup_hash.assert_not_awaited()
-    secret_store.get_api_key.assert_not_called()
+    secret_store.get_credential.assert_not_called()
 
     monkeypatch.setattr(
         intelligence_service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True
     )
     monkeypatch.setattr(
-        intelligence_service_module, "VirusTotalProvider", lambda _key: provider
+        intelligence_service_module, "VirusTotalProvider", lambda _key, profile: provider
     )
     assert service.get_provider() is provider
     assert service.get_provider() is provider
-    secret_store.get_api_key.assert_called_once()
+    secret_store.get_credential.assert_called_once_with("public")
 
 
 def test_virustotal_default_rate_limit_is_at_least_four_per_minute() -> None:
@@ -164,7 +164,7 @@ async def test_virustotal_fails_closed_on_corrupt_rate_limit_state(tmp_path) -> 
     state = tmp_path / "corrupt-rate-limit"
     state.write_text("not-a-timestamp", encoding="ascii")
     provider = VirusTotalProvider("fake", rate_limit_path=state)
-    with pytest.raises(RuntimeError, match="rate-limit state is corrupt"):
+    with pytest.raises(RuntimeError, match="quota state is corrupt"):
         await provider._enforce_rate_limit()
 
 
@@ -224,6 +224,7 @@ def test_cli_set_key_uses_hidden_input_and_secret_service(monkeypatch) -> None:
     code = run(["intel", "set-key"], out=output, err=errors)
     assert code == 0
     assert fake.stored == "never-echo-this"
+    assert fake.profile == "public"
     assert "never-echo-this" not in output.getvalue()
     assert errors.getvalue() == ""
 
@@ -281,3 +282,83 @@ def test_secret_service_availability_checks_dbus_operation(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "gi.repository", fake_repository)
     assert IntelligenceSecretStore.is_available() is True
     assert calls == ["lookup"]
+
+
+def test_settings_persist_explicit_intelligence_profile(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    saved = store.save(AppSettings(intelligence_enabled=True, intelligence_profile="premium"))
+    assert saved.intelligence_profile == "premium"
+    assert store.load().intelligence_profile == "premium"
+
+
+def test_settings_reject_unknown_intelligence_profile(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.path.parent.mkdir(parents=True, exist_ok=True)
+    store.path.write_text('{"intelligence_profile":"enterprise"}', encoding="utf-8")
+    assert store.load().intelligence_profile == "public"
+
+
+def test_public_profile_daily_quota_is_enforced(tmp_path):
+    from clamguardian.intelligence.profiles import APIProfile
+    from clamguardian.intelligence.rate_limiter import PersistentRateLimiter, QuotaExceeded
+    limiter = PersistentRateLimiter(
+        APIProfile.PUBLIC, state_path=tmp_path / "quota.json", min_interval=0,
+        public_daily_limit=1,
+    )
+    assert limiter.reserve() == 0
+    with pytest.raises(QuotaExceeded):
+        limiter.reserve()
+
+
+def test_premium_profile_does_not_use_public_daily_quota(tmp_path):
+    from clamguardian.intelligence.profiles import APIProfile
+    from clamguardian.intelligence.rate_limiter import PersistentRateLimiter
+
+    limiter = PersistentRateLimiter(
+        APIProfile.PREMIUM, state_path=tmp_path / "quota.json", min_interval=0,
+        public_daily_limit=0,
+    )
+    assert limiter.reserve() == 0
+
+
+def test_upload_requires_explicit_per_file_consent(tmp_path):
+    from clamguardian.intelligence.upload import preview_upload, submit_after_consent
+
+    sample = tmp_path / "sample.bin"
+    sample.write_bytes(b"safe test fixture")
+    preview = preview_upload(sample)
+    provider = Mock()
+    with pytest.raises(PermissionError, match="consent"):
+        asyncio.run(submit_after_consent(provider, preview, consent=False))
+    provider.upload_file.assert_not_called()
+
+
+def test_public_profile_gate_does_not_implicitly_block_premium(tmp_path, monkeypatch):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.save(AppSettings(intelligence_enabled=True, intelligence_profile="premium"))
+    provider = AsyncMock(spec=VirusTotalProvider)
+    secret_store = Mock()
+    secret_store.get_credential.return_value = "premium-test-key"
+    monkeypatch.setattr(intelligence_service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", False)
+    monkeypatch.setattr(
+        intelligence_service_module, "VirusTotalProvider", lambda key, profile: provider
+    )
+    service = ThreatIntelligenceService(settings_store=store, secret_store=secret_store)
+    assert service.get_provider() is provider
+    secret_store.get_credential.assert_called_once_with("premium")
+
+
+def test_public_provider_is_blocked_before_network_without_written_authorization():
+    provider = VirusTotalProvider("test-key", profile="public")
+    with pytest.raises(PermissionError, match="written eligibility authorization"):
+        asyncio.run(provider.lookup_hash("a" * 64))
+
+
+def test_retry_after_cooldown_is_persisted_across_limiter_instances(tmp_path):
+    from clamguardian.intelligence.rate_limiter import PersistentRateLimiter
+
+    state = tmp_path / "retry-after.json"
+    first = PersistentRateLimiter("premium", state_path=state, min_interval=0)
+    first.defer(2)
+    second = PersistentRateLimiter("premium", state_path=state, min_interval=0)
+    assert second.reserve() > 1.0

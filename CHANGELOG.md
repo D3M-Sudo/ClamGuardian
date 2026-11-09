@@ -1,3 +1,15 @@
+## Unreleased
+
+### Added
+- Add explicit VirusTotal Public and Premium API profiles with independent OS Secret Service credentials.
+- Add persistent profile-aware request pacing, Public daily quota enforcement, and cross-process Retry-After cooldowns.
+- Add hash-first file submission workflow with per-file typed consent, privacy warning, SHA-256 revalidation, upload polling, CLI commands, and GTK profile selection.
+
+### Security
+- Keep Public API requests blocked until written VirusTotal eligibility authorization is recorded.
+- Remove upstream response bodies and sensitive request details from VirusTotal error logs; never fall back between API profiles.
+- Keep VirusTotal enrichment separate from the local ClamAV verdict.
+
 # Changelog
 
 All notable changes to ClamGuardian are documented here.

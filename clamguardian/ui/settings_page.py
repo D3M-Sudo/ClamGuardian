@@ -111,6 +111,17 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             self._intel_row = intel_row
             group.add(intel_row)
 
+            intel_profile_model = Gtk.StringList.new(["Public API", "Premium API"])
+            intel_profile_row = Adw.ComboRow(
+                title="VirusTotal API profile",
+                subtitle="Select the credential and subscription explicitly",
+                model=intel_profile_model,
+            )
+            intel_profile_row.set_selected(1 if self._settings.intelligence_profile == "premium" else 0)
+            intel_profile_row.connect("notify::selected", self._on_intelligence_profile_changed)
+            self._intel_profile_row = intel_profile_row
+            group.add(intel_profile_row)
+
             rt_row = Adw.SwitchRow(
                 title="Realtime Monitoring",
                 subtitle="Event-driven filesystem monitoring for configured directories",
@@ -222,6 +233,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     color_scheme=self._settings.color_scheme,
                     usb_autoscan_enabled=self._settings.usb_autoscan_enabled,
                     intelligence_enabled=self._settings.intelligence_enabled,
+                    intelligence_profile=self._settings.intelligence_profile,
                     realtime_enabled=self._settings.realtime_enabled,
                     realtime_paths=self._settings.realtime_paths,
                     scheduled_scans_enabled=self._settings.scheduled_scans_enabled,
@@ -239,6 +251,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     color_scheme=self._settings.color_scheme,
                     usb_autoscan_enabled=row.get_active(),
                     intelligence_enabled=self._settings.intelligence_enabled,
+                    intelligence_profile=self._settings.intelligence_profile,
                     realtime_enabled=self._settings.realtime_enabled,
                     realtime_paths=self._settings.realtime_paths,
                     scheduled_scans_enabled=self._settings.scheduled_scans_enabled,
@@ -256,6 +269,29 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     color_scheme=self._settings.color_scheme,
                     usb_autoscan_enabled=self._settings.usb_autoscan_enabled,
                     intelligence_enabled=row.get_active(),
+                    intelligence_profile=self._settings.intelligence_profile,
+                    realtime_enabled=self._settings.realtime_enabled,
+                    realtime_paths=self._settings.realtime_paths,
+                    scheduled_scans_enabled=self._settings.scheduled_scans_enabled,
+                    scheduled_hour=self._settings.scheduled_hour,
+                    scheduled_minute=self._settings.scheduled_minute,
+                    autostart_enabled=self._settings.autostart_enabled,
+                )
+            )
+
+        def _on_intelligence_profile_changed(self, combo: Adw.ComboRow, _pspec: object) -> None:
+            profiles = ("public", "premium")
+            index = combo.get_selected()
+            if not (0 <= index < len(profiles)):
+                return
+            self._persist(
+                AppSettings(
+                    default_profile_id=self._settings.default_profile_id,
+                    notifications_enabled=self._settings.notifications_enabled,
+                    color_scheme=self._settings.color_scheme,
+                    usb_autoscan_enabled=self._settings.usb_autoscan_enabled,
+                    intelligence_enabled=self._settings.intelligence_enabled,
+                    intelligence_profile=profiles[index],
                     realtime_enabled=self._settings.realtime_enabled,
                     realtime_paths=self._settings.realtime_paths,
                     scheduled_scans_enabled=self._settings.scheduled_scans_enabled,
@@ -273,6 +309,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     color_scheme=self._settings.color_scheme,
                     usb_autoscan_enabled=self._settings.usb_autoscan_enabled,
                     intelligence_enabled=self._settings.intelligence_enabled,
+                    intelligence_profile=self._settings.intelligence_profile,
                     realtime_enabled=row.get_active(),
                     realtime_paths=self._settings.realtime_paths,
                     scheduled_scans_enabled=self._settings.scheduled_scans_enabled,
@@ -290,6 +327,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     color_scheme=self._settings.color_scheme,
                     usb_autoscan_enabled=self._settings.usb_autoscan_enabled,
                     intelligence_enabled=self._settings.intelligence_enabled,
+                    intelligence_profile=self._settings.intelligence_profile,
                     realtime_enabled=self._settings.realtime_enabled,
                     realtime_paths=self._settings.realtime_paths,
                     scheduled_scans_enabled=row.get_active(),
@@ -318,6 +356,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     color_scheme=self._settings.color_scheme,
                     usb_autoscan_enabled=self._settings.usb_autoscan_enabled,
                     intelligence_enabled=self._settings.intelligence_enabled,
+                    intelligence_profile=self._settings.intelligence_profile,
                     realtime_enabled=self._settings.realtime_enabled,
                     realtime_paths=self._settings.realtime_paths,
                     scheduled_scans_enabled=self._settings.scheduled_scans_enabled,
@@ -335,6 +374,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     color_scheme=self._settings.color_scheme,
                     usb_autoscan_enabled=self._settings.usb_autoscan_enabled,
                     intelligence_enabled=self._settings.intelligence_enabled,
+                    intelligence_profile=self._settings.intelligence_profile,
                     realtime_enabled=self._settings.realtime_enabled,
                     realtime_paths=self._settings.realtime_paths,
                     scheduled_scans_enabled=self._settings.scheduled_scans_enabled,
@@ -356,6 +396,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                     color_scheme=schemes[index],
                     usb_autoscan_enabled=self._settings.usb_autoscan_enabled,
                     intelligence_enabled=self._settings.intelligence_enabled,
+                    intelligence_profile=self._settings.intelligence_profile,
                     realtime_enabled=self._settings.realtime_enabled,
                     realtime_paths=self._settings.realtime_paths,
                     scheduled_scans_enabled=self._settings.scheduled_scans_enabled,
