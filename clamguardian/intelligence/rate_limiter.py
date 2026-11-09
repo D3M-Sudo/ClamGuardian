@@ -141,7 +141,7 @@ class PersistentRateLimiter:
             fcntl.flock(fd, fcntl.LOCK_EX)
             state = self._read_state(fd)
             now = time.time()
-            today = datetime.now(timezone.utc).date().isoformat()
+            today = datetime.now(UTC).date().isoformat()
             entry = self._entry_for_today(state, today)
             count = entry["daily_count"]
             last = float(entry["last_request"])
