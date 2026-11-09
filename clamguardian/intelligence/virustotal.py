@@ -9,9 +9,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-import aiohttp
-
 from ..core.base import BaseThreatProvider
+
+import aiohttp
 
 
 # Keep outbound VirusTotal lookups disabled until the maintainer has
@@ -58,7 +58,9 @@ class VirusTotalProvider(BaseThreatProvider):
             try:
                 last_request = float(raw_last_request) if raw_last_request else 0.0
             except ValueError as exc:
-                raise RuntimeError("VirusTotal rate-limit state is corrupt; refusing network access") from exc
+                raise RuntimeError(
+                    "VirusTotal rate-limit state is corrupt; refusing network access"
+                ) from exc
 
             now = time.time()
             remaining = self._min_interval - (now - last_request)
