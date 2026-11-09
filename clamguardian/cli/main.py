@@ -943,8 +943,23 @@ def _cmd_intel_disable(args: argparse.Namespace, streams: _Streams) -> int:
 
 
 def _cmd_intel_lookup(args: argparse.Namespace, streams: _Streams) -> int:
+    from ..core.settings import SettingsStore
     from ..intelligence.secrets import IntelligenceSecretStore, SecretStorageError
-    from ..intelligence.virustotal import VirusTotalProvider
+    from ..intelligence.virustotal import (
+        VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED,
+        VirusTotalProvider,
+    )
+
+    settings = SettingsStore().load()
+    if not settings.intelligence_enabled:
+        print("error: Threat Intelligence is disabled; run 'clamguardian intel enable' first", file=streams.err)
+        return EXIT_USAGE
+    if not VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED:
+        print(
+            "error: VirusTotal lookups are administratively blocked pending review of applicable Public API terms and product eligibility",
+            file=streams.err,
+        )
+        return EXIT_ENGINE_ERROR
 
     sha256 = args.hash.strip().lower()
     if len(sha256) != 64 or any(ch not in "0123456789abcdef" for ch in sha256):
