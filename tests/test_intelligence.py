@@ -147,6 +147,26 @@ def test_virustotal_default_rate_limit_is_at_least_four_per_minute() -> None:
     provider = VirusTotalProvider("fake_key")
     assert provider._min_interval >= 15.0
 
+@pytest.mark.asyncio
+async def test_virustotal_rate_limit_is_shared_between_provider_instances(tmp_path) -> None:
+    state = tmp_path / "shared-rate-limit"
+    first = VirusTotalProvider("first", min_request_interval=0.05, rate_limit_path=state)
+    second = VirusTotalProvider("second", min_request_interval=0.05, rate_limit_path=state)
+
+    await first._enforce_rate_limit()
+    started = asyncio.get_running_loop().time()
+    await second._enforce_rate_limit()
+    assert asyncio.get_running_loop().time() - started >= 0.04
+
+
+@pytest.mark.asyncio
+async def test_virustotal_fails_closed_on_corrupt_rate_limit_state(tmp_path) -> None:
+    state = tmp_path / "corrupt-rate-limit"
+    state.write_text("not-a-timestamp", encoding="ascii")
+    provider = VirusTotalProvider("fake", rate_limit_path=state)
+    with pytest.raises(RuntimeError, match="rate-limit state is corrupt"):
+        await provider._enforce_rate_limit()
+
 
 def test_cli_lookup_requires_opt_in_before_secret_access(tmp_path, monkeypatch) -> None:
     from clamguardian.cli.main import run
@@ -209,8 +229,12 @@ def test_cli_set_key_uses_hidden_input_and_secret_service(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_virustotal_rate_limiting() -> None:
-    provider = VirusTotalProvider("fake_key", min_request_interval=0.05)
+async def test_virustotal_rate_limiting(tmp_path) -> None:
+    provider = VirusTotalProvider(
+        "fake_key",
+        min_request_interval=0.05,
+        rate_limit_path=tmp_path / "rate-limit",
+    )
 
     with patch("aiohttp.ClientSession.get") as mock_get:
         mock_resp = AsyncMock()
