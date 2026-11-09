@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import fcntl
+import os
 import time
+from pathlib import Path
 from typing import Any
 
 from ..core.base import BaseThreatProvider
@@ -30,22 +33,56 @@ class VirusTotalProvider(BaseThreatProvider):
         *,
         timeout: float = 20.0,
         min_request_interval: float = 15.1,
+        rate_limit_path: Path | None = None,
     ) -> None:
         if not api_key or not api_key.strip():
             raise ValueError("VirusTotal API key is required")
         self._api_key = api_key.strip()
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._min_interval = min_request_interval
-        self._last_request_time = 0.0
+        self._rate_limit_path = rate_limit_path or (
+            Path.home() / ".local" / "share" / "clamguardian" / "virustotal-rate-limit"
+        )
         self._rate_lock = asyncio.Lock()
+
+    def _reserve_rate_limit_slot(self) -> float:
+        """Atomically reserve a request slot shared by CLI and desktop processes."""
+        path = self._rate_limit_path
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            os.fchmod(descriptor, 0o600)
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            raw_last_request = os.read(descriptor, 128).decode("ascii").strip()
+            try:
+                last_request = float(raw_last_request) if raw_last_request else 0.0
+            except ValueError as exc:
+                raise RuntimeError("VirusTotal rate-limit state is corrupt; refusing network access") from exc
+
+            now = time.time()
+            remaining = self._min_interval - (now - last_request)
+            if remaining > 0:
+                return remaining
+
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            os.ftruncate(descriptor, 0)
+            os.write(descriptor, f"{now:.6f}".encode("ascii"))
+            os.fsync(descriptor)
+            return 0.0
+        finally:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
 
     async def _enforce_rate_limit(self) -> None:
         async with self._rate_lock:
-            now = time.monotonic()
-            elapsed = now - self._last_request_time
-            if elapsed < self._min_interval:
-                await asyncio.sleep(self._min_interval - elapsed)
-            self._last_request_time = time.monotonic()
+            while True:
+                remaining = await asyncio.to_thread(self._reserve_rate_limit_slot)
+                if remaining <= 0:
+                    return
+                await asyncio.sleep(remaining)
 
     async def lookup_hash(self, sha256: str) -> dict[str, Any]:
         """Return VirusTotal file attributes for a SHA-256 digest."""
