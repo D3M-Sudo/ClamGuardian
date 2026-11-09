@@ -58,20 +58,20 @@ class ScanTaskRunner:
         avoids binding a shared semaphore to whichever event loop submits
         the first scan and remains cancellation-safe while waiting for a slot.
         """
+        task = asyncio.current_task()
+        if task is not None:
+            self._track_task(task, asyncio.get_running_loop())
+
         acquired = False
-        scan_task: asyncio.Task[ScanResult] | None = None
         try:
             while not self._semaphore.acquire(blocking=False):
                 await asyncio.sleep(0.01)
             acquired = True
             if on_start is not None:
                 on_start()
-            loop = asyncio.get_running_loop()
-            scan_task = asyncio.create_task(
-                self.engine.scan(Path(target), recursive=recursive, profile=profile)
+            return await self.engine.scan(
+                Path(target), recursive=recursive, profile=profile
             )
-            self._track_task(scan_task, loop)
-            return await scan_task
         finally:
             if acquired:
                 self._semaphore.release()
