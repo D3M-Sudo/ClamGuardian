@@ -35,7 +35,7 @@ class StubEngine(BaseAVEngine):
 
 def test_is_removable_mount_detection(tmp_path: Path) -> None:
     runner = ScanTaskRunner(StubEngine())
-    scanner = USBDeviceScanner(runner)
+    scanner = USBDeviceScanner(runner, mount_detector=lambda _path: True)
 
     assert scanner.is_removable_mount(Path("/media/user/USB_STICK")) is True
     assert scanner.is_removable_mount(Path("/run/media/user/USB_STICK")) is True
@@ -50,7 +50,11 @@ def test_validate_target_rejection(tmp_path: Path) -> None:
     runner = ScanTaskRunner(StubEngine())
     custom_root = tmp_path / "media"
     custom_root.mkdir()
-    scanner = USBDeviceScanner(runner, allowed_mount_roots=(custom_root,))
+    scanner = USBDeviceScanner(
+        runner,
+        allowed_mount_roots=(custom_root,),
+        mount_detector=lambda path: path.name == "usb_drive",
+    )
 
     with pytest.raises(USBScanError, match="does not exist"):
         scanner.validate_target(custom_root / "missing")
@@ -106,7 +110,9 @@ async def test_usb_scan_duplicate_event_suppression(tmp_path: Path) -> None:
     mount.mkdir()
 
     runner = ScanTaskRunner(StubEngine(delay=0.1))
-    scanner = USBDeviceScanner(runner, allowed_mount_roots=(media_root,))
+    scanner = USBDeviceScanner(
+        runner, allowed_mount_roots=(media_root,), mount_detector=lambda path: path == mount.resolve()
+    )
 
     task1 = asyncio.create_task(scanner.scan_device(mount))
     await asyncio.sleep(0.01)
@@ -127,7 +133,9 @@ async def test_usb_scan_device_disappearance_during_scan(tmp_path: Path) -> None
     mount.mkdir()
 
     runner = ScanTaskRunner(StubEngine(fail=True))
-    scanner = USBDeviceScanner(runner, allowed_mount_roots=(media_root,))
+    scanner = USBDeviceScanner(
+        runner, allowed_mount_roots=(media_root,), mount_detector=lambda path: path == mount.resolve()
+    )
 
     result = await scanner.scan_device(mount)
     assert result.status is ScanStatus.ERROR
@@ -142,7 +150,9 @@ async def test_usb_mount_monitor_lifecycle(tmp_path: Path) -> None:
     mount.mkdir()
 
     runner = ScanTaskRunner(StubEngine())
-    scanner = USBDeviceScanner(runner, allowed_mount_roots=(media_root,))
+    scanner = USBDeviceScanner(
+        runner, allowed_mount_roots=(media_root,), mount_detector=lambda path: path == mount.resolve()
+    )
 
     scanned_results: list[ScanResult] = []
     monitor = USBMountMonitor(
