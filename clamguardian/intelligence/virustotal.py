@@ -207,7 +207,9 @@ class VirusTotalProvider(BaseThreatProvider):
             snapshot.seek(0)
             snapshot_digest = await asyncio.to_thread(_sha256_fileobj, snapshot)
             if snapshot_digest != expected_sha256.lower():
-                raise RuntimeError("Upload snapshot changed during transmission; result is indeterminate")
+                raise RuntimeError(
+                    "Upload snapshot changed during transmission; result is indeterminate"
+                )
             data = payload.get("data") if isinstance(payload, dict) else None
             analysis_id = data.get("id") if isinstance(data, dict) else None
             if not isinstance(analysis_id, str) or not analysis_id:
