@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import logging
 import os
+from dataclasses import replace
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from time import time
@@ -15,6 +16,7 @@ from ..core.base import ScanResult, ScanStatus
 from ..core.profiles import ScanProfile
 from .events import FileEvent
 from .policy import RealtimePolicy
+from .secure_target import UnsafeRealtimeTarget, secure_file_snapshot
 
 if TYPE_CHECKING:
     from ..core.runner import ScanTaskRunner
@@ -44,6 +46,7 @@ class RealtimeScanOrchestrator:
         profile: ScanProfile | None = None,
         debounce_seconds: float = 0.5,
         max_queue_depth: int = 1000,
+        allowed_roots: Sequence[Path] = (),
     ) -> None:
         self.runner = runner
         self.policy = policy or RealtimePolicy()
@@ -51,6 +54,7 @@ class RealtimeScanOrchestrator:
         self.profile = profile
         self.debounce_seconds = debounce_seconds
         self.max_queue_depth = max_queue_depth
+        self.allowed_roots = tuple(Path(root).absolute() for root in allowed_roots)
 
         self._pending_events: dict[Path, float] = {}
         self._debounce_timers: dict[Path, asyncio.TimerHandle] = {}
@@ -93,7 +97,7 @@ class RealtimeScanOrchestrator:
                     continue
 
                 # Keep the lexical event path. Resolving it here would
-                # follow a symlink before the descriptor-based policy can reject it.
+                # follow a symlink before descriptor-based validation can reject it.
                 path = Path(os.path.abspath(os.fspath(event.path)))
 
                 if path in self._active_scans or path in self._dispatched:
@@ -170,15 +174,13 @@ class RealtimeScanOrchestrator:
         self, path: Path, on_complete: Callable[[ScanResult], None] | None = None
     ) -> ScanResult | None:
         try:
-            if not path.exists() or not path.is_file():
-                result = ScanResult(
-                    target=str(path),
-                    clean=False,
-                    status=ScanStatus.ERROR,
-                    error="File disappeared or changed before scan",
-                )
-            else:
-                result = await self.runner.submit(path, profile=self.profile)
+            if not self.allowed_roots:
+                raise UnsafeRealtimeTarget("no configured realtime roots are available")
+            with secure_file_snapshot(path, self.allowed_roots) as snapshot:
+                result = await self.runner.submit(snapshot, profile=self.profile)
+                # The private snapshot is an implementation detail; retain the
+                # original event pathname in history and user-facing results.
+                result = replace(result, target=str(path))
 
             if self.history_store is not None:
                 with contextlib.suppress(Exception):
@@ -189,6 +191,15 @@ class RealtimeScanOrchestrator:
                     on_complete(result)
 
             return result
+        except UnsafeRealtimeTarget as exc:
+            logger.warning("Rejected unsafe realtime target %s: %s", path, exc)
+            return ScanResult(
+                target=str(path),
+                clean=False,
+                status=ScanStatus.ERROR,
+                error=f"Realtime target rejected: {exc}",
+                engine="realtime-policy",
+            )
         except asyncio.CancelledError:
             return ScanResult.cancelled(str(path))
         finally:
