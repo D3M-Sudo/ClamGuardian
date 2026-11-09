@@ -22,7 +22,7 @@ class VirusTotalProvider(BaseThreatProvider):
         api_key: str,
         *,
         timeout: float = 20.0,
-        min_request_interval: float = 0.25,
+        min_request_interval: float = 15.0,
     ) -> None:
         if not api_key or not api_key.strip():
             raise ValueError("VirusTotal API key is required")
