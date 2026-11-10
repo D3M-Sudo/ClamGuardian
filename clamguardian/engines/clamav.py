@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import array
 import asyncio
+import hashlib
 import os
 import signal
+import socket
+import stat
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -152,6 +156,97 @@ class ClamAVEngine(BaseAVEngine):
         if sha256 is not None:
             result.metadata["sha256"] = sha256
         return result
+
+    async def scan_fd(
+        self,
+        fd: int,
+        *,
+        target: Path,
+        profile: ScanProfile | None = None,
+    ) -> ScanResult:
+        """Scan the exact opened inode using clamd's UNIX FILDES protocol.
+
+        Realtime scans fail closed when clamd/FILDES is unavailable. A
+        pathname-based clamscan fallback would lose descriptor identity.
+        """
+        started = datetime.now(UTC)
+        try:
+            before = os.fstat(fd)
+            if not stat.S_ISREG(before.st_mode):
+                raise OSError("descriptor is not a regular file")
+            if profile is None:
+                profile = DEFAULT_PROFILE
+            else:
+                profile.validate()
+            if not self.socket_path.exists():
+                raise OSError("clamd UNIX socket is unavailable; safe FILDES scan required")
+            output, exit_code = await asyncio.wait_for(
+                asyncio.to_thread(self._scan_fd_sync, fd), self.command_timeout
+            )
+            if self._file_identity_changed(before, os.fstat(fd)):
+                raise OSError("file changed while clamd was scanning the opened descriptor")
+            result = self._result(Path(target), started, output, exit_code, "clamd-fildes")
+            result.metadata["sha256"] = self._sha256_fd(fd)
+            if self._file_identity_changed(before, os.fstat(fd)):
+                raise OSError("file changed while hashing the opened descriptor")
+            result.metadata["profile_id"] = profile.id
+            unsupported = self._clamd_unsupported_options(profile)
+            if unsupported:
+                result.metadata["profile_unsupported_clamd"] = ",".join(unsupported)
+            return result
+        except (OSError, TimeoutError, ValueError) as exc:
+            return ScanResult(
+                target=str(target), clean=False, status=ScanStatus.ERROR,
+                engine="clamd-fildes",
+                error=f"Realtime descriptor scan rejected: {exc}",
+                started_at=started, finished_at=datetime.now(UTC),
+            )
+
+    def _scan_fd_sync(self, fd: int) -> tuple[str, int]:
+        """Send an opened descriptor to clamd using SCM_RIGHTS."""
+        response = bytearray()
+        command = b"FILDES\\n"
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(self.command_timeout)
+            sock.connect(os.fspath(self.socket_path))
+            rights = array.array("i", [fd])
+            sent = sock.sendmsg([command], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights)])
+            if sent < len(command):
+                sock.sendall(command[sent:])
+            while True:
+                chunk = sock.recv(65536)
+                if not chunk:
+                    break
+                response.extend(chunk)
+                if len(response) > MAX_RESPONSE_BYTES:
+                    raise ValueError("clamd FILDES response exceeded the size limit")
+        output = bytes(response).decode("utf-8", errors="replace")
+        code = 1 if any(
+            " ERROR" in line or line.endswith("ERROR") for line in output.splitlines()
+        ) else 0
+        return output, code
+
+    @staticmethod
+    def _file_identity_changed(before: os.stat_result, after: os.stat_result) -> bool:
+        return (
+            before.st_dev != after.st_dev
+            or before.st_ino != after.st_ino
+            or before.st_size != after.st_size
+            or before.st_mtime_ns != after.st_mtime_ns
+            or before.st_ctime_ns != after.st_ctime_ns
+        )
+
+    @staticmethod
+    def _sha256_fd(fd: int) -> str:
+        digest = hashlib.sha256()
+        offset = 0
+        while True:
+            chunk = os.pread(fd, 65536, offset)
+            if not chunk:
+                break
+            digest.update(chunk)
+            offset += len(chunk)
+        return digest.hexdigest()
 
     async def update_signatures(self) -> str:
         """Run freshclam using the host when Flatpak integration is enabled."""

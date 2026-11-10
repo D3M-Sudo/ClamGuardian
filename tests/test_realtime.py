@@ -131,7 +131,7 @@ async def test_realtime_events_arriving_during_active_scan(tmp_path: Path) -> No
 
     engine = StubEngine(delay=0.1)
     runner = ScanTaskRunner(engine)
-    orchestrator = _make_orchestrator(tmp_path, runner, debounce_seconds=0.01)
+    orchestrator, root_fd = _make_orchestrator(tmp_path, runner, debounce_seconds=0.01)
 
     completed: list[ScanResult] = []
     event1 = FileEvent(path=test_file, event_type=FileEventType.MODIFY)
@@ -161,7 +161,7 @@ async def test_realtime_deterministic_shutdown(tmp_path: Path) -> None:
 
     engine = StubEngine(delay=0.2)
     runner = ScanTaskRunner(engine)
-    orchestrator = _make_orchestrator(tmp_path, runner, debounce_seconds=0.05)
+    orchestrator, root_fd = _make_orchestrator(tmp_path, runner, debounce_seconds=0.05)
 
     event = FileEvent(path=test_file, event_type=FileEventType.CREATE)
     await orchestrator.handle_events([event])
