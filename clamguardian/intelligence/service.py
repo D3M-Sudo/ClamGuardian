@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import copy
 import logging
 import threading
 import time
@@ -110,7 +111,7 @@ class ThreatIntelligenceService:
                 if not retryable or attempt + 1 >= _MAX_LOOKUP_ATTEMPTS:
                     raise
                 delay = (
-                    float(exc.retry_after)
+                    min(float(exc.retry_after), _RETRY_MAX_SECONDS)
                     if exc.retry_after is not None
                     else min(_RETRY_BASE_SECONDS * (2**attempt), _RETRY_MAX_SECONDS)
                 )
@@ -224,13 +225,16 @@ class ThreatIntelligenceService:
         if provider is None:
             raise PermissionError("Selected VirusTotal API profile is unavailable or blocked")
         report = await self._lookup_with_retry(provider, preview.sha256)
+        # Keep an isolated authorization snapshot: the caller receives a
+        # separate object and cannot mutate the evidence used by upload_file.
+        stored_report = copy.deepcopy(report)
         self._upload_lookup = (
             preview.sha256,
             self.selected_profile().value,
-            report,
+            stored_report,
             time.monotonic(),
         )
-        return report
+        return copy.deepcopy(stored_report)
 
     async def upload_file(
         self, preview, *, consent: bool, lookup_report: dict[str, Any]
@@ -245,7 +249,7 @@ class ThreatIntelligenceService:
             or time.monotonic() - cached[3] > 300
             or cached[2].get("found") is not False
             or not isinstance(lookup_report, dict)
-            or lookup_report.get("found") is not False
+            or lookup_report != cached[2]
         ):
             raise PermissionError(
                 "Upload requires a recent successful hash lookup for this exact "
