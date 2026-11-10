@@ -197,6 +197,7 @@ class ClamAVEngine(BaseAVEngine):
                     lambda task: task.exception() if not task.cancelled() else None
                 )
                 raise
+            exit_code = self._descriptor_response_code(output)
             if self._file_identity_changed(before, os.fstat(fd)):
                 raise OSError("file changed while clamd was scanning the opened descriptor")
             result = self._result(

@@ -389,6 +389,15 @@ async def test_clamd_fildes_protocol_passes_descriptor_in_separate_ancillary_pac
     server.listen(2)
     observed: dict[str, object] = {}
 
+    def recv_exact(conn: socket.socket, size: int) -> bytes:
+        data = bytearray()
+        while len(data) < size:
+            chunk = conn.recv(size - len(data))
+            if not chunk:
+                raise RuntimeError("unexpected socket EOF")
+            data.extend(chunk)
+        return bytes(data)
+
     def serve() -> None:
         probe, _ = server.accept()
         with probe:
@@ -396,7 +405,7 @@ async def test_clamd_fildes_protocol_passes_descriptor_in_separate_ancillary_pac
             probe.sendall(b"ClamAV 1.4.0\nCOMMANDS: PING VERSION VERSIONCOMMANDS FILDES\n")
         conn, _ = server.accept()
         with conn:
-            observed["command"] = conn.recv(len(b"nFILDES\n"))
+            observed["command"] = recv_exact(conn, len(b"nFILDES\n"))
             payload, ancillary, _flags, _address = conn.recvmsg(
                 1, CMSG_SPACE(array.array("i").itemsize)
             )
@@ -478,6 +487,15 @@ async def test_clamd_instream_fallback_streams_from_open_descriptor(tmp_path: Pa
     server.listen(2)
     observed: dict[str, object] = {}
 
+    def recv_exact(conn: socket.socket, size: int) -> bytes:
+        data = bytearray()
+        while len(data) < size:
+            chunk = conn.recv(size - len(data))
+            if not chunk:
+                raise RuntimeError("unexpected socket EOF")
+            data.extend(chunk)
+        return bytes(data)
+
     def serve() -> None:
         probe, _ = server.accept()
         with probe:
@@ -485,12 +503,10 @@ async def test_clamd_instream_fallback_streams_from_open_descriptor(tmp_path: Pa
             probe.sendall(b"ClamAV 1.4.0\nCOMMANDS: PING VERSION VERSIONCOMMANDS INSTREAM\n")
         conn, _ = server.accept()
         with conn:
-            observed["command"] = conn.recv(len(b"nINSTREAM\n"))
+            observed["command"] = recv_exact(conn, len(b"nINSTREAM\n"))
             payload = bytearray()
             while True:
-                size_bytes = conn.recv(4)
-                if len(size_bytes) != 4:
-                    raise RuntimeError("incomplete INSTREAM chunk header")
+                size_bytes = recv_exact(conn, 4)
                 size = struct.unpack("!I", size_bytes)[0]
                 if size == 0:
                     break
