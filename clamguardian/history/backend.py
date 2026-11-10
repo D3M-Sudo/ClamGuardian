@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import threading
 from dataclasses import replace
@@ -21,6 +22,7 @@ from ..core.profiles import ScanProfile
 from .interface import HistoryError
 from .models import (
     HistoryRecord,
+    ThreatIntelligenceRecord,
     decode_timestamp,
     encode_timestamp,
     history_record_from_scan,
@@ -28,7 +30,7 @@ from .models import (
 )
 
 #: Schema version written via ``PRAGMA user_version`` (0 = uninitialized).
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA_V1 = """
 CREATE TABLE scan_history (
@@ -60,6 +62,22 @@ CREATE INDEX idx_scan_history_started_at ON scan_history (started_at);
 CREATE INDEX idx_scan_history_profile   ON scan_history (profile_id);
 CREATE INDEX idx_scan_threats_scan_id   ON scan_threats (scan_id);
 CREATE INDEX idx_scan_threats_name      ON scan_threats (name);
+"""
+
+_SCHEMA_V2 = """
+CREATE TABLE scan_intelligence (
+    scan_id      TEXT PRIMARY KEY NOT NULL,
+    provider     TEXT NOT NULL,
+    profile      TEXT NOT NULL CHECK (profile IN ('public', 'premium')),
+    sha256       TEXT NOT NULL CHECK (length(sha256) = 64),
+    observed_at  TEXT NOT NULL,
+    provenance   TEXT NOT NULL,
+    status       TEXT NOT NULL CHECK (status IN ('found', 'not_found', 'error')),
+    metadata_json TEXT NOT NULL,
+    FOREIGN KEY (scan_id) REFERENCES scan_history (id) ON DELETE CASCADE
+);
+CREATE INDEX idx_scan_intelligence_sha256 ON scan_intelligence (sha256);
+CREATE INDEX idx_scan_intelligence_profile ON scan_intelligence (profile);
 """
 
 _HISTORY_COLUMNS = (
@@ -119,6 +137,87 @@ def _parse_metadata(text: str | None) -> dict[str, str]:
     if not isinstance(parsed, dict):
         return {}
     return {str(k): str(v) for k, v in parsed.items()}
+
+
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_INTELLIGENCE_PROFILES = frozenset({"public", "premium"})
+_INTELLIGENCE_STATUSES = frozenset({"found", "not_found", "error"})
+_INTELLIGENCE_METADATA_MAX_BYTES = 64 * 1024
+
+
+def _parse_intelligence_evidence(raw: str | None) -> dict[str, object] | None:
+    """Validate the optional VirusTotal evidence envelope before persistence."""
+    if not isinstance(raw, str):
+        return None
+    try:
+        payload = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    provider = payload.get("provider")
+    profile = payload.get("profile")
+    sha256 = payload.get("sha256")
+    observed_at = payload.get("observed_at")
+    provenance = payload.get("provenance")
+    status = payload.get("status")
+    metadata = payload.get("metadata")
+    if (
+        provider != "virustotal"
+        or not isinstance(profile, str)
+        or profile not in _INTELLIGENCE_PROFILES
+        or not isinstance(sha256, str)
+        or not _SHA256_RE.fullmatch(sha256)
+        or not isinstance(observed_at, str)
+        or not isinstance(provenance, str)
+        or not provenance
+        or not isinstance(status, str)
+        or status not in _INTELLIGENCE_STATUSES
+        or not isinstance(metadata, dict)
+    ):
+        return None
+    try:
+        decode_timestamp(observed_at)
+        encoded_metadata = json.dumps(
+            metadata, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        )
+    except (TypeError, ValueError):
+        return None
+    if len(encoded_metadata.encode("utf-8")) > _INTELLIGENCE_METADATA_MAX_BYTES:
+        return None
+    return {
+        "provider": provider,
+        "profile": profile,
+        "sha256": sha256,
+        "observed_at": observed_at,
+        "provenance": provenance,
+        "status": status,
+        "metadata_json": encoded_metadata,
+    }
+
+
+def _row_to_intelligence_record(
+    row: sqlite3.Row,
+) -> ThreatIntelligenceRecord | None:
+    """Rebuild one immutable VirusTotal evidence record defensively."""
+    try:
+        observed_at = decode_timestamp(str(row["observed_at"]))
+        metadata = json.loads(str(row["metadata_json"]))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(metadata, dict):
+        return None
+    return ThreatIntelligenceRecord(
+        scan_id=str(row["scan_id"]),
+        provider=str(row["provider"]),
+        profile=str(row["profile"]),
+        sha256=str(row["sha256"]),
+        observed_at=observed_at,
+        provenance=str(row["provenance"]),
+        status=str(row["status"]),
+        metadata=metadata,
+    )
 
 
 def _iter_schema_statements(script: str) -> list[str]:
@@ -293,9 +392,20 @@ class SqliteHistoryStore:
                     conn.execute("ROLLBACK")
                     raise
                 version += 1
+            elif version == 1:
+                # Store remote intelligence independently from the ClamAV
+                # verdict, linked by the immutable scan-history identifier.
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    for statement in _iter_schema_statements(_SCHEMA_V2):
+                        conn.execute(statement)
+                    conn.execute(f"PRAGMA user_version = {version + 1}")
+                    conn.execute("COMMIT")
+                except BaseException:
+                    conn.execute("ROLLBACK")
+                    raise
+                version += 1
             else:
-                # Future incremental migrations (1 -> 2, 2 -> 3, ...) are
-                # appended here; none exist yet.
                 raise HistoryError(
                     f"unsupported schema version {version}: no migration defined"
                 )
@@ -326,6 +436,9 @@ class SqliteHistoryStore:
         self, result: ScanResult, profile: ScanProfile | None = None
     ) -> HistoryRecord:
         """Persist *result* atomically (master + threats) and return its record."""
+        intelligence = _parse_intelligence_evidence(
+            result.metadata.get("threat_intelligence") if result.metadata else None
+        )
         record = history_record_from_scan(result, profile=profile)
         conn = self._require_conn()
         with self._lock:
@@ -365,6 +478,25 @@ class SqliteHistoryStore:
                         ),
                     )
                     self._insert_threats(conn, record.id, record.threats)
+                    if intelligence is not None:
+                        conn.execute(
+                            """
+                            INSERT INTO scan_intelligence (
+                                scan_id, provider, profile, sha256, observed_at,
+                                provenance, status, metadata_json
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                record.id,
+                                intelligence["provider"],
+                                intelligence["profile"],
+                                intelligence["sha256"],
+                                intelligence["observed_at"],
+                                intelligence["provenance"],
+                                intelligence["status"],
+                                intelligence["metadata_json"],
+                            ),
+                        )
                     conn.execute("COMMIT")
                 except BaseException:
                     conn.execute("ROLLBACK")
@@ -374,6 +506,19 @@ class SqliteHistoryStore:
             except sqlite3.Error as exc:
                 raise HistoryError(f"failed to record scan: {exc}") from exc
         return record
+
+    async def get_scan_intelligence(
+        self, scan_id: str
+    ) -> ThreatIntelligenceRecord | None:
+        """Return the separate VirusTotal assessment associated with a scan."""
+        conn = self._require_conn()
+        with self._lock:
+            row = conn.execute(
+                "SELECT * FROM scan_intelligence WHERE scan_id = ?", (scan_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            return _row_to_intelligence_record(row)
 
     async def get_scan(self, scan_id: str) -> HistoryRecord | None:
         """Return the full record for *scan_id* (including threats) or ``None``."""

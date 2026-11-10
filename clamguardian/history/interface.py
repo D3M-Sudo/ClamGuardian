@@ -44,7 +44,8 @@ class HistoryStore(Protocol):
 
     History is append-oriented; there is deliberately no ``update``, ``watch``,
     ``subscribe`` or ``get_statistics``. ``list_scans`` does not load threat
-    details; use :meth:`get_scan` for the full record. ``purge`` is the sole
+    details; use :meth:`get_scan` for the full record and
+    :meth:`get_scan_intelligence` for its separate remote assessment. ``purge`` is the sole
     destructive management operation: it requires at least one selection
     criterion so it can never silently clear the whole history.
     """

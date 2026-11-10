@@ -16,6 +16,7 @@ from clamguardian.history import (
     AUTO_TRUNCATED_KEY,
     METADATA_MAX_BYTES,
     SqliteHistoryStore,
+    ThreatIntelligenceRecord,
     decode_timestamp,
     default_history_db_path,
     encode_timestamp,
@@ -217,7 +218,7 @@ def test_user_version_and_pragmas(tmp_path: Path) -> None:
     store = SqliteHistoryStore(db_path)
     # DB-scoped settings are visible from any connection.
     conn = sqlite3.connect(db_path)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 1
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 2
     assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
     conn.close()
     # Per-connection settings apply to the store's own connection.
@@ -743,18 +744,18 @@ async def test_hostile_threat_and_metadata_are_safe(tmp_path: Path, hostile: str
 # ---------------------------------------------------------------------------
 
 
-def test_existing_version_1_remains_valid(tmp_path: Path) -> None:
+def test_current_schema_remains_valid(tmp_path: Path) -> None:
     db_path = tmp_path / "history.db"
     _store = SqliteHistoryStore(db_path)
     assert _store.path == db_path
     conn = sqlite3.connect(db_path)
     version = conn.execute("PRAGMA user_version").fetchone()[0]
-    assert version == 1
+    assert version == SCHEMA_VERSION
     conn.close()
-    # Reopening a v1 database must not re-run the schema (idempotent).
+    # Reopening the current database must be idempotent.
     reopened = SqliteHistoryStore(db_path)
     conn = sqlite3.connect(reopened.path)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     conn.close()
 
 
@@ -1056,3 +1057,111 @@ def test_store_does_not_chmod_a_preexisting_parent(tmp_path: Path) -> None:
 
     assert shared.stat().st_mode & 0o777 == 0o755
 
+
+
+
+@pytest.mark.asyncio
+async def test_v1_history_database_migrates_to_v2_without_losing_scans(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "history.db"
+    store = make_store(tmp_path)
+    record = await store.record_scan(make_result(target="/preserved"))
+    await store.close()
+
+    # Recreate the on-disk shape of a v1 database: the original scan tables
+    # and rows remain, while the v2 evidence table is absent.
+    conn = sqlite3.connect(db_path)
+    conn.execute("DROP TABLE scan_intelligence")
+    conn.execute("PRAGMA user_version = 1")
+    conn.commit()
+    conn.close()
+
+    migrated = SqliteHistoryStore(db_path)
+    conn = sqlite3.connect(db_path)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
+    tables = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    conn.close()
+    assert "scan_intelligence" in tables
+    assert (await migrated.get_scan(record.id)) is not None
+    assert await migrated.get_scan_intelligence(record.id) is None
+    await migrated.close()
+
+
+@pytest.mark.asyncio
+async def test_record_scan_persists_separate_virustotal_evidence(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    report = {
+        "provider": "virustotal",
+        "found": True,
+        "sha256": sha256,
+        "last_analysis_stats": {"malicious": 0, "harmless": 12},
+    }
+    envelope = {
+        "provider": "virustotal",
+        "profile": "premium",
+        "sha256": sha256,
+        "observed_at": "2026-11-10T12:30:00+00:00",
+        "provenance": "sha256_hash_lookup",
+        "status": "found",
+        "metadata": report,
+    }
+    result = make_result(
+        target="/sample.bin",
+        metadata={
+            "sha256": sha256,
+            "threat_intelligence": json.dumps(envelope),
+        },
+    )
+
+    scan = await store.record_scan(result)
+    evidence = await store.get_scan_intelligence(scan.id)
+
+    assert isinstance(evidence, ThreatIntelligenceRecord)
+    assert evidence.scan_id == scan.id
+    assert evidence.provider == "virustotal"
+    assert evidence.profile == "premium"
+    assert evidence.sha256 == sha256
+    assert evidence.status == "found"
+    assert evidence.provenance == "sha256_hash_lookup"
+    assert evidence.observed_at == datetime(2026, 11, 10, 12, 30, tzinfo=UTC)
+    assert evidence.metadata["last_analysis_stats"]["malicious"] == 0
+    assert scan.status == "clean"
+    assert scan.metadata["threat_intelligence"] == json.dumps(envelope)
+
+
+@pytest.mark.asyncio
+async def test_invalid_virustotal_envelope_is_not_persisted(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    scan = await store.record_scan(
+        make_result(metadata={"threat_intelligence": "{invalid-json"})
+    )
+    assert await store.get_scan_intelligence(scan.id) is None
+    assert scan.status == "clean"
+
+
+@pytest.mark.asyncio
+async def test_scan_delete_cascades_virustotal_evidence(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    envelope = {
+        "provider": "virustotal",
+        "profile": "public",
+        "sha256": sha256,
+        "observed_at": "2026-11-10T12:30:00+00:00",
+        "provenance": "sha256_hash_lookup",
+        "status": "not_found",
+        "metadata": {"provider": "virustotal", "found": False, "sha256": sha256},
+    }
+    scan = await store.record_scan(
+        make_result(metadata={"threat_intelligence": json.dumps(envelope)})
+    )
+    assert await store.get_scan_intelligence(scan.id) is not None
+    assert await store.delete_scan(scan.id) is True
+    assert await store.get_scan_intelligence(scan.id) is None
