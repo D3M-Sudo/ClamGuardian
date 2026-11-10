@@ -43,9 +43,18 @@ class ThreatIntelligenceService:
         self._custom_provider = provider
         self._provider: VirusTotalProvider | None = provider
         self._provider_initialized = provider is not None
-        self.cache = cache or VirusTotalCache(
-            self.settings_store.path.with_name("virustotal-cache.db")
-        )
+        try:
+            self.cache: VirusTotalCache | None = cache or VirusTotalCache(
+                self.settings_store.path.with_name("virustotal-cache.db")
+            )
+        except Exception as exc:
+            # Cache storage is optional: its failure must never prevent local
+            # ClamAV scans or the best-effort remote lookup itself.
+            self.cache = None
+            logger.warning(
+                "VirusTotal cache initialization failed (%s); continuing without cache",
+                type(exc).__name__,
+            )
         self._inflight: dict[
             tuple[str, str], concurrent.futures.Future[dict[str, Any]]
         ] = {}
@@ -133,11 +142,12 @@ class ThreatIntelligenceService:
 
         # A valid, unexpired report can be reused offline; cache access does
         # not require the API credential to be present or reachable.
-        try:
-            cached = await asyncio.to_thread(self.cache.get, digest, profile)
-        except Exception as exc:
-            logger.warning("VirusTotal cache read failed (%s)", type(exc).__name__)
-            cached = None
+        cached = None
+        if self.cache is not None:
+            try:
+                cached = await asyncio.to_thread(self.cache.get, digest, profile)
+            except Exception as exc:
+                logger.warning("VirusTotal cache read failed (%s)", type(exc).__name__)
         if cached is not None:
             return cached
 
@@ -168,10 +178,13 @@ class ThreatIntelligenceService:
                 and report.get("error") is None
                 and isinstance(report.get("found"), bool)
             ):
-                try:
-                    await asyncio.to_thread(self.cache.put, digest, profile, report)
-                except Exception as exc:
-                    logger.warning("VirusTotal cache write failed (%s)", type(exc).__name__)
+                if self.cache is not None:
+                    try:
+                        await asyncio.to_thread(self.cache.put, digest, profile, report)
+                    except Exception as exc:
+                        logger.warning(
+                            "VirusTotal cache write failed (%s)", type(exc).__name__
+                        )
             shared.set_result(report)
             return report
         except asyncio.CancelledError:
