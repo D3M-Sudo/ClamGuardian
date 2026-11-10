@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import ctypes
 import errno
+import os
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,8 @@ from clamguardian.realtime.events import FileEvent, FileEventType
 from clamguardian.realtime.inotify import InotifyMonitor
 from clamguardian.realtime.orchestrator import RealtimeScanOrchestrator
 from clamguardian.realtime.service import RealtimeMonitorService
+from clamguardian.realtime.policy import RealtimePolicy
+from clamguardian.realtime.security import open_beneath
 
 
 class StubEngine(BaseAVEngine):
@@ -44,9 +47,28 @@ class StubEngine(BaseAVEngine):
             raise RuntimeError("engine failure")
         return ScanResult(target=str(target), clean=True)
 
+    async def scan_fd(
+        self, fd: int, *, target: Path, profile: ScanProfile | None = None
+    ) -> ScanResult:
+        os.fstat(fd)
+        self.scanned_paths.append(str(target))
+        await asyncio.sleep(self.delay)
+        if self.fail:
+            raise RuntimeError("engine failure")
+        return ScanResult(target=str(target), clean=True)
+
     async def update_signatures(self) -> str:
         return ""
 
+
+
+def _make_orchestrator(tmp_path: Path, runner: ScanTaskRunner, **kwargs: object):
+    root_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    orchestrator = RealtimeScanOrchestrator(
+        runner, policy=RealtimePolicy(authorized_roots=[tmp_path]),
+        root_fds={tmp_path: root_fd}, **kwargs,
+    )
+    return orchestrator, root_fd
 
 @pytest.mark.asyncio
 async def test_realtime_trailing_edge_debounce(tmp_path: Path) -> None:
@@ -55,7 +77,7 @@ async def test_realtime_trailing_edge_debounce(tmp_path: Path) -> None:
 
     engine = StubEngine(delay=0.01)
     runner = ScanTaskRunner(engine)
-    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.1)
+    orchestrator, root_fd = _make_orchestrator(tmp_path, runner, debounce_seconds=0.1)
 
     completed: list[ScanResult] = []
 
@@ -72,13 +94,14 @@ async def test_realtime_trailing_edge_debounce(tmp_path: Path) -> None:
     assert len(engine.scanned_paths) == 1
 
     await orchestrator.close()
+    os.close(root_fd)
 
 
 @pytest.mark.asyncio
 async def test_realtime_strict_queue_bound(tmp_path: Path) -> None:
     engine = StubEngine(delay=0.1)
     runner = ScanTaskRunner(engine)
-    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.01, max_queue_depth=3)
+    orchestrator = _make_orchestrator(tmp_path, runner, debounce_seconds=0.01, max_queue_depth=3)
 
     files = [tmp_path / f"file_{i}.txt" for i in range(10)]
     for f in files:
@@ -91,6 +114,7 @@ async def test_realtime_strict_queue_bound(tmp_path: Path) -> None:
     assert orchestrator.dropped_events_count == 7
 
     await orchestrator.close()
+    os.close(root_fd)
 
 
 @pytest.mark.asyncio
@@ -100,7 +124,7 @@ async def test_realtime_events_arriving_during_active_scan(tmp_path: Path) -> No
 
     engine = StubEngine(delay=0.1)
     runner = ScanTaskRunner(engine)
-    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.01)
+    orchestrator = _make_orchestrator(tmp_path, runner, debounce_seconds=0.01)
 
     completed: list[ScanResult] = []
     event1 = FileEvent(path=test_file, event_type=FileEventType.MODIFY)
@@ -120,6 +144,7 @@ async def test_realtime_events_arriving_during_active_scan(tmp_path: Path) -> No
     assert len(engine.scanned_paths) == 2
 
     await orchestrator.close()
+    os.close(root_fd)
 
 
 @pytest.mark.asyncio
@@ -129,7 +154,7 @@ async def test_realtime_deterministic_shutdown(tmp_path: Path) -> None:
 
     engine = StubEngine(delay=0.2)
     runner = ScanTaskRunner(engine)
-    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.05)
+    orchestrator = _make_orchestrator(tmp_path, runner, debounce_seconds=0.05)
 
     event = FileEvent(path=test_file, event_type=FileEventType.CREATE)
     await orchestrator.handle_events([event])
@@ -143,6 +168,7 @@ async def test_realtime_deterministic_shutdown(tmp_path: Path) -> None:
 
     tasks = await orchestrator.handle_events([event])
     assert tasks == []
+    os.close(root_fd)
 
 
 def test_inotify_recursive_watch_lifecycle(tmp_path: Path) -> None:
@@ -232,3 +258,50 @@ async def test_realtime_service_lifecycle(tmp_path: Path) -> None:
     assert service.orchestrator is not first_orchestrator
     assert service.orchestrator._closed is False
     await service.stop()
+
+
+
+def test_open_beneath_rejects_symlink_and_parent_traversal(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    secret = outside / "secret.txt"
+    secret.write_text("outside")
+    (root / "escape").symlink_to(outside, target_is_directory=True)
+    (root / "link.txt").symlink_to(secret)
+    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        with pytest.raises(OSError):
+            open_beneath(root_fd, root, root / "escape" / "secret.txt")
+        with pytest.raises(OSError):
+            open_beneath(root_fd, root, root / "link.txt")
+        with pytest.raises(OSError):
+            open_beneath(root_fd, root, outside / "secret.txt")
+    finally:
+        os.close(root_fd)
+
+
+@pytest.mark.asyncio
+async def test_realtime_rejects_symlink_event_without_scanning_target(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    secret = outside / "secret.txt"
+    secret.write_text("must not scan")
+    link = root / "link.txt"
+    link.symlink_to(secret)
+    engine = StubEngine(delay=0)
+    runner = ScanTaskRunner(engine)
+    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    orchestrator = RealtimeScanOrchestrator(
+        runner, policy=RealtimePolicy(authorized_roots=[root]),
+        root_fds={root: root_fd}, debounce_seconds=0,
+    )
+    try:
+        await orchestrator.handle_events([FileEvent(link, FileEventType.CREATE)])
+        assert engine.scanned_paths == []
+    finally:
+        await orchestrator.close()
+        os.close(root_fd)
