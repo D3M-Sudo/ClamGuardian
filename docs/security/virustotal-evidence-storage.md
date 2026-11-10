@@ -35,3 +35,10 @@ The migration from schema version 1 to version 2 is transactional and only
 creates the new table and its indexes. Existing scan history and threat rows
 are retained. A database with a newer schema version is still rejected rather
 than opened with potentially incompatible assumptions.
+
+Existing v1 scan and threat rows remain untouched. Legacy stringified
+VirusTotal metadata is not automatically promoted into the new table because
+older records do not reliably contain an explicit API profile, observation
+timestamp and provenance. The migration does not infer those values from an
+API key or response shape; legacy scans therefore return no separate
+intelligence record unless a valid evidence envelope was recorded.
