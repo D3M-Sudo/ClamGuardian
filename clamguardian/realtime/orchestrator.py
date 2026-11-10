@@ -5,8 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import os
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from time import time
 from typing import TYPE_CHECKING
@@ -15,7 +14,6 @@ from ..core.base import ScanResult, ScanStatus
 from ..core.profiles import ScanProfile
 from .events import FileEvent
 from .policy import RealtimePolicy
-from .security import open_beneath
 
 if TYPE_CHECKING:
     from ..core.runner import ScanTaskRunner
@@ -45,7 +43,6 @@ class RealtimeScanOrchestrator:
         profile: ScanProfile | None = None,
         debounce_seconds: float = 0.5,
         max_queue_depth: int = 1000,
-        root_fds: Mapping[Path, int] | None = None,
     ) -> None:
         self.runner = runner
         self.policy = policy or RealtimePolicy()
@@ -53,7 +50,6 @@ class RealtimeScanOrchestrator:
         self.profile = profile
         self.debounce_seconds = debounce_seconds
         self.max_queue_depth = max_queue_depth
-        self.root_fds = {Path(os.path.abspath(root)): fd for root, fd in (root_fds or {}).items()}
 
         self._pending_events: dict[Path, float] = {}
         self._debounce_timers: dict[Path, asyncio.TimerHandle] = {}
@@ -95,7 +91,10 @@ class RealtimeScanOrchestrator:
                 if not self.policy.should_scan(event):
                     continue
 
-                path = Path(os.path.abspath(event.path))
+                try:
+                    path = event.path.resolve()
+                except OSError:
+                    path = event.path.absolute()
 
                 if path in self._active_scans or path in self._dispatched:
                     self._dirty_paths.add(path)
@@ -171,21 +170,15 @@ class RealtimeScanOrchestrator:
         self, path: Path, on_complete: Callable[[ScanResult], None] | None = None
     ) -> ScanResult | None:
         try:
-            root = next(
-                (
-                    candidate
-                    for candidate in sorted(self.root_fds, key=lambda item: len(item.parts), reverse=True)
-                    if path != candidate and path.is_relative_to(candidate)
-                ),
-                None,
-            )
-            if root is None:
-                raise OSError("no pinned authorized root contains the realtime target")
-            fd = open_beneath(self.root_fds[root], root, path)
-            try:
-                result = await self.runner.submit_fd(fd, path, profile=self.profile)
-            finally:
-                os.close(fd)
+            if not path.exists() or not path.is_file():
+                result = ScanResult(
+                    target=str(path),
+                    clean=False,
+                    status=ScanStatus.ERROR,
+                    error="File disappeared or changed before scan",
+                )
+            else:
+                result = await self.runner.submit(path, profile=self.profile)
 
             if self.history_store is not None:
                 with contextlib.suppress(Exception):
@@ -198,18 +191,6 @@ class RealtimeScanOrchestrator:
             return result
         except asyncio.CancelledError:
             return ScanResult.cancelled(str(path))
-        except (OSError, RuntimeError, ValueError) as exc:
-            result = ScanResult(
-                target=str(path), clean=False, status=ScanStatus.ERROR,
-                engine="realtime-security", error=f"Realtime target rejected: {exc}",
-            )
-            if self.history_store is not None:
-                with contextlib.suppress(Exception):
-                    await self.history_store.record_scan(result, profile=self.profile)
-            if on_complete is not None:
-                with contextlib.suppress(Exception):
-                    on_complete(result)
-            return result
         finally:
             async with self._lock:
                 self._active_scans.discard(path)

@@ -8,8 +8,20 @@ _DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
 _FILE_FLAGS = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK
 
 def open_root_directory(path: Path) -> int:
-    """Open and pin a configured root directory without following its final symlink."""
-    return os.open(os.fspath(path), _DIRECTORY_FLAGS)
+    """Open and pin every component of an absolute root without following symlinks."""
+    absolute = Path(os.path.abspath(os.fspath(path)))
+    if not absolute.is_absolute():
+        raise OSError("configured realtime root must be absolute")
+    current_fd = os.open("/", _DIRECTORY_FLAGS)
+    try:
+        for component in absolute.parts[1:]:
+            next_fd = os.open(component, _DIRECTORY_FLAGS, dir_fd=current_fd)
+            os.close(current_fd)
+            current_fd = next_fd
+        return current_fd
+    except BaseException:
+        os.close(current_fd)
+        raise
 
 def open_beneath(root_fd: int, root_path: Path, target_path: Path) -> int:
     """Open a regular file beneath a pinned root, refusing symlinks and traversal."""

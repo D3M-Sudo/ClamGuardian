@@ -25,9 +25,9 @@ from clamguardian.core.runner import ScanTaskRunner
 from clamguardian.realtime.events import FileEvent, FileEventType
 from clamguardian.realtime.inotify import InotifyMonitor
 from clamguardian.realtime.orchestrator import RealtimeScanOrchestrator
-from clamguardian.realtime.service import RealtimeMonitorService
 from clamguardian.realtime.policy import RealtimePolicy
 from clamguardian.realtime.security import open_beneath
+from clamguardian.realtime.service import RealtimeMonitorService
 
 
 class StubEngine(BaseAVEngine):
@@ -62,11 +62,18 @@ class StubEngine(BaseAVEngine):
 
 
 
-def _make_orchestrator(tmp_path: Path, runner: ScanTaskRunner, **kwargs: object):
+def _make_orchestrator(
+    tmp_path: Path,
+    runner: ScanTaskRunner,
+    *,
+    debounce_seconds: float = 0.5,
+    max_queue_depth: int = 1000,
+):
     root_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
     orchestrator = RealtimeScanOrchestrator(
         runner, policy=RealtimePolicy(authorized_roots=[tmp_path]),
-        root_fds={tmp_path: root_fd}, **kwargs,
+        root_fds={tmp_path: root_fd}, debounce_seconds=debounce_seconds,
+        max_queue_depth=max_queue_depth,
     )
     return orchestrator, root_fd
 
@@ -101,7 +108,7 @@ async def test_realtime_trailing_edge_debounce(tmp_path: Path) -> None:
 async def test_realtime_strict_queue_bound(tmp_path: Path) -> None:
     engine = StubEngine(delay=0.1)
     runner = ScanTaskRunner(engine)
-    orchestrator = _make_orchestrator(tmp_path, runner, debounce_seconds=0.01, max_queue_depth=3)
+    orchestrator, root_fd = _make_orchestrator(tmp_path, runner, debounce_seconds=0.01, max_queue_depth=3)
 
     files = [tmp_path / f"file_{i}.txt" for i in range(10)]
     for f in files:
@@ -305,3 +312,49 @@ async def test_realtime_rejects_symlink_event_without_scanning_target(tmp_path: 
     finally:
         await orchestrator.close()
         os.close(root_fd)
+
+
+@pytest.mark.asyncio
+async def test_clamd_fd_scan_hashes_the_open_descriptor(tmp_path: Path) -> None:
+    import hashlib
+    from clamguardian.engines.clamav import ClamAVEngine
+
+    target = tmp_path / "sample.bin"
+    payload = b"descriptor-bound content"
+    target.write_bytes(payload)
+    socket_path = tmp_path / "clamd.sock"
+    socket_path.touch()
+    engine = ClamAVEngine(socket_path=socket_path)
+    engine._scan_fd_sync = lambda _fd: (f"{target}: OK", 0)  # type: ignore[method-assign]
+    fd = os.open(target, os.O_RDONLY | os.O_CLOEXEC)
+    try:
+        result = await engine.scan_fd(fd, target=target)
+        assert result.status is ScanStatus.CLEAN
+        assert result.metadata["sha256"] == hashlib.sha256(payload).hexdigest()
+        assert result.engine == "clamd-fildes"
+    finally:
+        os.close(fd)
+
+
+@pytest.mark.asyncio
+async def test_clamd_fd_scan_rejects_content_changed_during_scan(tmp_path: Path) -> None:
+    from clamguardian.engines.clamav import ClamAVEngine
+
+    target = tmp_path / "mutable.bin"
+    target.write_bytes(b"before")
+    socket_path = tmp_path / "clamd.sock"
+    socket_path.touch()
+    engine = ClamAVEngine(socket_path=socket_path)
+
+    def mutate(_fd: int) -> tuple[str, int]:
+        target.write_bytes(b"after with different length")
+        return f"{target}: OK", 0
+
+    engine._scan_fd_sync = mutate  # type: ignore[method-assign]
+    fd = os.open(target, os.O_RDONLY | os.O_CLOEXEC)
+    try:
+        result = await engine.scan_fd(fd, target=target)
+        assert result.status is ScanStatus.ERROR
+        assert "file changed while clamd was scanning" in (result.error or "")
+    finally:
+        os.close(fd)
