@@ -239,3 +239,16 @@ async def test_service_honors_retry_after_for_rate_limited_lookup(
     provider.lookup_hash.assert_awaited_with(SHA256)
     assert provider.lookup_hash.await_count == 2
     sleep.assert_awaited_once_with(3.0)
+
+
+@pytest.mark.asyncio
+async def test_cache_initialization_failure_is_best_effort(tmp_path, monkeypatch) -> None:
+    def fail_cache(*_args, **_kwargs):
+        raise OSError("cache directory unavailable")
+
+    monkeypatch.setattr(service_module, "VirusTotalCache", fail_cache)
+    settings = SettingsStore(tmp_path / "settings.json")
+
+    service = ThreatIntelligenceService(settings_store=settings)
+
+    assert service.cache is None
