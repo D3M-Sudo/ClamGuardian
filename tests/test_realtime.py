@@ -557,3 +557,44 @@ async def test_clamd_fd_scan_rejects_empty_daemon_response(tmp_path: Path) -> No
         assert "empty descriptor-scan response" in (result.error or "")
     finally:
         os.close(fd)
+
+
+@pytest.mark.asyncio
+async def test_clamd_fd_scan_cancellation_interrupts_socket_worker(tmp_path: Path) -> None:
+    from clamguardian.engines.clamav import ClamAVEngine
+
+    target = tmp_path / "cancelled.bin"
+    target.write_bytes(b"descriptor cancellation")
+    socket_path = tmp_path / "clamd.sock"
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(os.fspath(socket_path))
+    server.listen(1)
+    accepted = threading.Event()
+    observed: dict[str, bytes] = {}
+
+    def serve() -> None:
+        conn, _ = server.accept()
+        with conn:
+            observed["command"] = conn.recv(1024)
+            accepted.set()
+            observed["eof"] = conn.recv(1)
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    engine = ClamAVEngine(socket_path=socket_path)
+    fd = os.open(target, os.O_RDONLY | os.O_CLOEXEC)
+    task = asyncio.create_task(engine.scan_fd(fd, target=target))
+    try:
+        assert await asyncio.to_thread(accepted.wait, 2)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        await asyncio.to_thread(thread.join, 2)
+        assert observed["command"] == b"nVERSIONCOMMANDS\n"
+        assert observed["eof"] == b""
+    finally:
+        if not task.done():
+            task.cancel()
+        os.close(fd)
+        server.close()
+        thread.join(timeout=2)
