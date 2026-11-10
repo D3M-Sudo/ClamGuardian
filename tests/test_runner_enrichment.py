@@ -139,9 +139,9 @@ async def test_descriptor_scan_uses_same_enrichment_hook(tmp_path) -> None:
         result.metadata["threat_intelligence"] = '{"provider":"virustotal"}'
 
     runner.set_result_enricher(enrich)
-    result = await runner.submit_fd(17, target, profile=ScanProfile.DEFAULT)
+    result = await runner.submit_fd(17, target, profile=ScanProfile.home())
 
-    assert scan_calls == [(17, target, ScanProfile.DEFAULT)]
+    assert scan_calls == [(17, target, ScanProfile.home())]
     assert enriched == [str(target)]
     assert result.metadata["threat_intelligence"] == '{"provider":"virustotal"}'
 
