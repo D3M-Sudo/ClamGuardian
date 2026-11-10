@@ -477,6 +477,7 @@ def test_pinned_root_fd_survives_root_path_replacement(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_clamd_instream_fallback_streams_from_open_descriptor(tmp_path: Path) -> None:
     import struct
+
     from clamguardian.engines.clamav import ClamAVEngine
 
     target = tmp_path / "instream.bin"
