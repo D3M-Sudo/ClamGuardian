@@ -145,9 +145,14 @@ class RealtimeMonitorService:
                 root_fd = open_root_directory(path)
                 fd_stat = os.fstat(root_fd)
                 path_stat = os.stat(path, follow_symlinks=False)
-                if (fd_stat.st_dev, fd_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
+                if (fd_stat.st_dev, fd_stat.st_ino) != (
+                    path_stat.st_dev,
+                    path_stat.st_ino,
+                ):
                     os.close(root_fd)
-                    raise RuntimeError(f"Configured realtime root changed during startup: {path}")
+                    raise RuntimeError(
+                        f"Configured realtime root changed during startup: {path}"
+                    )
                 self._root_fds[path] = root_fd
                 canonical_roots.append(path)
 
@@ -164,8 +169,13 @@ class RealtimeMonitorService:
                     raise RuntimeError(f"Could not watch configured path: {path}")
                 fd_stat = os.fstat(self._root_fds[path])
                 path_stat = os.stat(path, follow_symlinks=False)
-                if (fd_stat.st_dev, fd_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
-                    raise RuntimeError(f"Configured realtime root changed while adding watch: {path}")
+                if (fd_stat.st_dev, fd_stat.st_ino) != (
+                    path_stat.st_dev,
+                    path_stat.st_ino,
+                ):
+                    raise RuntimeError(
+                        f"Configured realtime root changed while adding watch: {path}"
+                    )
             if self._monitor.watch_failures:
                 failures = ", ".join(str(path) for path in self._monitor.watch_failures)
                 raise RuntimeError(f"Realtime monitoring is incomplete; failed watches: {failures}")

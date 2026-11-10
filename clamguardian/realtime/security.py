@@ -1,11 +1,14 @@
 """Descriptor-based filesystem access for realtime scans."""
+
 from __future__ import annotations
+
 import os
 import stat
 from pathlib import Path
 
 _DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
 _FILE_FLAGS = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK
+
 
 def open_root_directory(path: Path) -> int:
     """Open and pin every component of an absolute root without following symlinks."""
@@ -22,6 +25,7 @@ def open_root_directory(path: Path) -> int:
     except BaseException:
         os.close(current_fd)
         raise
+
 
 def open_beneath(root_fd: int, root_path: Path, target_path: Path) -> int:
     """Open a regular file beneath a pinned root, refusing symlinks and traversal."""

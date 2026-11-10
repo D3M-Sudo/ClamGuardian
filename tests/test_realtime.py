@@ -73,8 +73,10 @@ def _make_orchestrator(
 ):
     root_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
     orchestrator = RealtimeScanOrchestrator(
-        runner, policy=RealtimePolicy(authorized_roots=[tmp_path]),
-        root_fds={tmp_path: root_fd}, debounce_seconds=debounce_seconds,
+        runner,
+        policy=RealtimePolicy(authorized_roots=[tmp_path]),
+        root_fds={tmp_path: root_fd},
+        debounce_seconds=debounce_seconds,
         max_queue_depth=max_queue_depth,
     )
     return orchestrator, root_fd
@@ -305,8 +307,10 @@ async def test_realtime_rejects_symlink_event_without_scanning_target(tmp_path: 
     runner = ScanTaskRunner(engine)
     root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
     orchestrator = RealtimeScanOrchestrator(
-        runner, policy=RealtimePolicy(authorized_roots=[root]),
-        root_fds={root: root_fd}, debounce_seconds=0,
+        runner,
+        policy=RealtimePolicy(authorized_roots=[root]),
+        root_fds={root: root_fd},
+        debounce_seconds=0,
     )
     try:
         await orchestrator.handle_events([FileEvent(link, FileEventType.CREATE)])
@@ -385,7 +389,7 @@ async def test_clamd_fildes_protocol_passes_descriptor_in_separate_ancillary_pac
             probe.sendall(b"ClamAV 1.4.0\\nCOMMANDS: PING VERSION VERSIONCOMMANDS FILDES\\n")
         conn, _ = server.accept()
         with conn:
-            observed["command"] = conn.recv(1024)
+            observed["command"] = conn.recv(len(b"nFILDES\\n"))
             payload, ancillary, _flags, _address = conn.recvmsg(
                 1, CMSG_SPACE(array.array("i").itemsize)
             )

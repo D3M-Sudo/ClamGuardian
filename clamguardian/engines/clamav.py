@@ -181,9 +181,21 @@ class ClamAVEngine(BaseAVEngine):
             if not self.socket_path.exists():
                 raise OSError("clamd UNIX socket is unavailable; safe FILDES scan required")
             owned_fd = os.dup(fd)
-            output, exit_code = await asyncio.wait_for(
-                asyncio.to_thread(self._scan_fd_owned, owned_fd), self.command_timeout
-            )
+            worker = asyncio.create_task(asyncio.to_thread(self._scan_fd_owned, owned_fd))
+            try:
+                output, exit_code = await asyncio.wait_for(
+                    asyncio.shield(worker), self.command_timeout
+                )
+            except TimeoutError:
+                worker.add_done_callback(
+                    lambda task: task.exception() if not task.cancelled() else None
+                )
+                raise
+            except asyncio.CancelledError:
+                worker.add_done_callback(
+                    lambda task: task.exception() if not task.cancelled() else None
+                )
+                raise
             if self._file_identity_changed(before, os.fstat(fd)):
                 raise OSError("file changed while clamd was scanning the opened descriptor")
             result = self._result(Path(target), started, output, exit_code, "clamd-fildes")

@@ -53,7 +53,9 @@ class RealtimeScanOrchestrator:
         self.profile = profile
         self.debounce_seconds = debounce_seconds
         self.max_queue_depth = max_queue_depth
-        self.root_fds = {Path(os.path.abspath(root)): fd for root, fd in (root_fds or {}).items()}
+        self.root_fds = {
+            Path(os.path.abspath(root)): fd for root, fd in (root_fds or {}).items()
+        }
 
         self._pending_events: dict[Path, float] = {}
         self._debounce_timers: dict[Path, asyncio.TimerHandle] = {}
@@ -174,7 +176,9 @@ class RealtimeScanOrchestrator:
             root = next(
                 (
                     candidate
-                    for candidate in sorted(self.root_fds, key=lambda item: len(item.parts), reverse=True)
+                    for candidate in sorted(
+                        self.root_fds, key=lambda item: len(item.parts), reverse=True
+                    )
                     if path != candidate and path.is_relative_to(candidate)
                 ),
                 None,
