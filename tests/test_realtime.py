@@ -517,3 +517,26 @@ async def test_clamd_instream_fallback_streams_from_open_descriptor(tmp_path: Pa
         os.close(fd)
         server.close()
         thread.join(timeout=2)
+
+
+@pytest.mark.asyncio
+async def test_clamd_fd_scan_rejects_empty_daemon_response(tmp_path: Path) -> None:
+    from clamguardian.engines.clamav import ClamAVEngine
+
+    target = tmp_path / "empty-response.bin"
+    target.write_bytes(b"content")
+    socket_path = tmp_path / "clamd.sock"
+    socket_path.touch()
+    engine = ClamAVEngine(socket_path=socket_path)
+
+    def empty_response(_fd: int) -> tuple[str, int, str]:
+        return "", 0, "fildes"
+
+    engine._scan_fd_sync = empty_response  # type: ignore[method-assign]
+    fd = os.open(target, os.O_RDONLY | os.O_CLOEXEC)
+    try:
+        result = await engine.scan_fd(fd, target=target)
+        assert result.status is ScanStatus.ERROR
+        assert "empty descriptor-scan response" in (result.error or "")
+    finally:
+        os.close(fd)

@@ -268,9 +268,7 @@ class ClamAVEngine(BaseAVEngine):
         output = bytes(response).decode("utf-8", errors="replace")
         if "COMMAND UNAVAILABLE" in output or "UNKNOWN COMMAND" in output:
             return self._scan_fd_instream_sync(fd)
-        code = 1 if any(
-            " ERROR" in line or line.endswith("ERROR") for line in output.splitlines()
-        ) else 0
+        code = self._descriptor_response_code(output)
         return output, code, "fildes"
 
     def _scan_fd_instream_sync(self, fd: int) -> tuple[str, int, str]:
@@ -297,10 +295,24 @@ class ClamAVEngine(BaseAVEngine):
                 if len(response) > MAX_RESPONSE_BYTES:
                     raise ValueError("clamd INSTREAM response exceeded the size limit")
         output = bytes(response).decode("utf-8", errors="replace")
-        code = 1 if any(
-            " ERROR" in line or line.endswith("ERROR") for line in output.splitlines()
-        ) else 0
+        code = self._descriptor_response_code(output)
         return output, code, "instream"
+
+    @staticmethod
+    def _descriptor_response_code(output: str) -> int:
+        """Reject empty or unrecognized clamd replies instead of treating them as clean."""
+        lines = [line.strip() for line in output.splitlines() if line.strip()]
+        if not lines:
+            raise OSError("clamd returned an empty descriptor-scan response")
+        if any("COMMAND UNAVAILABLE" in line or "UNKNOWN COMMAND" in line for line in lines):
+            raise OSError("clamd does not support the requested descriptor scan command")
+        valid = any(
+            line.endswith(" OK") or line.endswith(" FOUND") or line.endswith(" ERROR")
+            for line in lines
+        )
+        if not valid:
+            raise OSError("clamd returned an unrecognized descriptor-scan response")
+        return 1 if any(line.endswith(" ERROR") for line in lines) else 0
 
     @staticmethod
     def _file_identity_changed(before: os.stat_result, after: os.stat_result) -> bool:
