@@ -15,6 +15,8 @@ import asyncio
 import ctypes
 import errno
 import os
+import socket
+import threading
 from pathlib import Path
 
 import pytest
@@ -358,3 +360,61 @@ async def test_clamd_fd_scan_rejects_content_changed_during_scan(tmp_path: Path)
         assert "file changed while clamd was scanning" in (result.error or "")
     finally:
         os.close(fd)
+
+
+@pytest.mark.asyncio
+async def test_clamd_fildes_protocol_passes_descriptor_in_separate_ancillary_packet(
+    tmp_path: Path,
+) -> None:
+    import array
+    from socket import CMSG_SPACE, SCM_RIGHTS, SOL_SOCKET
+    from clamguardian.engines.clamav import ClamAVEngine
+
+    target = tmp_path / "fildes.txt"
+    target.write_bytes(b"descriptor payload")
+    socket_path = tmp_path / "clamd.sock"
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(os.fspath(socket_path))
+    server.listen(2)
+    observed: dict[str, object] = {}
+
+    def serve() -> None:
+        probe, _ = server.accept()
+        with probe:
+            observed["probe"] = probe.recv(1024)
+            probe.sendall(b"ClamAV 1.4.0\\nCOMMANDS: PING VERSION VERSIONCOMMANDS FILDES\\n")
+        conn, _ = server.accept()
+        with conn:
+            observed["command"] = conn.recv(1024)
+            payload, ancillary, _flags, _address = conn.recvmsg(
+                1, CMSG_SPACE(array.array("i").itemsize)
+            )
+            observed["dummy"] = payload
+            received_fd = -1
+            for level, kind, data in ancillary:
+                if level == SOL_SOCKET and kind == SCM_RIGHTS:
+                    descriptors = array.array("i")
+                    descriptors.frombytes(data[: descriptors.itemsize])
+                    received_fd = descriptors[0]
+            try:
+                with os.fdopen(received_fd, "rb") as handle:
+                    observed["content"] = handle.read()
+            finally:
+                conn.sendall(b"stream: OK\\n")
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    engine = ClamAVEngine(socket_path=socket_path)
+    fd = os.open(target, os.O_RDONLY | os.O_CLOEXEC)
+    try:
+        output, code = await asyncio.to_thread(engine._scan_fd_sync, fd)
+        assert code == 0
+        assert output == "stream: OK\\n"
+        assert observed["probe"] == b"nVERSIONCOMMANDS\\n"
+        assert observed["command"] == b"nFILDES\\n"
+        assert observed["dummy"] == b" "
+        assert observed["content"] == b"descriptor payload"
+    finally:
+        os.close(fd)
+        server.close()
+        thread.join(timeout=2)

@@ -180,8 +180,9 @@ class ClamAVEngine(BaseAVEngine):
                 profile.validate()
             if not self.socket_path.exists():
                 raise OSError("clamd UNIX socket is unavailable; safe FILDES scan required")
+            owned_fd = os.dup(fd)
             output, exit_code = await asyncio.wait_for(
-                asyncio.to_thread(self._scan_fd_sync, fd), self.command_timeout
+                asyncio.to_thread(self._scan_fd_owned, owned_fd), self.command_timeout
             )
             if self._file_identity_changed(before, os.fstat(fd)):
                 raise OSError("file changed while clamd was scanning the opened descriptor")
@@ -202,17 +203,39 @@ class ClamAVEngine(BaseAVEngine):
                 started_at=started, finished_at=datetime.now(UTC),
             )
 
+    def _scan_fd_owned(self, fd: int) -> tuple[str, int]:
+        """Run descriptor scanning while owning and always closing a duplicate fd."""
+        try:
+            return self._scan_fd_sync(fd)
+        finally:
+            os.close(fd)
+
     def _scan_fd_sync(self, fd: int) -> tuple[str, int]:
-        """Send an opened descriptor to clamd using SCM_RIGHTS."""
+        """Send an opened descriptor to clamd using its documented FILDES exchange."""
+        capabilities = bytearray()
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+            probe.settimeout(min(self.command_timeout, 10.0))
+            probe.connect(os.fspath(self.socket_path))
+            probe.sendall(b"nVERSIONCOMMANDS\\n")
+            while True:
+                chunk = probe.recv(4096)
+                if not chunk:
+                    break
+                capabilities.extend(chunk)
+                if len(capabilities) > 65536:
+                    raise ValueError("clamd VERSIONCOMMANDS response exceeded the size limit")
+        if b"FILDES" not in bytes(capabilities).split():
+            raise OSError("clamd does not advertise FILDES support")
+
         response = bytearray()
-        command = b"FILDES\\n"
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.settimeout(self.command_timeout)
             sock.connect(os.fspath(self.socket_path))
+            sock.sendall(b"nFILDES\\n")
             rights = array.array("i", [fd])
-            sent = sock.sendmsg([command], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights)])
-            if sent < len(command):
-                sock.sendall(command[sent:])
+            # The protocol requires a separate ancillary-data packet with at
+            # least one dummy byte after the FILDES command record.
+            sock.sendmsg([b" "], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights)])
             while True:
                 chunk = sock.recv(65536)
                 if not chunk:
