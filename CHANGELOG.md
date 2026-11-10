@@ -9,6 +9,7 @@
 - Preserve the selected VirusTotal intelligence profile and all unrelated application settings when the Scheduler updates its configuration.
 
 ### Security
+- **Realtime filesystem boundary:** pin configured monitoring roots, reject symlink roots/components, open event targets beneath root directory descriptors with `O_NOFOLLOW`, and require descriptor-based clamd `FILDES` scanning with no pathname fallback.
 - Keep Public API requests blocked until written VirusTotal eligibility authorization is recorded.
 - Remove upstream response bodies and sensitive request details from VirusTotal error logs; never fall back between API profiles.
 - Keep VirusTotal enrichment separate from the local ClamAV verdict.
