@@ -13,6 +13,7 @@ from clamguardian.intelligence import service as service_module
 from clamguardian.intelligence.cache import VirusTotalCache
 from clamguardian.intelligence.service import ThreatIntelligenceService
 from clamguardian.intelligence.virustotal import (
+    VirusTotalAPIError,
     VirusTotalProvider,
     VirusTotalTransientError,
 )
@@ -209,3 +210,32 @@ async def test_valid_cached_report_is_reused_without_secret_store_access(
 
     assert await service.lookup_scan_result(result) == REPORT
     secret_store.get_credential.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_service_honors_retry_after_for_rate_limited_lookup(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True
+    )
+    sleep = AsyncMock()
+    monkeypatch.setattr(service_module.asyncio, "sleep", sleep)
+    settings = SettingsStore(tmp_path / "settings.json")
+    settings.save(AppSettings(intelligence_enabled=True, intelligence_profile="premium"))
+    provider = AsyncMock(spec=VirusTotalProvider)
+    provider.lookup_hash.side_effect = [
+        VirusTotalAPIError(429, "rate limited", retry_after=3),
+        REPORT,
+    ]
+    service = ThreatIntelligenceService(
+        settings_store=settings,
+        provider=provider,
+        cache=VirusTotalCache(tmp_path / "vt.db"),
+    )
+    result = ScanResult(target="/sample", clean=True, metadata={"sha256": SHA256})
+
+    assert await service.lookup_scan_result(result) == REPORT
+    provider.lookup_hash.assert_awaited_with(SHA256)
+    assert provider.lookup_hash.await_count == 2
+    sleep.assert_awaited_once_with(3.0)
