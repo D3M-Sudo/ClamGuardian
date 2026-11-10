@@ -63,7 +63,7 @@ jobs:
       - name: Install ClamAV
         run: |
           sudo apt-get update
-          sudo apt-get install -y clamav clamav-daemon
+          sudo apt-get install -y clamav clamav-daemon python3-cryptography
       - name: Update virus database
         run: |
           sudo pkill -x freshclam || true
