@@ -386,10 +386,10 @@ async def test_clamd_fildes_protocol_passes_descriptor_in_separate_ancillary_pac
         probe, _ = server.accept()
         with probe:
             observed["probe"] = probe.recv(1024)
-            probe.sendall(b"ClamAV 1.4.0\\nCOMMANDS: PING VERSION VERSIONCOMMANDS FILDES\\n")
+            probe.sendall(b"ClamAV 1.4.0\nCOMMANDS: PING VERSION VERSIONCOMMANDS FILDES\n")
         conn, _ = server.accept()
         with conn:
-            observed["command"] = conn.recv(len(b"nFILDES\\n"))
+            observed["command"] = conn.recv(len(b"nFILDES\n"))
             payload, ancillary, _flags, _address = conn.recvmsg(
                 1, CMSG_SPACE(array.array("i").itemsize)
             )
@@ -404,7 +404,7 @@ async def test_clamd_fildes_protocol_passes_descriptor_in_separate_ancillary_pac
                 with os.fdopen(received_fd, "rb") as handle:
                     observed["content"] = handle.read()
             finally:
-                conn.sendall(b"stream: OK\\n")
+                conn.sendall(b"stream: OK\n")
 
     thread = threading.Thread(target=serve, daemon=True)
     thread.start()
@@ -413,12 +413,44 @@ async def test_clamd_fildes_protocol_passes_descriptor_in_separate_ancillary_pac
     try:
         output, code = await asyncio.to_thread(engine._scan_fd_sync, fd)
         assert code == 0
-        assert output == "stream: OK\\n"
-        assert observed["probe"] == b"nVERSIONCOMMANDS\\n"
-        assert observed["command"] == b"nFILDES\\n"
+        assert output == "stream: OK\n"
+        assert observed["probe"] == b"nVERSIONCOMMANDS\n"
+        assert observed["command"] == b"nFILDES\n"
         assert observed["dummy"] == b" "
         assert observed["content"] == b"descriptor payload"
     finally:
         os.close(fd)
         server.close()
         thread.join(timeout=2)
+
+
+def test_open_root_directory_rejects_symlink_component(tmp_path: Path) -> None:
+    from clamguardian.realtime.security import open_root_directory
+
+    real_root = tmp_path / "real"
+    real_root.mkdir()
+    linked_root = tmp_path / "linked"
+    linked_root.symlink_to(real_root, target_is_directory=True)
+    with pytest.raises(OSError):
+        open_root_directory(linked_root)
+
+
+def test_pinned_root_fd_survives_root_path_replacement(tmp_path: Path) -> None:
+    from clamguardian.realtime.security import open_root_directory
+
+    root = tmp_path / "monitored"
+    root.mkdir()
+    (root / "sample.txt").write_text("original root")
+    root_fd = open_root_directory(root)
+    moved = tmp_path / "monitored-old"
+    try:
+        root.rename(moved)
+        root.mkdir()
+        (root / "sample.txt").write_text("replacement root")
+        file_fd = open_beneath(root_fd, root, root / "sample.txt")
+        try:
+            assert os.read(file_fd, 64) == b"original root"
+        finally:
+            os.close(file_fd)
+    finally:
+        os.close(root_fd)

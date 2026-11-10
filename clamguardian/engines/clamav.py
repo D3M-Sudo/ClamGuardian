@@ -228,7 +228,7 @@ class ClamAVEngine(BaseAVEngine):
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
             probe.settimeout(min(self.command_timeout, 10.0))
             probe.connect(os.fspath(self.socket_path))
-            probe.sendall(b"nVERSIONCOMMANDS\\n")
+            probe.sendall(b"nVERSIONCOMMANDS\n")
             while True:
                 chunk = probe.recv(4096)
                 if not chunk:
@@ -243,7 +243,7 @@ class ClamAVEngine(BaseAVEngine):
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.settimeout(self.command_timeout)
             sock.connect(os.fspath(self.socket_path))
-            sock.sendall(b"nFILDES\\n")
+            sock.sendall(b"nFILDES\n")
             rights = array.array("i", [fd])
             # The protocol requires a separate ancillary-data packet with at
             # least one dummy byte after the FILDES command record.
