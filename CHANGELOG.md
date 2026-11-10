@@ -5,7 +5,6 @@
 - Add persistent profile-aware request pacing, Public daily quota enforcement, and cross-process Retry-After cooldowns.
 - Add hash-first file submission workflow with per-file typed consent, privacy warning, SHA-256 revalidation, upload polling, CLI commands, and GTK profile selection.
 
-### Added
 - Add a persistent SHA-256-keyed VirusTotal report cache with a configurable 24-hour default TTL, acquisition-time expiry, and strict Public/Premium cache isolation.
 - Deduplicate concurrent hash lookups within the shared intelligence service and apply bounded retries for transient transport/server failures and HTTP 429 responses.
 
