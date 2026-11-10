@@ -1,0 +1,90 @@
+"""Tests for best-effort shared scan-result enrichment."""
+
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+
+import pytest
+
+from clamguardian.core.base import BaseAVEngine, ScanResult
+from clamguardian.core.profiles import ScanProfile
+from clamguardian.core.runner import ScanTaskRunner
+
+SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+
+class StubEngine(BaseAVEngine):
+    name = "stub"
+
+    async def scan(
+        self,
+        target: Path,
+        *,
+        recursive: bool = True,
+        profile: ScanProfile | None = None,
+    ) -> ScanResult:
+        return ScanResult(
+            target=str(target),
+            clean=True,
+            engine=self.name,
+            metadata={"sha256": SHA256},
+        )
+
+    async def update_signatures(self) -> str:
+        return "updated"
+
+
+@pytest.mark.asyncio
+async def test_runner_applies_enrichment_before_returning_scan_result(tmp_path) -> None:
+    runner = ScanTaskRunner(StubEngine())
+    calls = 0
+
+    async def enrich(result: ScanResult) -> None:
+        nonlocal calls
+        calls += 1
+        result.metadata["threat_intelligence"] = '{"provider":"virustotal"}'
+
+    runner.set_result_enricher(enrich)
+    result = await runner.submit(tmp_path / "sample.bin")
+
+    assert calls == 1
+    assert result.clean is True
+    assert result.metadata["sha256"] == SHA256
+    assert result.metadata["threat_intelligence"] == '{"provider":"virustotal"}'
+
+
+@pytest.mark.asyncio
+async def test_enrichment_failure_does_not_change_local_av_result(tmp_path, caplog) -> None:
+    runner = ScanTaskRunner(StubEngine())
+
+    async def fail(_result: ScanResult) -> None:
+        raise RuntimeError("remote service unavailable")
+
+    runner.set_result_enricher(fail)
+    result = await runner.submit(tmp_path / "sample.bin")
+
+    assert result.clean is True
+    assert result.metadata["sha256"] == SHA256
+    assert "preserving AV result" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_cancelling_enrichment_cancels_the_submitted_task(tmp_path) -> None:
+    runner = ScanTaskRunner(StubEngine())
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def blocked(_result: ScanResult) -> None:
+        entered.set()
+        await release.wait()
+
+    runner.set_result_enricher(blocked)
+    task = asyncio.create_task(runner.submit(tmp_path / "sample.bin"))
+    await entered.wait()
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await asyncio.sleep(0)
+    assert runner.active_count == 0

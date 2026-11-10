@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from .base import BaseAVEngine, ScanResult
 from .profiles import ScanProfile
+
+logger = logging.getLogger(__name__)
 
 
 class ScanTaskRunner:
@@ -23,6 +26,9 @@ class ScanTaskRunner:
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be positive")
         self.engine = engine
+        self._result_enricher: (
+            Callable[[ScanResult], Awaitable[None]] | None
+        ) = None
         self._semaphore = threading.BoundedSemaphore(max_concurrency)
         self._tasks: dict[
             asyncio.Task[ScanResult], tuple[asyncio.AbstractEventLoop, threading.Event]
@@ -43,6 +49,27 @@ class ScanTaskRunner:
             tracked = self._tasks.pop(task, None)
         if tracked is not None:
             tracked[1].set()
+
+    def set_result_enricher(
+        self, enricher: Callable[[ScanResult], Awaitable[None]] | None
+    ) -> None:
+        """Set the optional best-effort post-scan enrichment callback."""
+        self._result_enricher = enricher
+
+    async def _enrich_result(self, result: ScanResult) -> ScanResult:
+        enricher = self._result_enricher
+        if enricher is None:
+            return result
+        try:
+            await enricher(result)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                "Optional scan-result enrichment failed (%s); preserving AV result",
+                type(exc).__name__,
+            )
+        return result
 
     async def submit(
         self,
@@ -69,9 +96,10 @@ class ScanTaskRunner:
             acquired = True
             if on_start is not None:
                 on_start()
-            return await self.engine.scan(
+            result = await self.engine.scan(
                 Path(target), recursive=recursive, profile=profile
             )
+            return await self._enrich_result(result)
         finally:
             if acquired:
                 self._semaphore.release()

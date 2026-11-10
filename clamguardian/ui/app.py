@@ -18,9 +18,11 @@ the shim pattern of :mod:`clamguardian.ui.database_pages`.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import sys
 import threading
+from datetime import UTC, datetime
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -124,6 +126,9 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             self._settings = self._settings_store.load()
             self._intelligence_service = ThreatIntelligenceService(
                 settings_store=self._settings_store
+            )
+            self._scan_controller._runner.set_result_enricher(
+                self._enrich_scan_result
             )
             self._vault = QuarantineVault(
                 self._key_manager.directory,
@@ -296,13 +301,35 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             if window.is_active():
                 withdraw_scan_notification(self.get_application())
 
-        async def _store_scan_result(self, result: ScanResult) -> None:
-            """Enrich a completed local scan with optional hash-only intelligence."""
+        async def _enrich_scan_result(self, result: ScanResult) -> None:
+            """Attach optional hash-only intelligence without changing AV status."""
             report = await self._intelligence_service.lookup_scan_result(result)
-            if report is not None:
-                # Keep the remote assessment explicitly separate from ClamAV's
-                # local verdict; it is supplemental metadata, never a rewrite.
-                result.metadata["threat_intelligence"] = report
+            if report is None:
+                return
+            profile = self._intelligence_service.selected_profile().value
+            sha256 = result.metadata.get("sha256")
+            status = (
+                "error"
+                if report.get("error") is not None
+                else "found" if report.get("found") is True else "not_found"
+            )
+            evidence = {
+                "provider": "virustotal",
+                "profile": profile,
+                "sha256": sha256,
+                "observed_at": datetime.now(UTC).isoformat(),
+                "provenance": "sha256_hash_lookup",
+                "status": status,
+                "metadata": report,
+            }
+            # ScanResult metadata is a string map. Keep the supplemental report
+            # JSON-encoded so history snapshots preserve its structure losslessly.
+            result.metadata["threat_intelligence"] = json.dumps(
+                evidence, sort_keys=True, separators=(",", ":")
+            )
+
+        async def _store_scan_result(self, result: ScanResult) -> None:
+            """Persist the already-enriched scan result and refresh the UI."""
             await self._history_store.record_scan(result)
             GLib.idle_add(self._after_scan_recorded, result)
 
