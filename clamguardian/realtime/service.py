@@ -138,6 +138,8 @@ class RealtimeMonitorService:
                         f"Configured realtime root must not be a symlink: {configured_path}"
                     )
                 path = configured_path.resolve(strict=True)
+                if path in self._root_fds:
+                    continue
                 if not path.is_dir():
                     raise RuntimeError(
                         f"Configured realtime path is not an accessible directory: {path}"
@@ -159,9 +161,13 @@ class RealtimeMonitorService:
             self.monitored_paths = canonical_roots
             self.policy = RealtimePolicy(authorized_roots=canonical_roots)
             self.orchestrator = RealtimeScanOrchestrator(
-                runner=self.runner, policy=self.policy, history_store=self.history_store,
-                profile=self.profile, debounce_seconds=self.debounce_seconds,
-                max_queue_depth=self.max_queue_depth, root_fds=self._root_fds,
+                runner=self.runner,
+                policy=self.policy,
+                history_store=self.history_store,
+                profile=self.profile,
+                debounce_seconds=self.debounce_seconds,
+                max_queue_depth=self.max_queue_depth,
+                root_fds=self._root_fds,
             )
             for path in self.monitored_paths:
                 watch = self._monitor.add_watch(path)
