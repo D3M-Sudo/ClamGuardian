@@ -1,18 +1,31 @@
-"""Threat Intelligence orchestration with explicit API profile and upload consent."""
+"""Threat Intelligence orchestration with cache, bounded retries and upload consent."""
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import logging
+import threading
 import time
 from typing import Any
 
 from ..core.base import ScanResult
 from ..core.settings import SettingsStore
+from .cache import VirusTotalCache
 from .profiles import APIProfile
 from .secrets import IntelligenceSecretStore, SecretStorageError
 from .upload import preview_upload, submit_after_consent
-from .virustotal import VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED, VirusTotalProvider
+from .virustotal import (
+    VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED,
+    VirusTotalAPIError,
+    VirusTotalProvider,
+    VirusTotalTransientError,
+)
 
 logger = logging.getLogger(__name__)
+
+_MAX_LOOKUP_ATTEMPTS = 3
+_RETRY_BASE_SECONDS = 1.0
+_RETRY_MAX_SECONDS = 8.0
 
 
 class ThreatIntelligenceService:
@@ -23,12 +36,20 @@ class ThreatIntelligenceService:
         settings_store: SettingsStore | None = None,
         secret_store: IntelligenceSecretStore | None = None,
         provider: VirusTotalProvider | None = None,
+        cache: VirusTotalCache | None = None,
     ) -> None:
         self.settings_store = settings_store or SettingsStore()
         self.secret_store = secret_store or IntelligenceSecretStore()
         self._custom_provider = provider
         self._provider: VirusTotalProvider | None = provider
         self._provider_initialized = provider is not None
+        self.cache = cache or VirusTotalCache(
+            self.settings_store.path.with_name("virustotal-cache.db")
+        )
+        self._inflight: dict[
+            tuple[str, str], concurrent.futures.Future[dict[str, Any]]
+        ] = {}
+        self._inflight_lock = threading.Lock()
         self._upload_lookup: tuple[str, str, dict[str, Any], float] | None = None
 
     def is_enabled(self) -> bool:
@@ -69,6 +90,28 @@ class ThreatIntelligenceService:
             logger.error("Threat intelligence secure credential retrieval failed")
             return None
 
+    async def _lookup_with_retry(
+        self, provider: VirusTotalProvider, sha256: str
+    ) -> dict[str, Any]:
+        for attempt in range(_MAX_LOOKUP_ATTEMPTS):
+            try:
+                return await provider.lookup_hash(sha256)
+            except VirusTotalAPIError as exc:
+                retryable = exc.status == 429 or 500 <= exc.status <= 599
+                if not retryable or attempt + 1 >= _MAX_LOOKUP_ATTEMPTS:
+                    raise
+                delay = (
+                    float(exc.retry_after)
+                    if exc.retry_after is not None
+                    else min(_RETRY_BASE_SECONDS * (2**attempt), _RETRY_MAX_SECONDS)
+                )
+            except VirusTotalTransientError:
+                if attempt + 1 >= _MAX_LOOKUP_ATTEMPTS:
+                    raise
+                delay = min(_RETRY_BASE_SECONDS * (2**attempt), _RETRY_MAX_SECONDS)
+            await asyncio.sleep(max(0.0, delay))
+        raise RuntimeError("VirusTotal lookup retry loop exhausted")
+
     async def lookup_scan_result(self, result: ScanResult) -> dict[str, Any] | None:
         if not self.is_enabled():
             return None
@@ -79,18 +122,66 @@ class ThreatIntelligenceService:
             or any(ch not in "0123456789abcdefABCDEF" for ch in sha256)
         ):
             return None
+        digest = sha256.lower()
         provider = self.get_provider()
         if provider is None:
             return None
+        profile = self.selected_profile().value
+
         try:
-            return await provider.lookup_hash(sha256)
+            cached = await asyncio.to_thread(self.cache.get, digest, profile)
+        except Exception as exc:
+            logger.warning("VirusTotal cache read failed (%s)", type(exc).__name__)
+            cached = None
+        if cached is not None:
+            return cached
+
+        key = (digest, profile)
+        with self._inflight_lock:
+            shared = self._inflight.get(key)
+            leader = shared is None
+            if shared is None:
+                shared = concurrent.futures.Future()
+                self._inflight[key] = shared
+
+        if not leader:
+            return await asyncio.wrap_future(shared)
+
+        try:
+            report = await self._lookup_with_retry(provider, digest)
+            if (
+                isinstance(report, dict)
+                and report.get("error") is None
+                and isinstance(report.get("found"), bool)
+            ):
+                try:
+                    await asyncio.to_thread(self.cache.put, digest, profile, report)
+                except Exception as exc:
+                    logger.warning("VirusTotal cache write failed (%s)", type(exc).__name__)
+            shared.set_result(report)
+            return report
+        except asyncio.CancelledError:
+            shared.set_result(
+                {
+                    "provider": provider.name,
+                    "error": "VirusTotal lookup cancelled",
+                    "sha256": digest,
+                }
+            )
+            raise
         except Exception as exc:
             logger.error("Threat intelligence lookup failed (%s)", type(exc).__name__)
-            return {
+            report = {
                 "provider": provider.name,
                 "error": "VirusTotal lookup failed",
-                "sha256": sha256,
+                "sha256": digest,
             }
+            shared.set_result(report)
+            return report
+        finally:
+            with self._inflight_lock:
+                if self._inflight.get(key) is shared:
+                    self._inflight.pop(key, None)
 
     def preview_file_upload(self, path):
         self._upload_lookup = None
@@ -105,7 +196,7 @@ class ThreatIntelligenceService:
         provider = self.get_provider()
         if provider is None:
             raise PermissionError("Selected VirusTotal API profile is unavailable or blocked")
-        report = await provider.lookup_hash(preview.sha256)
+        report = await self._lookup_with_retry(provider, preview.sha256)
         self._upload_lookup = (
             preview.sha256,
             self.selected_profile().value,
