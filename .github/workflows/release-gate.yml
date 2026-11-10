@@ -85,7 +85,7 @@ jobs:
           echo "::error::clamd socket not available" && exit 1
       - name: Clean scan via clamdscan
         run: |
-          printf 'clean file content\\n' > /tmp/clean2.txt
+          printf 'clean file content\n' > /tmp/clean2.txt
           clamdscan /tmp/clean2.txt
       - name: EICAR detection via clamdscan
         run: |
@@ -109,7 +109,7 @@ jobs:
               eicar_path = Path("/tmp/descriptor-eicar.txt")
               clean_path.write_text("clean file content\\n")
               eicar_path.write_text(
-                  "X5O!P%@AP[4\\\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+                  "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
               )
 
               async def scan(path: Path):
