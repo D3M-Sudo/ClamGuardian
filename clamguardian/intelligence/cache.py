@@ -9,9 +9,9 @@ import re
 import sqlite3
 import threading
 import time
-from contextlib import closing
+from contextlib import closing, contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _ALLOWED_PROFILES = frozenset({"public", "premium"})
@@ -59,37 +59,45 @@ class VirusTotalCache:
         connection.execute("PRAGMA busy_timeout=5000")
         return connection
 
-    def _initialize(self) -> None:
-        existed = self.path.exists()
-        with self._lock, closing(self._connect()) as connection:
+    @contextmanager
+    def _transaction(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
             with connection:
-                version = int(connection.execute("PRAGMA user_version").fetchone()[0])
-                if version > _SCHEMA_VERSION:
-                    raise RuntimeError(
-                        f"VirusTotal cache schema {version} is newer than supported "
-                        f"schema {_SCHEMA_VERSION}"
-                    )
-                connection.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS vt_hash_cache (
-                        sha256 TEXT PRIMARY KEY,
-                        profile TEXT NOT NULL CHECK(profile IN ('public', 'premium')),
-                        acquired_at REAL NOT NULL,
-                        expires_at REAL NOT NULL,
-                        report_json TEXT NOT NULL
-                    )
-                    """
+                yield connection
+        finally:
+            connection.close()
+
+    def _initialize(self) -> None:
+        with self._lock, self._transaction() as connection:
+            version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+            if version > _SCHEMA_VERSION:
+                raise RuntimeError(
+                    f"VirusTotal cache schema {version} is newer than supported "
+                    f"schema {_SCHEMA_VERSION}"
                 )
-                connection.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_vt_hash_cache_expiry "
-                    "ON vt_hash_cache(expires_at)"
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS vt_hash_cache (
+                    sha256 TEXT PRIMARY KEY,
+                    profile TEXT NOT NULL CHECK(profile IN ('public', 'premium')),
+                    acquired_at REAL NOT NULL,
+                    expires_at REAL NOT NULL,
+                    report_json TEXT NOT NULL
                 )
-                connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
-        if not existed:
-            try:
-                os.chmod(self.path, 0o600)
-            except OSError:
-                pass
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_vt_hash_cache_expiry "
+                "ON vt_hash_cache(expires_at)"
+            )
+            connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
+        try:
+            # Harden existing files too; this cache contains persistent
+            # intelligence metadata and must not inherit permissive modes.
+            os.chmod(self.path, 0o600)
+        except OSError:
+            pass
         self._harden_sidecars()
 
     def _harden_sidecars(self) -> None:
@@ -118,36 +126,42 @@ class VirusTotalCache:
         digest = self._validate_key(sha256)
         selected_profile = self._validate_profile(profile)
         now = float(self._clock())
-        with self._lock, closing(self._connect()) as connection:
-            with connection:
-                row = connection.execute(
-                    "SELECT profile, expires_at, report_json FROM vt_hash_cache "
-                    "WHERE sha256 = ?",
-                    (digest,),
-                ).fetchone()
-                if row is None:
-                    return None
-                cached_profile, expires_at, report_json = row
-                if float(expires_at) <= now:
-                    connection.execute(
-                        "DELETE FROM vt_hash_cache WHERE sha256 = ?", (digest,)
-                    )
-                    return None
-                if cached_profile != selected_profile:
-                    return None
-                try:
-                    report = json.loads(report_json)
-                except (TypeError, json.JSONDecodeError):
-                    connection.execute(
-                        "DELETE FROM vt_hash_cache WHERE sha256 = ?", (digest,)
-                    )
-                    return None
-                if not isinstance(report, dict):
-                    connection.execute(
-                        "DELETE FROM vt_hash_cache WHERE sha256 = ?", (digest,)
-                    )
-                    return None
-                return report
+        with self._lock, self._transaction() as connection:
+            row = connection.execute(
+                "SELECT profile, expires_at, report_json FROM vt_hash_cache "
+                "WHERE sha256 = ?",
+                (digest,),
+            ).fetchone()
+            if row is None:
+                return None
+            cached_profile, expires_at, report_json = row
+            if float(expires_at) <= now:
+                connection.execute(
+                    "DELETE FROM vt_hash_cache WHERE sha256 = ?", (digest,)
+                )
+                return None
+            if cached_profile != selected_profile:
+                return None
+            try:
+                report = json.loads(report_json)
+            except (TypeError, json.JSONDecodeError):
+                connection.execute(
+                    "DELETE FROM vt_hash_cache WHERE sha256 = ?", (digest,)
+                )
+                return None
+            reported_hash = report.get("sha256", digest) if isinstance(report, dict) else None
+            if (
+                not isinstance(report, dict)
+                or not isinstance(report.get("found"), bool)
+                or not isinstance(reported_hash, str)
+                or reported_hash.lower() != digest
+                or report.get("error") is not None
+            ):
+                connection.execute(
+                    "DELETE FROM vt_hash_cache WHERE sha256 = ?", (digest,)
+                )
+                return None
+            return report
 
     def put(self, sha256: str, profile: str, report: dict[str, Any]) -> None:
         digest = self._validate_key(sha256)
@@ -155,46 +169,49 @@ class VirusTotalCache:
         if not isinstance(report, dict):
             raise ValueError("report must be a dictionary")
         # Only definitive provider responses are cacheable.
-        if report.get("error") is not None or not isinstance(report.get("found"), bool):
+        reported_hash = report.get("sha256", digest)
+        if (
+            report.get("error") is not None
+            or not isinstance(report.get("found"), bool)
+            or not isinstance(reported_hash, str)
+            or reported_hash.lower() != digest
+        ):
             return
         encoded = json.dumps(
             report, sort_keys=True, separators=(",", ":"), ensure_ascii=True
         )
         acquired_at = float(self._clock())
         expires_at = acquired_at + self.ttl_seconds
-        with self._lock, closing(self._connect()) as connection:
-            with connection:
-                connection.execute(
-                    """
-                    INSERT INTO vt_hash_cache
-                        (sha256, profile, acquired_at, expires_at, report_json)
-                    VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT(sha256) DO UPDATE SET
-                        profile = excluded.profile,
-                        acquired_at = excluded.acquired_at,
-                        expires_at = excluded.expires_at,
-                        report_json = excluded.report_json
-                    """,
-                    (digest, selected_profile, acquired_at, expires_at, encoded),
-                )
+        with self._lock, self._transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO vt_hash_cache
+                    (sha256, profile, acquired_at, expires_at, report_json)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(sha256) DO UPDATE SET
+                    profile = excluded.profile,
+                    acquired_at = excluded.acquired_at,
+                    expires_at = excluded.expires_at,
+                    report_json = excluded.report_json
+                """,
+                (digest, selected_profile, acquired_at, expires_at, encoded),
+            )
         self._harden_sidecars()
 
     def invalidate(self, sha256: str) -> None:
         digest = self._validate_key(sha256)
-        with self._lock, closing(self._connect()) as connection:
-            with connection:
-                connection.execute(
-                    "DELETE FROM vt_hash_cache WHERE sha256 = ?", (digest,)
-                )
+        with self._lock, self._transaction() as connection:
+            connection.execute(
+                "DELETE FROM vt_hash_cache WHERE sha256 = ?", (digest,)
+            )
 
     def clear_expired(self) -> int:
-        with self._lock, closing(self._connect()) as connection:
-            with connection:
-                cursor = connection.execute(
-                    "DELETE FROM vt_hash_cache WHERE expires_at <= ?",
-                    (float(self._clock()),),
-                )
-                deleted = int(cursor.rowcount)
+        with self._lock, self._transaction() as connection:
+            cursor = connection.execute(
+                "DELETE FROM vt_hash_cache WHERE expires_at <= ?",
+                (float(self._clock()),),
+            )
+            deleted = int(cursor.rowcount)
         self._harden_sidecars()
         return deleted
 

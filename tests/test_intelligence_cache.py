@@ -144,3 +144,40 @@ async def test_service_retries_transient_lookup_failures(tmp_path, monkeypatch) 
 
     assert await service.lookup_scan_result(result) == REPORT
     assert provider.lookup_hash.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_cancelling_waiter_does_not_cancel_shared_lookup(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True
+    )
+    settings = SettingsStore(tmp_path / "settings.json")
+    settings.save(AppSettings(intelligence_enabled=True, intelligence_profile="public"))
+    provider = AsyncMock(spec=VirusTotalProvider)
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def delayed_lookup(_sha256: str):
+        entered.set()
+        await release.wait()
+        return REPORT
+
+    provider.lookup_hash.side_effect = delayed_lookup
+    service = ThreatIntelligenceService(
+        settings_store=settings,
+        provider=provider,
+        cache=VirusTotalCache(tmp_path / "vt.db"),
+    )
+    result = ScanResult(target="/sample", clean=True, metadata={"sha256": SHA256})
+
+    leader = asyncio.create_task(service.lookup_scan_result(result))
+    await entered.wait()
+    waiter = asyncio.create_task(service.lookup_scan_result(result))
+    await asyncio.sleep(0)
+    waiter.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiter
+
+    release.set()
+    assert await leader == REPORT
+    provider.lookup_hash.assert_awaited_once_with(SHA256)

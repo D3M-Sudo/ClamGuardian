@@ -145,7 +145,7 @@ class ThreatIntelligenceService:
                 self._inflight[key] = shared
 
         if not leader:
-            return await asyncio.wrap_future(shared)
+            return await asyncio.shield(asyncio.wrap_future(shared))
 
         try:
             report = await self._lookup_with_retry(provider, digest)
