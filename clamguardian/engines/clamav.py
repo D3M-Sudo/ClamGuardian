@@ -234,12 +234,12 @@ class ClamAVEngine(BaseAVEngine):
                     asyncio.shield(worker), self.command_timeout
                 )
             except TimeoutError:
+                socket_control.cancel()
                 worker.add_done_callback(consume_worker_result)
                 raise
             except asyncio.CancelledError:
-                worker.add_done_callback(
-                    lambda task: task.exception() if not task.cancelled() else None
-                )
+                socket_control.cancel()
+                worker.add_done_callback(consume_worker_result)
                 raise
             exit_code = self._descriptor_response_code(output)
             if self._file_identity_changed(before, os.fstat(fd)):
@@ -302,7 +302,7 @@ class ClamAVEngine(BaseAVEngine):
             return self._scan_fd_instream_sync(fd, socket_control)
 
         if b"FILDES" not in bytes(capabilities).split():
-            return self._scan_fd_instream_sync(fd)
+            return self._scan_fd_instream_sync(fd, socket_control)
 
         response = bytearray()
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
@@ -328,7 +328,7 @@ class ClamAVEngine(BaseAVEngine):
                     socket_control.detach(sock)
         output = bytes(response).decode("utf-8", errors="replace")
         if "COMMAND UNAVAILABLE" in output or "UNKNOWN COMMAND" in output:
-            return self._scan_fd_instream_sync(fd)
+            return self._scan_fd_instream_sync(fd, socket_control)
         code = self._descriptor_response_code(output)
         return output, code, "fildes"
 
