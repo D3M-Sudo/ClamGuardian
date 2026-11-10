@@ -197,10 +197,7 @@ class ClamAVEngine(BaseAVEngine):
                     break
                 except BlockingIOError:
                     ready = loop.create_future()
-                    loop.add_writer(
-                        sock.fileno(),
-                        lambda ready=ready: None if ready.done() else ready.set_result(None),
-                    )
+                    loop.add_writer(sock.fileno(), ready.set_result, None)
                     try:
                         await ready
                     finally:
