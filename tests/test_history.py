@@ -1165,3 +1165,56 @@ async def test_scan_delete_cascades_virustotal_evidence(tmp_path: Path) -> None:
     assert await store.get_scan_intelligence(scan.id) is not None
     assert await store.delete_scan(scan.id) is True
     assert await store.get_scan_intelligence(scan.id) is None
+
+
+@pytest.mark.asyncio
+async def test_v1_to_v2_migration_failure_is_atomic(tmp_path: Path) -> None:
+    db_path = tmp_path / "history.db"
+    store = make_store(tmp_path)
+    record = await store.record_scan(make_result(target="/preserved"))
+    await store.close()
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("DROP TABLE scan_intelligence")
+    conn.execute("CREATE TABLE scan_intelligence (conflicting_column TEXT)")
+    conn.execute("PRAGMA user_version = 1")
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(HistoryError):
+        SqliteHistoryStore(db_path)
+
+    conn = sqlite3.connect(db_path)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert conn.execute(
+        "SELECT target FROM scan_history WHERE id = ?", (record.id,)
+    ).fetchone()[0] == "/preserved"
+    conn.close()
+
+
+@pytest.mark.asyncio
+async def test_intelligence_metadata_is_bounded_and_untrusted_values_are_ignored(
+    tmp_path: Path,
+) -> None:
+    store = make_store(tmp_path)
+    sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    oversized = {
+        "provider": "virustotal",
+        "profile": "premium",
+        "sha256": sha256,
+        "observed_at": "2026-11-10T12:30:00+00:00",
+        "provenance": "sha256_hash_lookup",
+        "status": "found",
+        "metadata": {"payload": "x" * (65 * 1024)},
+    }
+    malformed_profile = {
+        **oversized,
+        "profile": ["premium"],
+        "metadata": {"found": True},
+    }
+    for payload in (oversized, malformed_profile):
+        scan = await store.record_scan(
+            make_result(metadata={"threat_intelligence": json.dumps(payload)})
+        )
+        assert await store.get_scan_intelligence(scan.id) is None
+        assert scan.status == "clean"

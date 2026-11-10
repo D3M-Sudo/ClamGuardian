@@ -150,8 +150,10 @@ def _parse_intelligence_evidence(raw: str | None) -> dict[str, object] | None:
     if not isinstance(raw, str):
         return None
     try:
+        if len(raw.encode("utf-8")) > 128 * 1024:
+            return None
         payload = json.loads(raw)
-    except (TypeError, json.JSONDecodeError):
+    except (TypeError, UnicodeEncodeError, json.JSONDecodeError, RecursionError):
         return None
     if not isinstance(payload, dict):
         return None
@@ -206,16 +208,28 @@ def _row_to_intelligence_record(
         metadata = json.loads(str(row["metadata_json"]))
     except (TypeError, ValueError, json.JSONDecodeError):
         return None
-    if not isinstance(metadata, dict):
+    provider = str(row["provider"])
+    profile = str(row["profile"])
+    sha256 = str(row["sha256"])
+    provenance = str(row["provenance"])
+    status = str(row["status"])
+    if (
+        not isinstance(metadata, dict)
+        or provider != "virustotal"
+        or profile not in _INTELLIGENCE_PROFILES
+        or not _SHA256_RE.fullmatch(sha256)
+        or not provenance
+        or status not in _INTELLIGENCE_STATUSES
+    ):
         return None
     return ThreatIntelligenceRecord(
         scan_id=str(row["scan_id"]),
-        provider=str(row["provider"]),
-        profile=str(row["profile"]),
-        sha256=str(row["sha256"]),
+        provider=provider,
+        profile=profile,
+        sha256=sha256,
         observed_at=observed_at,
-        provenance=str(row["provenance"]),
-        status=str(row["status"]),
+        provenance=provenance,
+        status=status,
         metadata=metadata,
     )
 
