@@ -252,3 +252,52 @@ async def test_cache_initialization_failure_is_best_effort(tmp_path, monkeypatch
     service = ThreatIntelligenceService(settings_store=settings)
 
     assert service.cache is None
+
+
+@pytest.mark.asyncio
+async def test_mutating_returned_upload_lookup_cannot_authorize_upload(
+    tmp_path, monkeypatch
+) -> None:
+    from unittest.mock import Mock
+
+    settings = SettingsStore(tmp_path / "settings.json")
+    settings.save(AppSettings(intelligence_enabled=True, intelligence_profile="premium"))
+    provider = Mock()
+    provider.name = "virustotal"
+    provider.lookup_hash = AsyncMock(return_value={
+        "provider": "virustotal", "found": True, "sha256": SHA256
+    })
+    provider.upload_file = AsyncMock()
+    service = ThreatIntelligenceService(
+        settings_store=settings,
+        provider=provider,
+        cache=VirusTotalCache(tmp_path / "vt.db"),
+    )
+    sample = tmp_path / "candidate.bin"
+    sample.write_bytes(b"candidate")
+    preview = service.preview_file_upload(sample)
+
+    returned = await service.lookup_upload_candidate(preview)
+    returned["found"] = False
+
+    with pytest.raises(PermissionError, match="recent successful hash lookup"):
+        await service.upload_file(preview, consent=True, lookup_report=returned)
+    provider.upload_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retry_after_is_capped_to_bounded_delay(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True)
+    sleep = AsyncMock()
+    monkeypatch.setattr(service_module.asyncio, "sleep", sleep)
+    settings = SettingsStore(tmp_path / "settings.json")
+    settings.save(AppSettings(intelligence_enabled=True, intelligence_profile="premium"))
+    provider = AsyncMock(spec=VirusTotalProvider)
+    provider.lookup_hash.side_effect = [VirusTotalAPIError(429, "rate limited", retry_after=999), REPORT]
+    service = ThreatIntelligenceService(
+        settings_store=settings, provider=provider, cache=VirusTotalCache(tmp_path / "vt.db")
+    )
+    result = ScanResult(target="/sample", clean=True, metadata={"sha256": SHA256})
+
+    assert await service.lookup_scan_result(result) == REPORT
+    sleep.assert_awaited_once_with(service_module._RETRY_MAX_SECONDS)
