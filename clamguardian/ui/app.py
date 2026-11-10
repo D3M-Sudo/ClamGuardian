@@ -22,8 +22,8 @@ import json
 import logging
 import sys
 import threading
-from datetime import UTC, datetime
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 from ..core.base import ScanResult
