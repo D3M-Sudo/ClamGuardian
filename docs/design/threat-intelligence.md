@@ -46,8 +46,9 @@ verdicts remain supplemental metadata and never replace the local ClamAV result.
 
 ## Shared scan-result enrichment
 
-Interactive, scheduled, USB and realtime path-based scans use the same
-`ScanTaskRunner` enrichment hook. It runs after the local ClamAV scan and
+Interactive, scheduled, USB and realtime scans use the same `ScanTaskRunner`
+enrichment hook. Both pathname-based and descriptor-based realtime execution
+are covered; descriptor scans enrich the result returned by `submit_fd`. It runs after the local ClamAV scan and
 before the result is returned to the caller or persisted in scan history.
 The hook performs only the opt-in SHA-256 lookup; it never submits file
 contents and never initiates an upload.
@@ -61,8 +62,8 @@ remote response. A lookup/network failure is best-effort: it is logged
 and the original ClamAV result is retained.
 
 The observation timestamp identifies when this scan consumed the remote
-assessment; it is not the VirusTotal analysis timestamp. Descriptor-based
-realtime scans must use the same enrichment hook after descriptor scanning.
+assessment; it is not the VirusTotal analysis timestamp. Descriptor-based realtime scans invoke the same enrichment hook after the
+opened descriptor has been scanned and before the result is persisted.
 
 ## Operational gates
 
