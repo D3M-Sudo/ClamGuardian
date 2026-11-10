@@ -92,6 +92,54 @@ jobs:
           printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > /tmp/eicar2.txt
           clamdscan /tmp/eicar2.txt || test $? -eq 1
 
+      - name: Descriptor-bound clean and EICAR scans via ClamAV engine
+        run: |
+          python3 <<'PYEOF'
+          import asyncio
+          import os
+          from pathlib import Path
+
+          from clamguardian.core.base import ScanStatus
+          from clamguardian.engines.clamav import ClamAVEngine
+
+          async def main() -> None:
+              socket_path = Path("/var/run/clamav/clamd.ctl")
+              engine = ClamAVEngine(socket_path=socket_path)
+              clean_path = Path("/tmp/descriptor-clean.txt")
+              eicar_path = Path("/tmp/descriptor-eicar.txt")
+              clean_path.write_text("clean file content\\n")
+              eicar_path.write_text(
+                  "X5O!P%@AP[4\\\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+              )
+
+              async def scan(path: Path):
+                  fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
+                  try:
+                      result = await engine.scan_fd(fd, target=path)
+                      print(
+                          f"{path.name}: status={result.status.value}, "
+                          f"transport={result.metadata.get('scan_transport')}, "
+                          f"engine={result.engine}, error={result.error}"
+                      )
+                      return result
+                  finally:
+                      os.close(fd)
+
+              clean = await scan(clean_path)
+              if clean.status is not ScanStatus.CLEAN:
+                  raise SystemExit("descriptor clean-file scan did not return CLEAN")
+              if clean.metadata.get("scan_transport") not in {"fildes", "instream"}:
+                  raise SystemExit("descriptor clean-file scan used no valid transport")
+
+              infected = await scan(eicar_path)
+              if infected.status is not ScanStatus.INFECTED:
+                  raise SystemExit("descriptor EICAR scan did not return INFECTED")
+              if infected.metadata.get("scan_transport") not in {"fildes", "instream"}:
+                  raise SystemExit("descriptor EICAR scan used no valid transport")
+
+          asyncio.run(main())
+          PYEOF
+
   gtk-smoke:
     name: GTK smoke test
     needs: preflight
