@@ -112,7 +112,9 @@ async def test_realtime_trailing_edge_debounce(tmp_path: Path) -> None:
 async def test_realtime_strict_queue_bound(tmp_path: Path) -> None:
     engine = StubEngine(delay=0.1)
     runner = ScanTaskRunner(engine)
-    orchestrator, root_fd = _make_orchestrator(tmp_path, runner, debounce_seconds=0.01, max_queue_depth=3)
+    orchestrator, root_fd = _make_orchestrator(
+        tmp_path, runner, debounce_seconds=0.01, max_queue_depth=3
+    )
 
     files = [tmp_path / f"file_{i}.txt" for i in range(10)]
     for f in files:
@@ -323,6 +325,7 @@ async def test_realtime_rejects_symlink_event_without_scanning_target(tmp_path: 
 @pytest.mark.asyncio
 async def test_clamd_fd_scan_hashes_the_open_descriptor(tmp_path: Path) -> None:
     import hashlib
+
     from clamguardian.engines.clamav import ClamAVEngine
 
     target = tmp_path / "sample.bin"
@@ -375,6 +378,7 @@ async def test_clamd_fildes_protocol_passes_descriptor_in_separate_ancillary_pac
 ) -> None:
     import array
     from socket import CMSG_SPACE, SCM_RIGHTS, SOL_SOCKET
+
     from clamguardian.engines.clamav import ClamAVEngine
 
     target = tmp_path / "fildes.txt"
