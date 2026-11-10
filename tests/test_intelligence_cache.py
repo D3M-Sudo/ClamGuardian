@@ -181,3 +181,31 @@ async def test_cancelling_waiter_does_not_cancel_shared_lookup(tmp_path, monkeyp
     release.set()
     assert await leader == REPORT
     provider.lookup_hash.assert_awaited_once_with(SHA256)
+
+
+@pytest.mark.asyncio
+async def test_valid_cached_report_is_reused_without_secret_store_access(
+    tmp_path, monkeypatch
+) -> None:
+    from unittest.mock import Mock
+
+    monkeypatch.setattr(
+        service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True
+    )
+    settings = SettingsStore(tmp_path / "settings.json")
+    settings.save(AppSettings(intelligence_enabled=True, intelligence_profile="premium"))
+    secret_store = Mock()
+    secret_store.get_credential.side_effect = AssertionError(
+        "a cache hit must not access Secret Service"
+    )
+    cache = VirusTotalCache(tmp_path / "vt.db")
+    cache.put(SHA256, "premium", REPORT)
+    service = ThreatIntelligenceService(
+        settings_store=settings,
+        secret_store=secret_store,
+        cache=cache,
+    )
+    result = ScanResult(target="/sample", clean=True, metadata={"sha256": SHA256})
+
+    assert await service.lookup_scan_result(result) == REPORT
+    secret_store.get_credential.assert_not_called()

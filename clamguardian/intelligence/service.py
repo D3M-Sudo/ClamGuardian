@@ -123,11 +123,16 @@ class ThreatIntelligenceService:
         ):
             return None
         digest = sha256.lower()
-        provider = self.get_provider()
-        if provider is None:
+        selected_profile = self.selected_profile()
+        if (
+            selected_profile is APIProfile.PUBLIC
+            and not VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED
+        ):
             return None
-        profile = self.selected_profile().value
+        profile = selected_profile.value
 
+        # A valid, unexpired report can be reused offline; cache access does
+        # not require the API credential to be present or reachable.
         try:
             cached = await asyncio.to_thread(self.cache.get, digest, profile)
         except Exception as exc:
@@ -135,6 +140,15 @@ class ThreatIntelligenceService:
             cached = None
         if cached is not None:
             return cached
+
+        provider = self.get_provider()
+        if provider is None:
+            return None
+        if (
+            self._custom_provider is None
+            and getattr(provider, "profile", selected_profile) is not selected_profile
+        ):
+            return None
 
         key = (digest, profile)
         with self._inflight_lock:
