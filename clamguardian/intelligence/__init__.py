@@ -5,6 +5,7 @@ Secret Service credential management and strict separation from local ClamAV
 verdicts. Zero network requests occur when disabled.
 """
 
+from .cache import VirusTotalCache
 from .manager import ThreatProviderManager
 from .secrets import IntelligenceSecretStore, SecretStorageError
 from .service import ThreatIntelligenceService
@@ -16,4 +17,5 @@ __all__ = [
     "ThreatIntelligenceService",
     "ThreatProviderManager",
     "VirusTotalProvider",
+    "VirusTotalCache",
 ]
