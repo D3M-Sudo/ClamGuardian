@@ -255,13 +255,26 @@ class ClamAVEngine(BaseAVEngine):
             if unsupported:
                 result.metadata["profile_unsupported_clamd"] = ",".join(unsupported)
             return result
-        except (OSError, TimeoutError, ValueError) as exc:
-            return ScanResult(
+        except TimeoutError as exc:
+            result = ScanResult(
+                target=str(target), clean=False, status=ScanStatus.TIMEOUT,
+                engine="clamd-descriptor",
+                error=f"Realtime descriptor scan timed out: {exc}",
+                started_at=started, finished_at=datetime.now(UTC),
+            )
+            if profile is not None:
+                result.metadata["profile_id"] = profile.id
+            return result
+        except (OSError, ValueError) as exc:
+            result = ScanResult(
                 target=str(target), clean=False, status=ScanStatus.ERROR,
                 engine="clamd-descriptor",
                 error=f"Realtime descriptor scan rejected: {exc}",
                 started_at=started, finished_at=datetime.now(UTC),
             )
+            if profile is not None:
+                result.metadata["profile_id"] = profile.id
+            return result
 
     def _scan_fd_owned(
         self, fd: int, socket_control: _DescriptorSocketControl
