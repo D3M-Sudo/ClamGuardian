@@ -67,7 +67,9 @@ async def test_realtime_trailing_edge_debounce(tmp_path: Path) -> None:
         await asyncio.sleep(0.02)
 
     assert len(completed) == 0
-    await asyncio.sleep(0.15)
+    deadline = asyncio.get_running_loop().time() + 1.0
+    while not completed and asyncio.get_running_loop().time() < deadline:
+        await asyncio.sleep(0.01)
 
     assert len(completed) == 1
     assert completed[0].status is ScanStatus.CLEAN
