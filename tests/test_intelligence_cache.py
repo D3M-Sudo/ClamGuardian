@@ -293,7 +293,10 @@ async def test_retry_after_is_capped_to_bounded_delay(tmp_path, monkeypatch) -> 
     settings = SettingsStore(tmp_path / "settings.json")
     settings.save(AppSettings(intelligence_enabled=True, intelligence_profile="premium"))
     provider = AsyncMock(spec=VirusTotalProvider)
-    provider.lookup_hash.side_effect = [VirusTotalAPIError(429, "rate limited", retry_after=999), REPORT]
+    provider.lookup_hash.side_effect = [
+        VirusTotalAPIError(429, "rate limited", retry_after=999),
+        REPORT,
+    ]
     service = ThreatIntelligenceService(
         settings_store=settings, provider=provider, cache=VirusTotalCache(tmp_path / "vt.db")
     )
