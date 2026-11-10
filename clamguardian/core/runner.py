@@ -99,10 +99,12 @@ class ScanTaskRunner:
             result = await self.engine.scan(
                 Path(target), recursive=recursive, profile=profile
             )
-            return await self._enrich_result(result)
         finally:
             if acquired:
                 self._semaphore.release()
+
+        # Remote enrichment must not occupy an AV-engine concurrency slot.
+        return await self._enrich_result(result)
 
     def create_task(
         self,

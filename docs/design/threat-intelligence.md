@@ -57,7 +57,7 @@ scan's supplemental metadata. It records the provider, selected API profile,
 SHA-256, observation timestamp, lookup provenance, normalized response and
 one of `found`, `not_found` or `error`. The local scan status, threats and
 ClamAV engine identity remain authoritative and are not rewritten by the
-remote response. A lookup/cache/network failure is best-effort: it is logged
+remote response. A lookup/network failure is best-effort: it is logged
 and the original ClamAV result is retained.
 
 The observation timestamp identifies when this scan consumed the remote

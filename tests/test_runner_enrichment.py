@@ -88,3 +88,28 @@ async def test_cancelling_enrichment_cancels_the_submitted_task(tmp_path) -> Non
         await task
     await asyncio.sleep(0)
     assert runner.active_count == 0
+
+
+@pytest.mark.asyncio
+async def test_remote_enrichment_does_not_hold_av_concurrency_slot(tmp_path) -> None:
+    runner = ScanTaskRunner(StubEngine(), max_concurrency=1)
+    first_entered = asyncio.Event()
+    release_first = asyncio.Event()
+    first_target = tmp_path / "first.bin"
+
+    async def enrich(result: ScanResult) -> None:
+        if result.target == str(first_target):
+            first_entered.set()
+            await release_first.wait()
+
+    runner.set_result_enricher(enrich)
+    first = asyncio.create_task(runner.submit(first_target))
+    await first_entered.wait()
+
+    second = asyncio.create_task(runner.submit(tmp_path / "second.bin"))
+    second_result = await asyncio.wait_for(second, timeout=1)
+
+    assert second_result.clean is True
+    assert not first.done()
+    release_first.set()
+    assert (await first).clean is True
