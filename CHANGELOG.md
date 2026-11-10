@@ -10,6 +10,9 @@
 - Remove upstream response bodies and sensitive request details from VirusTotal error logs; never fall back between API profiles.
 - Keep VirusTotal enrichment separate from the local ClamAV verdict.
 
+### Changed
+- Persist VirusTotal hash assessments in a dedicated scan-linked SQLite table, separate from the ClamAV verdict, with a transactional v1-to-v2 schema migration and cascading retention lifecycle.
+
 # Changelog
 
 All notable changes to ClamGuardian are documented here.
