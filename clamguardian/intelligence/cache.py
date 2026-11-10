@@ -9,9 +9,10 @@ import re
 import sqlite3
 import threading
 import time
-from contextlib import contextmanager
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _ALLOWED_PROFILES = frozenset({"public", "premium"})
@@ -92,12 +93,10 @@ class VirusTotalCache:
                 "ON vt_hash_cache(expires_at)"
             )
             connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
-        try:
-            # Harden existing files too; this cache contains persistent
-            # intelligence metadata and must not inherit permissive modes.
+        # Harden existing files too; this cache contains persistent
+        # intelligence metadata and must not inherit permissive modes.
+        with suppress(OSError):
             os.chmod(self.path, 0o600)
-        except OSError:
-            pass
         self._harden_sidecars()
 
     def _harden_sidecars(self) -> None:
