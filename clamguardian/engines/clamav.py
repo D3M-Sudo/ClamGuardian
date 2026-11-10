@@ -202,10 +202,10 @@ class ClamAVEngine(BaseAVEngine):
         target: Path,
         profile: ScanProfile | None = None,
     ) -> ScanResult:
-        """Scan the exact opened inode using clamd's UNIX FILDES protocol.
+        """Scan the exact opened inode using descriptor-preserving clamd transports.
 
-        Realtime scans fail closed when clamd/FILDES is unavailable. A
-        pathname-based clamscan fallback would lose descriptor identity.
+        FILDES is preferred; INSTREAM reads from the same descriptor when
+        FILDES is unavailable. There is never a pathname-based fallback.
         """
         started = datetime.now(UTC)
         try:
@@ -217,7 +217,7 @@ class ClamAVEngine(BaseAVEngine):
             else:
                 profile.validate()
             if not self.socket_path.exists():
-                raise OSError("clamd UNIX socket is unavailable; safe FILDES scan required")
+                raise OSError("clamd UNIX socket is unavailable; descriptor scan required")
             owned_fd = os.dup(fd)
             socket_control = _DescriptorSocketControl()
             worker = asyncio.create_task(
@@ -275,7 +275,7 @@ class ClamAVEngine(BaseAVEngine):
     def _scan_fd_sync(
         self, fd: int, socket_control: _DescriptorSocketControl | None = None
     ) -> tuple[str, int, str]:
-        """Send an opened descriptor to clamd using its documented FILDES exchange."""
+        """Use FILDES or INSTREAM while preserving the opened descriptor identity."""
         capabilities = bytearray()
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
