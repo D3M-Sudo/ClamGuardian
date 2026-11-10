@@ -101,12 +101,10 @@ class VirusTotalCache:
 
     def _harden_sidecars(self) -> None:
         for suffix in ("-wal", "-shm"):
-            try:
-                sidecar = Path(f"{self.path}{suffix}")
+            sidecar = Path(f"{self.path}{suffix}")
+            with suppress(OSError):
                 if sidecar.exists():
                     os.chmod(sidecar, 0o600)
-            except OSError:
-                pass
 
     @staticmethod
     def _validate_key(sha256: str) -> str:
@@ -148,7 +146,9 @@ class VirusTotalCache:
                     "DELETE FROM vt_hash_cache WHERE sha256 = ?", (digest,)
                 )
                 return None
-            reported_hash = report.get("sha256", digest) if isinstance(report, dict) else None
+            reported_hash = (
+                report.get("sha256", digest) if isinstance(report, dict) else None
+            )
             if (
                 not isinstance(report, dict)
                 or not isinstance(report.get("found"), bool)
