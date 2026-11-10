@@ -9,6 +9,7 @@ import os
 import signal
 import socket
 import stat
+import struct
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -183,7 +184,7 @@ class ClamAVEngine(BaseAVEngine):
             owned_fd = os.dup(fd)
             worker = asyncio.create_task(asyncio.to_thread(self._scan_fd_owned, owned_fd))
             try:
-                output, exit_code = await asyncio.wait_for(
+                output, exit_code, transport = await asyncio.wait_for(
                     asyncio.shield(worker), self.command_timeout
                 )
             except TimeoutError:
@@ -198,7 +199,10 @@ class ClamAVEngine(BaseAVEngine):
                 raise
             if self._file_identity_changed(before, os.fstat(fd)):
                 raise OSError("file changed while clamd was scanning the opened descriptor")
-            result = self._result(Path(target), started, output, exit_code, "clamd-fildes")
+            result = self._result(
+                Path(target), started, output, exit_code, f"clamd-{transport}"
+            )
+            result.metadata["scan_transport"] = transport
             result.metadata["sha256"] = self._sha256_fd(fd)
             if self._file_identity_changed(before, os.fstat(fd)):
                 raise OSError("file changed while hashing the opened descriptor")
@@ -210,34 +214,40 @@ class ClamAVEngine(BaseAVEngine):
         except (OSError, TimeoutError, ValueError) as exc:
             return ScanResult(
                 target=str(target), clean=False, status=ScanStatus.ERROR,
-                engine="clamd-fildes",
+                engine="clamd-descriptor",
                 error=f"Realtime descriptor scan rejected: {exc}",
                 started_at=started, finished_at=datetime.now(UTC),
             )
 
-    def _scan_fd_owned(self, fd: int) -> tuple[str, int]:
+    def _scan_fd_owned(self, fd: int) -> tuple[str, int, str]:
         """Run descriptor scanning while owning and always closing a duplicate fd."""
         try:
             return self._scan_fd_sync(fd)
         finally:
             os.close(fd)
 
-    def _scan_fd_sync(self, fd: int) -> tuple[str, int]:
+    def _scan_fd_sync(self, fd: int) -> tuple[str, int, str]:
         """Send an opened descriptor to clamd using its documented FILDES exchange."""
         capabilities = bytearray()
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
-            probe.settimeout(min(self.command_timeout, 10.0))
-            probe.connect(os.fspath(self.socket_path))
-            probe.sendall(b"nVERSIONCOMMANDS\n")
-            while True:
-                chunk = probe.recv(4096)
-                if not chunk:
-                    break
-                capabilities.extend(chunk)
-                if len(capabilities) > 65536:
-                    raise ValueError("clamd VERSIONCOMMANDS response exceeded the size limit")
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                probe.settimeout(min(self.command_timeout, 10.0))
+                probe.connect(os.fspath(self.socket_path))
+                probe.sendall(b"nVERSIONCOMMANDS\n")
+                while True:
+                    chunk = probe.recv(4096)
+                    if not chunk:
+                        break
+                    capabilities.extend(chunk)
+                    if len(capabilities) > 65536:
+                        raise ValueError(
+                            "clamd VERSIONCOMMANDS response exceeded the size limit"
+                        )
+        except (OSError, TimeoutError):
+            return self._scan_fd_instream_sync(fd)
+
         if b"FILDES" not in bytes(capabilities).split():
-            raise OSError("clamd does not advertise FILDES support")
+            return self._scan_fd_instream_sync(fd)
 
         response = bytearray()
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
@@ -256,10 +266,41 @@ class ClamAVEngine(BaseAVEngine):
                 if len(response) > MAX_RESPONSE_BYTES:
                     raise ValueError("clamd FILDES response exceeded the size limit")
         output = bytes(response).decode("utf-8", errors="replace")
+        if "COMMAND UNAVAILABLE" in output or "UNKNOWN COMMAND" in output:
+            return self._scan_fd_instream_sync(fd)
         code = 1 if any(
             " ERROR" in line or line.endswith("ERROR") for line in output.splitlines()
         ) else 0
-        return output, code
+        return output, code, "fildes"
+
+    def _scan_fd_instream_sync(self, fd: int) -> tuple[str, int, str]:
+        """Stream bytes read from the opened descriptor, never from its pathname."""
+        response = bytearray()
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(self.command_timeout)
+            sock.connect(os.fspath(self.socket_path))
+            sock.sendall(b"nINSTREAM\n")
+            offset = 0
+            while True:
+                chunk = os.pread(fd, 65536, offset)
+                if not chunk:
+                    break
+                sock.sendall(struct.pack("!I", len(chunk)))
+                sock.sendall(chunk)
+                offset += len(chunk)
+            sock.sendall(bytes(4))
+            while True:
+                chunk = sock.recv(65536)
+                if not chunk:
+                    break
+                response.extend(chunk)
+                if len(response) > MAX_RESPONSE_BYTES:
+                    raise ValueError("clamd INSTREAM response exceeded the size limit")
+        output = bytes(response).decode("utf-8", errors="replace")
+        code = 1 if any(
+            " ERROR" in line or line.endswith("ERROR") for line in output.splitlines()
+        ) else 0
+        return output, code, "instream"
 
     @staticmethod
     def _file_identity_changed(before: os.stat_result, after: os.stat_result) -> bool:

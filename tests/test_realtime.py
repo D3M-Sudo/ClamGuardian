@@ -331,7 +331,10 @@ async def test_clamd_fd_scan_hashes_the_open_descriptor(tmp_path: Path) -> None:
     socket_path = tmp_path / "clamd.sock"
     socket_path.touch()
     engine = ClamAVEngine(socket_path=socket_path)
-    engine._scan_fd_sync = lambda _fd: (f"{target}: OK", 0)  # type: ignore[method-assign]
+    def clean_scan(_fd: int) -> tuple[str, int, str]:
+        return f"{target}: OK", 0, "fildes"
+
+    engine._scan_fd_sync = clean_scan  # type: ignore[method-assign]
     fd = os.open(target, os.O_RDONLY | os.O_CLOEXEC)
     try:
         result = await engine.scan_fd(fd, target=target)
@@ -352,9 +355,9 @@ async def test_clamd_fd_scan_rejects_content_changed_during_scan(tmp_path: Path)
     socket_path.touch()
     engine = ClamAVEngine(socket_path=socket_path)
 
-    def mutate(_fd: int) -> tuple[str, int]:
+    def mutate(_fd: int) -> tuple[str, int, str]:
         target.write_bytes(b"after with different length")
-        return f"{target}: OK", 0
+        return f"{target}: OK", 0, "fildes"
 
     engine._scan_fd_sync = mutate  # type: ignore[method-assign]
     fd = os.open(target, os.O_RDONLY | os.O_CLOEXEC)
@@ -411,8 +414,9 @@ async def test_clamd_fildes_protocol_passes_descriptor_in_separate_ancillary_pac
     engine = ClamAVEngine(socket_path=socket_path)
     fd = os.open(target, os.O_RDONLY | os.O_CLOEXEC)
     try:
-        output, code = await asyncio.to_thread(engine._scan_fd_sync, fd)
+        output, code, transport = await asyncio.to_thread(engine._scan_fd_sync, fd)
         assert code == 0
+        assert transport == "fildes"
         assert output == "stream: OK\n"
         assert observed["probe"] == b"nVERSIONCOMMANDS\n"
         assert observed["command"] == b"nFILDES\n"
@@ -454,3 +458,58 @@ def test_pinned_root_fd_survives_root_path_replacement(tmp_path: Path) -> None:
             os.close(file_fd)
     finally:
         os.close(root_fd)
+
+
+
+@pytest.mark.asyncio
+async def test_clamd_instream_fallback_streams_from_open_descriptor(tmp_path: Path) -> None:
+    import struct
+    from clamguardian.engines.clamav import ClamAVEngine
+
+    target = tmp_path / "instream.bin"
+    target.write_bytes(b"opened descriptor bytes")
+    socket_path = tmp_path / "clamd.sock"
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(os.fspath(socket_path))
+    server.listen(2)
+    observed: dict[str, object] = {}
+
+    def serve() -> None:
+        probe, _ = server.accept()
+        with probe:
+            observed["probe"] = probe.recv(1024)
+            probe.sendall(b"ClamAV 1.4.0\nCOMMANDS: PING VERSION VERSIONCOMMANDS INSTREAM\n")
+        conn, _ = server.accept()
+        with conn:
+            observed["command"] = conn.recv(len(b"nINSTREAM\n"))
+            payload = bytearray()
+            while True:
+                size_bytes = conn.recv(4)
+                if len(size_bytes) != 4:
+                    raise RuntimeError("incomplete INSTREAM chunk header")
+                size = struct.unpack("!I", size_bytes)[0]
+                if size == 0:
+                    break
+                remaining = size
+                while remaining:
+                    chunk = conn.recv(remaining)
+                    payload.extend(chunk)
+                    remaining -= len(chunk)
+            observed["payload"] = bytes(payload)
+            conn.sendall(b"stream: OK\n")
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    engine = ClamAVEngine(socket_path=socket_path)
+    fd = os.open(target, os.O_RDONLY | os.O_CLOEXEC)
+    try:
+        output, code, transport = await asyncio.to_thread(engine._scan_fd_sync, fd)
+        assert code == 0
+        assert transport == "instream"
+        assert output == "stream: OK\n"
+        assert observed["command"] == b"nINSTREAM\n"
+        assert observed["payload"] == b"opened descriptor bytes"
+    finally:
+        os.close(fd)
+        server.close()
+        thread.join(timeout=2)
