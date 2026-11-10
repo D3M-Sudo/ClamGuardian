@@ -334,7 +334,7 @@ async def test_clamd_fd_scan_hashes_the_open_descriptor(tmp_path: Path) -> None:
     socket_path = tmp_path / "clamd.sock"
     socket_path.touch()
     engine = ClamAVEngine(socket_path=socket_path)
-    def clean_scan(_fd: int) -> tuple[str, int, str]:
+    def clean_scan(_fd: int, _control=None) -> tuple[str, int, str]:
         return f"{target}: OK", 0, "fildes"
 
     engine._scan_fd_sync = clean_scan  # type: ignore[method-assign]
@@ -358,7 +358,7 @@ async def test_clamd_fd_scan_rejects_content_changed_during_scan(tmp_path: Path)
     socket_path.touch()
     engine = ClamAVEngine(socket_path=socket_path)
 
-    def mutate(_fd: int) -> tuple[str, int, str]:
+    def mutate(_fd: int, _control=None) -> tuple[str, int, str]:
         target.write_bytes(b"after with different length")
         return f"{target}: OK", 0, "fildes"
 
@@ -546,7 +546,7 @@ async def test_clamd_fd_scan_rejects_empty_daemon_response(tmp_path: Path) -> No
     socket_path.touch()
     engine = ClamAVEngine(socket_path=socket_path)
 
-    def empty_response(_fd: int) -> tuple[str, int, str]:
+    def empty_response(_fd: int, _control=None) -> tuple[str, int, str]:
         return "", 0, "fildes"
 
     engine._scan_fd_sync = empty_response  # type: ignore[method-assign]

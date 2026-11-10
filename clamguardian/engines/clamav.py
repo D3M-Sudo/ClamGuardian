@@ -10,6 +10,7 @@ import signal
 import socket
 import stat
 import struct
+import threading
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,6 +27,43 @@ MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 
 #: Bytes that must never reach the line-oriented clamd command channel.
 _CONTROL_BYTES = (b"\x00", b"\n", b"\r")
+
+
+class _DescriptorSocketControl:
+    """Allow cancellation to interrupt a blocking descriptor-scan socket worker."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._socket: socket.socket | None = None
+        self._cancelled = False
+
+    def attach(self, sock: socket.socket) -> None:
+        with self._lock:
+            if self._cancelled:
+                reject = True
+            else:
+                self._socket = sock
+                reject = False
+        if reject:
+            sock.close()
+            raise InterruptedError("descriptor scan was cancelled")
+
+    def detach(self, sock: socket.socket) -> None:
+        with self._lock:
+            if self._socket is sock:
+                self._socket = None
+
+    def cancel(self) -> None:
+        with self._lock:
+            self._cancelled = True
+            sock = self._socket
+            self._socket = None
+        if sock is not None:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            sock.close()
 
 
 class ClamAVEngine(BaseAVEngine):
@@ -182,7 +220,10 @@ class ClamAVEngine(BaseAVEngine):
             if not self.socket_path.exists():
                 raise OSError("clamd UNIX socket is unavailable; safe FILDES scan required")
             owned_fd = os.dup(fd)
-            worker = asyncio.create_task(asyncio.to_thread(self._scan_fd_owned, owned_fd))
+            socket_control = _DescriptorSocketControl()
+            worker = asyncio.create_task(
+                asyncio.to_thread(self._scan_fd_owned, owned_fd, socket_control)
+            )
 
             def consume_worker_result(task: asyncio.Task[tuple[str, int, str]]) -> None:
                 if not task.cancelled():
@@ -223,81 +264,105 @@ class ClamAVEngine(BaseAVEngine):
                 started_at=started, finished_at=datetime.now(UTC),
             )
 
-    def _scan_fd_owned(self, fd: int) -> tuple[str, int, str]:
+    def _scan_fd_owned(
+        self, fd: int, socket_control: _DescriptorSocketControl
+    ) -> tuple[str, int, str]:
         """Run descriptor scanning while owning and always closing a duplicate fd."""
         try:
-            return self._scan_fd_sync(fd)
+            return self._scan_fd_sync(fd, socket_control)
         finally:
             os.close(fd)
 
-    def _scan_fd_sync(self, fd: int) -> tuple[str, int, str]:
+    def _scan_fd_sync(
+        self, fd: int, socket_control: _DescriptorSocketControl | None = None
+    ) -> tuple[str, int, str]:
         """Send an opened descriptor to clamd using its documented FILDES exchange."""
         capabilities = bytearray()
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
-                probe.settimeout(min(self.command_timeout, 10.0))
-                probe.connect(os.fspath(self.socket_path))
-                probe.sendall(b"nVERSIONCOMMANDS\n")
-                while True:
-                    chunk = probe.recv(4096)
-                    if not chunk:
-                        break
-                    capabilities.extend(chunk)
-                    if len(capabilities) > 65536:
-                        raise ValueError(
-                            "clamd VERSIONCOMMANDS response exceeded the size limit"
-                        )
+                if socket_control is not None:
+                    socket_control.attach(probe)
+                try:
+                    probe.settimeout(min(self.command_timeout, 10.0))
+                    probe.connect(os.fspath(self.socket_path))
+                    probe.sendall(b"nVERSIONCOMMANDS\n")
+                    while True:
+                        chunk = probe.recv(4096)
+                        if not chunk:
+                            break
+                        capabilities.extend(chunk)
+                        if len(capabilities) > 65536:
+                            raise ValueError(
+                                "clamd VERSIONCOMMANDS response exceeded the size limit"
+                            )
+                finally:
+                    if socket_control is not None:
+                        socket_control.detach(probe)
         except (OSError, TimeoutError):
-            return self._scan_fd_instream_sync(fd)
+            return self._scan_fd_instream_sync(fd, socket_control)
 
         if b"FILDES" not in bytes(capabilities).split():
             return self._scan_fd_instream_sync(fd)
 
         response = bytearray()
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-            sock.settimeout(self.command_timeout)
-            sock.connect(os.fspath(self.socket_path))
-            sock.sendall(b"nFILDES\n")
-            rights = array.array("i", [fd]).tobytes()
-            # The protocol requires a separate ancillary-data packet with at
-            # least one dummy byte after the FILDES command record.
-            sock.sendmsg([b" "], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights)])
-            while True:
-                chunk = sock.recv(65536)
-                if not chunk:
-                    break
-                response.extend(chunk)
-                if len(response) > MAX_RESPONSE_BYTES:
-                    raise ValueError("clamd FILDES response exceeded the size limit")
+            if socket_control is not None:
+                socket_control.attach(sock)
+            try:
+                sock.settimeout(self.command_timeout)
+                sock.connect(os.fspath(self.socket_path))
+                sock.sendall(b"nFILDES\n")
+                rights = array.array("i", [fd]).tobytes()
+                # The protocol requires a separate ancillary-data packet with at
+                # least one dummy byte after the FILDES command record.
+                sock.sendmsg([b" "], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights)])
+                while True:
+                    chunk = sock.recv(65536)
+                    if not chunk:
+                        break
+                    response.extend(chunk)
+                    if len(response) > MAX_RESPONSE_BYTES:
+                        raise ValueError("clamd FILDES response exceeded the size limit")
+            finally:
+                if socket_control is not None:
+                    socket_control.detach(sock)
         output = bytes(response).decode("utf-8", errors="replace")
         if "COMMAND UNAVAILABLE" in output or "UNKNOWN COMMAND" in output:
             return self._scan_fd_instream_sync(fd)
         code = self._descriptor_response_code(output)
         return output, code, "fildes"
 
-    def _scan_fd_instream_sync(self, fd: int) -> tuple[str, int, str]:
+    def _scan_fd_instream_sync(
+        self, fd: int, socket_control: _DescriptorSocketControl | None = None
+    ) -> tuple[str, int, str]:
         """Stream bytes read from the opened descriptor, never from its pathname."""
         response = bytearray()
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-            sock.settimeout(self.command_timeout)
-            sock.connect(os.fspath(self.socket_path))
-            sock.sendall(b"nINSTREAM\n")
-            offset = 0
-            while True:
-                chunk = os.pread(fd, 65536, offset)
-                if not chunk:
-                    break
-                sock.sendall(struct.pack("!I", len(chunk)))
-                sock.sendall(chunk)
-                offset += len(chunk)
-            sock.sendall(bytes(4))
-            while True:
-                chunk = sock.recv(65536)
-                if not chunk:
-                    break
-                response.extend(chunk)
-                if len(response) > MAX_RESPONSE_BYTES:
-                    raise ValueError("clamd INSTREAM response exceeded the size limit")
+            if socket_control is not None:
+                socket_control.attach(sock)
+            try:
+                sock.settimeout(self.command_timeout)
+                sock.connect(os.fspath(self.socket_path))
+                sock.sendall(b"nINSTREAM\n")
+                offset = 0
+                while True:
+                    chunk = os.pread(fd, 65536, offset)
+                    if not chunk:
+                        break
+                    sock.sendall(struct.pack("!I", len(chunk)))
+                    sock.sendall(chunk)
+                    offset += len(chunk)
+                sock.sendall(bytes(4))
+                while True:
+                    chunk = sock.recv(65536)
+                    if not chunk:
+                        break
+                    response.extend(chunk)
+                    if len(response) > MAX_RESPONSE_BYTES:
+                        raise ValueError("clamd INSTREAM response exceeded the size limit")
+            finally:
+                if socket_control is not None:
+                    socket_control.detach(sock)
         output = bytes(response).decode("utf-8", errors="replace")
         code = self._descriptor_response_code(output)
         return output, code, "instream"
