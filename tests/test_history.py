@@ -1236,7 +1236,10 @@ async def test_mismatched_evidence_digest_is_not_persisted(tmp_path: Path) -> No
     envelope = {
         "provider": "virustotal", "profile": "premium", "sha256": other_digest,
         "observed_at": "2026-11-10T12:30:00+00:00", "provenance": "sha256_hash_lookup",
-        "status": "found", "metadata": {"provider": "virustotal", "found": True, "sha256": other_digest},
+        "status": "found",
+        "metadata": {
+            "provider": "virustotal", "found": True, "sha256": other_digest
+        },
     }
     scan = await store.record_scan(make_result(metadata={
         "sha256": scan_digest, "threat_intelligence": json.dumps(envelope)
