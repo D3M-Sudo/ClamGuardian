@@ -199,7 +199,7 @@ class ClamAVEngine(BaseAVEngine):
                     ready = loop.create_future()
                     loop.add_writer(
                         sock.fileno(),
-                        lambda: None if ready.done() else ready.set_result(None),
+                        lambda ready=ready: None if ready.done() else ready.set_result(None),
                     )
                     try:
                         await ready
