@@ -113,3 +113,41 @@ async def test_remote_enrichment_does_not_hold_av_concurrency_slot(tmp_path) -> 
     assert not first.done()
     release_first.set()
     assert (await first).clean is True
+
+
+@pytest.mark.asyncio
+async def test_descriptor_scan_uses_same_enrichment_hook(tmp_path) -> None:
+    engine = StubEngine()
+    target = tmp_path / "descriptor.bin"
+    scan_calls: list[tuple[int, Path, ScanProfile | None]] = []
+
+    async def scan_fd(
+        fd: int, *, target: Path, profile: ScanProfile | None = None
+    ) -> ScanResult:
+        scan_calls.append((fd, target, profile))
+        return ScanResult(
+            target=str(target), clean=True, engine=engine.name,
+            metadata={"sha256": SHA256},
+        )
+
+    engine.scan_fd = scan_fd
+    runner = ScanTaskRunner(engine)
+    enriched: list[str] = []
+
+    async def enrich(result: ScanResult) -> None:
+        enriched.append(result.target)
+        result.metadata["threat_intelligence"] = '{"provider":"virustotal"}'
+
+    runner.set_result_enricher(enrich)
+    result = await runner.submit_fd(17, target, profile=ScanProfile.DEFAULT)
+
+    assert scan_calls == [(17, target, ScanProfile.DEFAULT)]
+    assert enriched == [str(target)]
+    assert result.metadata["threat_intelligence"] == '{"provider":"virustotal"}'
+
+
+@pytest.mark.asyncio
+async def test_descriptor_scan_fails_closed_without_engine_support(tmp_path) -> None:
+    runner = ScanTaskRunner(StubEngine())
+    with pytest.raises(RuntimeError, match="does not support descriptor"):
+        await runner.submit_fd(17, tmp_path / "missing.bin")

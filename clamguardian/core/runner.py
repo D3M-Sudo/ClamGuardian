@@ -106,6 +106,36 @@ class ScanTaskRunner:
         # Remote enrichment must not occupy an AV-engine concurrency slot.
         return await self._enrich_result(result)
 
+    async def submit_fd(
+        self,
+        fd: int,
+        target: Path,
+        *,
+        profile: ScanProfile | None = None,
+    ) -> ScanResult:
+        """Scan an already-open descriptor and apply the same enrichment.
+
+        Descriptor support is supplied by the engine implementation. This
+        method deliberately has no pathname fallback: unsupported engines
+        fail closed rather than scanning a different filesystem object.
+        """
+        scan_fd = getattr(self.engine, "scan_fd", None)
+        if not callable(scan_fd):
+            raise RuntimeError("engine does not support descriptor-based scanning")
+        task = asyncio.current_task()
+        if task is not None:
+            self._track_task(task, asyncio.get_running_loop())
+        acquired = False
+        try:
+            while not self._semaphore.acquire(blocking=False):
+                await asyncio.sleep(0.01)
+            acquired = True
+            result = await scan_fd(fd, target=Path(target), profile=profile)
+        finally:
+            if acquired:
+                self._semaphore.release()
+        return await self._enrich_result(result)
+
     def create_task(
         self,
         target: Path,
