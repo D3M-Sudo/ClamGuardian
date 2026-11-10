@@ -598,3 +598,38 @@ async def test_clamd_fd_scan_cancellation_interrupts_socket_worker(tmp_path: Pat
         os.close(fd)
         server.close()
         thread.join(timeout=2)
+
+
+@pytest.mark.asyncio
+async def test_scan_remains_bound_to_open_inode_after_path_replacement(tmp_path: Path) -> None:
+    import hashlib
+
+    from clamguardian.engines.clamav import ClamAVEngine
+    from clamguardian.realtime.security import open_root_directory
+
+    root = tmp_path / "monitored"
+    root.mkdir()
+    target = root / "sample.txt"
+    original = b"original opened inode"
+    target.write_bytes(original)
+    root_fd = open_root_directory(root)
+    file_fd = open_beneath(root_fd, root, target)
+    socket_path = tmp_path / "clamd.sock"
+    socket_path.touch()
+    engine = ClamAVEngine(socket_path=socket_path)
+
+    def inspect_open_fd(scan_fd: int, _control=None) -> tuple[str, int, str]:
+        assert os.pread(scan_fd, 128, 0) == original
+        return f"{target}: OK", 0, "fildes"
+
+    engine._scan_fd_sync = inspect_open_fd  # type: ignore[method-assign]
+    replacement = root / "replacement.txt"
+    replacement.write_bytes(b"replacement inode")
+    os.replace(replacement, target)
+    try:
+        result = await engine.scan_fd(file_fd, target=target)
+        assert result.status is ScanStatus.CLEAN
+        assert result.metadata["sha256"] == hashlib.sha256(original).hexdigest()
+    finally:
+        os.close(file_fd)
+        os.close(root_fd)
