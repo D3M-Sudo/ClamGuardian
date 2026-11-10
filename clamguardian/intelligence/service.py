@@ -110,11 +110,18 @@ class ThreatIntelligenceService:
                 retryable = exc.status == 429 or 500 <= exc.status <= 599
                 if not retryable or attempt + 1 >= _MAX_LOOKUP_ATTEMPTS:
                     raise
-                delay = (
-                    min(float(exc.retry_after), _RETRY_MAX_SECONDS)
-                    if exc.retry_after is not None
-                    else min(_RETRY_BASE_SECONDS * (2**attempt), _RETRY_MAX_SECONDS)
-                )
+                if exc.retry_after is not None:
+                    # Never retry earlier than the provider's requested
+                    # cooldown. If it exceeds our bounded wait budget, stop
+                    # retrying and surface the rate limit instead.
+                    delay = float(exc.retry_after)
+                    if delay > _RETRY_MAX_SECONDS:
+                        raise
+                    delay = max(0.0, delay)
+                else:
+                    delay = min(
+                        _RETRY_BASE_SECONDS * (2**attempt), _RETRY_MAX_SECONDS
+                    )
             except VirusTotalTransientError:
                 if attempt + 1 >= _MAX_LOOKUP_ATTEMPTS:
                     raise
