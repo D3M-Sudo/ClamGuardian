@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import array
 import asyncio
+import contextlib
 import hashlib
 import os
 import signal
@@ -59,10 +60,8 @@ class _DescriptorSocketControl:
             sock = self._socket
             self._socket = None
         if sock is not None:
-            try:
+            with contextlib.suppress(OSError):
                 sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
             sock.close()
 
 
