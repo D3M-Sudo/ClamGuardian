@@ -1066,7 +1066,13 @@ async def test_v1_history_database_migrates_to_v2_without_losing_scans(
 ) -> None:
     db_path = tmp_path / "history.db"
     store = make_store(tmp_path)
-    record = await store.record_scan(make_result(target="/preserved"))
+    record = await store.record_scan(
+        make_result(
+            target="/preserved",
+            status=ScanStatus.INFECTED,
+            threats=("MigrationThreat",),
+        )
+    )
     await store.close()
 
     # Recreate the on-disk shape of a v1 database: the original scan tables
@@ -1088,7 +1094,9 @@ async def test_v1_history_database_migrates_to_v2_without_losing_scans(
     }
     conn.close()
     assert "scan_intelligence" in tables
-    assert (await migrated.get_scan(record.id)) is not None
+    preserved = await migrated.get_scan(record.id)
+    assert preserved is not None
+    assert preserved.threats == ("MigrationThreat",)
     assert await migrated.get_scan_intelligence(record.id) is None
     await migrated.close()
 
