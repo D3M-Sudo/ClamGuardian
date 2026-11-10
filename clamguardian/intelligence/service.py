@@ -177,14 +177,14 @@ class ThreatIntelligenceService:
                 isinstance(report, dict)
                 and report.get("error") is None
                 and isinstance(report.get("found"), bool)
+                and self.cache is not None
             ):
-                if self.cache is not None:
-                    try:
-                        await asyncio.to_thread(self.cache.put, digest, profile, report)
-                    except Exception as exc:
-                        logger.warning(
-                            "VirusTotal cache write failed (%s)", type(exc).__name__
-                        )
+                try:
+                    await asyncio.to_thread(self.cache.put, digest, profile, report)
+                except Exception as exc:
+                    logger.warning(
+                        "VirusTotal cache write failed (%s)", type(exc).__name__
+                    )
             shared.set_result(report)
             return report
         except asyncio.CancelledError:
