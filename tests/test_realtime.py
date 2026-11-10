@@ -120,7 +120,11 @@ async def test_realtime_events_arriving_during_active_scan(tmp_path: Path) -> No
 
     assert test_file.resolve() in orchestrator._dirty_paths
 
-    await asyncio.sleep(0.2)
+    # The dirty-path retrigger is a second debounced scan; allow the first
+    # scan to finish and the follow-up debounce/scan to complete under CI load.
+    deadline = asyncio.get_running_loop().time() + 1.0
+    while len(completed) < 2 and asyncio.get_running_loop().time() < deadline:
+        await asyncio.sleep(0.01)
 
     assert len(completed) == 2
     assert len(engine.scanned_paths) == 2
