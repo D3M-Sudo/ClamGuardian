@@ -286,21 +286,27 @@ async def test_mutating_returned_upload_lookup_cannot_authorize_upload(
 
 
 @pytest.mark.asyncio
-async def test_retry_after_is_capped_to_bounded_delay(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True)
+async def test_retry_after_above_budget_is_not_shortened_or_retried(
+    tmp_path, monkeypatch
+) -> None:
     sleep = AsyncMock()
     monkeypatch.setattr(service_module.asyncio, "sleep", sleep)
     settings = SettingsStore(tmp_path / "settings.json")
     settings.save(AppSettings(intelligence_enabled=True, intelligence_profile="premium"))
     provider = AsyncMock(spec=VirusTotalProvider)
-    provider.lookup_hash.side_effect = [
-        VirusTotalAPIError(429, "rate limited", retry_after=999),
-        REPORT,
-    ]
+    provider.lookup_hash.side_effect = VirusTotalAPIError(
+        429, "rate limited", retry_after=999
+    )
     service = ThreatIntelligenceService(
-        settings_store=settings, provider=provider, cache=VirusTotalCache(tmp_path / "vt.db")
+        settings_store=settings,
+        provider=provider,
+        cache=VirusTotalCache(tmp_path / "vt.db"),
     )
     result = ScanResult(target="/sample", clean=True, metadata={"sha256": SHA256})
 
-    assert await service.lookup_scan_result(result) == REPORT
-    sleep.assert_awaited_once_with(service_module._RETRY_MAX_SECONDS)
+    report = await service.lookup_scan_result(result)
+
+    assert report is not None
+    assert report["error"] == "VirusTotal lookup failed"
+    provider.lookup_hash.assert_awaited_once_with(SHA256)
+    sleep.assert_not_awaited()
