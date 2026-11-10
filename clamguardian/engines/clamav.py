@@ -183,14 +183,17 @@ class ClamAVEngine(BaseAVEngine):
                 raise OSError("clamd UNIX socket is unavailable; safe FILDES scan required")
             owned_fd = os.dup(fd)
             worker = asyncio.create_task(asyncio.to_thread(self._scan_fd_owned, owned_fd))
+
+            def consume_worker_result(task: asyncio.Task[tuple[str, int, str]]) -> None:
+                if not task.cancelled():
+                    task.exception()
+
             try:
                 output, exit_code, transport = await asyncio.wait_for(
                     asyncio.shield(worker), self.command_timeout
                 )
             except TimeoutError:
-                worker.add_done_callback(
-                    lambda task: task.exception() if not task.cancelled() else None
-                )
+                worker.add_done_callback(consume_worker_result)
                 raise
             except asyncio.CancelledError:
                 worker.add_done_callback(
@@ -255,7 +258,7 @@ class ClamAVEngine(BaseAVEngine):
             sock.settimeout(self.command_timeout)
             sock.connect(os.fspath(self.socket_path))
             sock.sendall(b"nFILDES\n")
-            rights = array.array("i", [fd])
+            rights = array.array("i", [fd]).tobytes()
             # The protocol requires a separate ancillary-data packet with at
             # least one dummy byte after the FILDES command record.
             sock.sendmsg([b" "], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights)])
