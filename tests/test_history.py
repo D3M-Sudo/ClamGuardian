@@ -1168,7 +1168,7 @@ async def test_scan_delete_cascades_virustotal_evidence(tmp_path: Path) -> None:
         "metadata": {"provider": "virustotal", "found": False, "sha256": sha256},
     }
     scan = await store.record_scan(
-        make_result(metadata={"threat_intelligence": json.dumps(envelope)})
+        make_result(metadata={"sha256": sha256, "threat_intelligence": json.dumps(envelope)})
     )
     assert await store.get_scan_intelligence(scan.id) is not None
     assert await store.delete_scan(scan.id) is True
@@ -1226,3 +1226,42 @@ async def test_intelligence_metadata_is_bounded_and_untrusted_values_are_ignored
         )
         assert await store.get_scan_intelligence(scan.id) is None
         assert scan.status == "clean"
+
+
+@pytest.mark.asyncio
+async def test_mismatched_evidence_digest_is_not_persisted(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    scan_digest = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    other_digest = "a" * 64
+    envelope = {
+        "provider": "virustotal", "profile": "premium", "sha256": other_digest,
+        "observed_at": "2026-11-10T12:30:00+00:00", "provenance": "sha256_hash_lookup",
+        "status": "found", "metadata": {"provider": "virustotal", "found": True, "sha256": other_digest},
+    }
+    scan = await store.record_scan(make_result(metadata={
+        "sha256": scan_digest, "threat_intelligence": json.dumps(envelope)
+    }))
+    assert await store.get_scan_intelligence(scan.id) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status,metadata", [
+    ("found", {"provider": "virustotal", "found": False}),
+    ("not_found", {"provider": "virustotal", "found": True}),
+    ("error", {"provider": "virustotal", "found": False}),
+])
+async def test_inconsistent_remote_status_is_not_persisted(
+    tmp_path: Path, status: str, metadata: dict[str, object]
+) -> None:
+    store = make_store(tmp_path)
+    digest = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    metadata = {**metadata, "sha256": digest}
+    envelope = {
+        "provider": "virustotal", "profile": "premium", "sha256": digest,
+        "observed_at": "2026-11-10T12:30:00+00:00", "provenance": "sha256_hash_lookup",
+        "status": status, "metadata": metadata,
+    }
+    scan = await store.record_scan(make_result(metadata={
+        "sha256": digest, "threat_intelligence": json.dumps(envelope)
+    }))
+    assert await store.get_scan_intelligence(scan.id) is None

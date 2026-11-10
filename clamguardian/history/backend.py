@@ -145,7 +145,9 @@ _INTELLIGENCE_STATUSES = frozenset({"found", "not_found", "error"})
 _INTELLIGENCE_METADATA_MAX_BYTES = 64 * 1024
 
 
-def _parse_intelligence_evidence(raw: str | None) -> dict[str, object] | None:
+def _parse_intelligence_evidence(
+    raw: str | None, scan_sha256: str | None
+) -> dict[str, object] | None:
     """Validate the optional VirusTotal evidence envelope before persistence."""
     if not isinstance(raw, str):
         return None
@@ -187,6 +189,24 @@ def _parse_intelligence_evidence(raw: str | None) -> dict[str, object] | None:
     except (TypeError, ValueError):
         return None
     if len(encoded_metadata.encode("utf-8")) > _INTELLIGENCE_METADATA_MAX_BYTES:
+        return None
+
+    # Evidence must identify the exact object hashed by the local scan. The
+    # remote report is untrusted input and cannot bind itself to another scan.
+    if (
+        not isinstance(scan_sha256, str)
+        or not _SHA256_RE.fullmatch(scan_sha256.lower())
+        or sha256 != scan_sha256.lower()
+        or metadata.get("sha256") != sha256
+    ):
+        return None
+    remote_found = metadata.get("found")
+    remote_error = metadata.get("error")
+    if status == "found" and remote_found is not True:
+        return None
+    if status == "not_found" and remote_found is not False:
+        return None
+    if status == "error" and (not isinstance(remote_error, str) or not remote_error):
         return None
     return {
         "provider": provider,
@@ -451,7 +471,8 @@ class SqliteHistoryStore:
     ) -> HistoryRecord:
         """Persist *result* atomically (master + threats) and return its record."""
         intelligence = _parse_intelligence_evidence(
-            result.metadata.get("threat_intelligence") if result.metadata else None
+            result.metadata.get("threat_intelligence") if result.metadata else None,
+            result.metadata.get("sha256") if result.metadata else None,
         )
         record = history_record_from_scan(result, profile=profile)
         conn = self._require_conn()
