@@ -26,10 +26,6 @@ MAX_UPLOAD_SIZE = 650 * 1024 * 1024
 STANDARD_UPLOAD_SIZE = 32 * 1024 * 1024
 
 
-class VirusTotalTransientError(RuntimeError):
-    """A temporary transport or server failure eligible for bounded retry."""
-
-
 class VirusTotalAPIError(RuntimeError):
     def __init__(self, status: int, message: str, retry_after: int | None = None):
         super().__init__(message)
@@ -113,10 +109,6 @@ class VirusTotalProvider(BaseThreatProvider):
                         raise VirusTotalAPIError(
                             429, "VirusTotal API rate/quota limit reached", retry
                         )
-                    if response.status >= 500 or response.status in (408, 425):
-                        raise VirusTotalTransientError(
-                            f"VirusTotal temporary API failure (HTTP {response.status})"
-                        )
                     if response.status >= 400:
                         raise VirusTotalAPIError(
                             response.status,
@@ -127,9 +119,7 @@ class VirusTotalProvider(BaseThreatProvider):
                         raise RuntimeError("VirusTotal returned an invalid response")
                     return payload
             except (aiohttp.ClientError, TimeoutError) as exc:
-                raise VirusTotalTransientError(
-                    "VirusTotal network request failed or timed out"
-                ) from exc
+                raise RuntimeError("VirusTotal network request failed or timed out") from exc
 
     def _ensure_profile_eligible(self) -> None:
         if (
