@@ -352,7 +352,10 @@ class ThreatIntelligenceService:
         profile = selected_profile.value
         if self.cache is not None:
             try:
-                cached = await asyncio.to_thread(self.cache.get, digest, profile)
+                # SQLite access has a finite busy timeout. Keep this small,
+                # local operation on the service loop rather than creating a
+                # default-executor thread that can outlive worker shutdown.
+                cached = self.cache.get(digest, profile)
             except Exception as exc:
                 logger.warning("VirusTotal cache read failed (%s)", type(exc).__name__)
                 cached = None

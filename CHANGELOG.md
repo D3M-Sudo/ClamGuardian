@@ -8,7 +8,8 @@
 - Add a persistent SHA-256-keyed VirusTotal report cache with a configurable 24-hour default TTL, acquisition-time expiry, and strict Public/Premium cache isolation.
 - Run deduplicated VirusTotal hash lookups on a service-owned asyncio loop, independent of caller-loop cancellation or shutdown; drain and stop the worker during GTK application shutdown. Apply bounded retries for transient transport/server failures and HTTP 429 responses. Synchronize worker readiness with actual loop startup, stop cleanly when shutdown races startup, and always close the intelligence worker even when the app-services loop is unavailable.
 - Store VirusTotal reports independently by SHA-256 and API profile; migrate existing v1 cache databases transactionally while preserving acquisition and expiry timestamps.
-- Serialize provider rate reservations safely across distinct asyncio event loops; bound cross-process quota-lock waits and keep cache writes out of the worker's default executor so shutdown can drain its bounded blocking work.
+- Serialize provider rate reservations safely across distinct asyncio event loops; bound cross-process quota-lock waits and keep cache reads/writes and rate-state operations out of the worker's default executor.
+- Resolve VirusTotal DNS through a process-bounded daemon-thread resolver with a timeout, so a stuck system DNS/NSS lookup cannot prevent the service-owned event loop from shutting down.
 
 ### Security
 - Keep Public API requests blocked until written VirusTotal eligibility authorization is recorded.

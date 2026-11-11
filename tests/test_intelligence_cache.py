@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import fcntl
 import os
+import socket
 import sqlite3
 import threading
 import time
@@ -19,6 +20,7 @@ from clamguardian.intelligence import service as service_module
 from clamguardian.intelligence.cache import VirusTotalCache
 from clamguardian.intelligence.rate_limiter import PersistentRateLimiter
 from clamguardian.intelligence.service import ThreatIntelligenceService
+from clamguardian.intelligence import virustotal as virustotal_module
 from clamguardian.intelligence.virustotal import (
     VirusTotalAPIError,
     VirusTotalProvider,
@@ -626,3 +628,84 @@ def test_service_worker_shutdown_drains_bounded_limiter_executor(tmp_path) -> No
     finally:
         fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
+
+
+
+def test_provider_rate_reservation_does_not_create_default_executor(tmp_path) -> None:
+    provider = VirusTotalProvider(
+        "test-key",
+        profile="premium",
+        min_request_interval=0,
+        rate_limit_path=tmp_path / "quota.json",
+    )
+    provider._limiter.reserve = lambda: 0.0
+
+    async def reserve() -> None:
+        await provider._reserve()
+        assert asyncio.get_running_loop()._default_executor is None
+
+    asyncio.run(reserve())
+
+
+def test_bounded_dns_resolver_uses_daemon_thread_without_executor(monkeypatch) -> None:
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocked_getaddrinfo(host, port, *, family, type):
+        started.set()
+        if not release.wait(2):
+            raise TimeoutError("test DNS release timed out")
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", port))
+        ]
+
+    monkeypatch.setattr(virustotal_module.socket, "getaddrinfo", blocked_getaddrinfo)
+    resolver = virustotal_module._BoundedDaemonResolver(timeout=1)
+
+    async def resolve() -> None:
+        task = asyncio.create_task(resolver.resolve("example.invalid", 443))
+        while not started.is_set():
+            await asyncio.sleep(0.001)
+        assert asyncio.get_running_loop()._default_executor is None
+        release.set()
+        records = await task
+        assert records[0]["host"] == "127.0.0.1"
+        assert records[0]["port"] == 443
+
+    try:
+        asyncio.run(resolve())
+    finally:
+        release.set()
+        resolver.close()
+
+
+def test_worker_shutdown_does_not_wait_for_blocked_dns_thread(monkeypatch) -> None:
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocked_getaddrinfo(host, port, *, family, type):
+        started.set()
+        release.wait(3)
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", port))
+        ]
+
+    monkeypatch.setattr(virustotal_module.socket, "getaddrinfo", blocked_getaddrinfo)
+    resolver = virustotal_module._BoundedDaemonResolver(timeout=10)
+    worker = service_module._ServiceOwnedEventLoop()
+
+    async def resolve() -> None:
+        await resolver.resolve("example.invalid", 443)
+
+    try:
+        future = worker.submit(resolve())
+        assert started.wait(2)
+        worker.close(timeout=1)
+        assert worker._thread is not None and not worker._thread.is_alive()
+        assert worker._loop is not None
+        assert worker._loop._default_executor is None
+        assert future.done()
+    finally:
+        release.set()
+        resolver.close()
+        worker.close(timeout=1)
