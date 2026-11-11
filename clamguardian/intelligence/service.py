@@ -201,7 +201,7 @@ class ThreatIntelligenceService:
                 type(exc).__name__,
             )
         self._inflight: dict[
-            tuple[str, str], concurrent.futures.Future[dict[str, Any]]
+            tuple[str, str], concurrent.futures.Future[dict[str, Any] | None]
         ] = {}
         # Strong references keep service-owned tasks alive independently of
         # whichever caller happened to create the shared lookup.
