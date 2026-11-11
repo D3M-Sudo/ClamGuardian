@@ -17,6 +17,23 @@ from clamguardian.intelligence.service import ThreatIntelligenceService
 from clamguardian.intelligence.virustotal import VirusTotalProvider
 
 
+def test_file_report_rejects_provider_hash_mismatch() -> None:
+    from clamguardian.intelligence.reports import normalize_file_report
+
+    payload = {"data": {"attributes": {"sha256": "b" * 64}}}
+    with pytest.raises(RuntimeError, match="different SHA-256"):
+        normalize_file_report(payload, "a" * 64)
+
+
+def test_file_report_accepts_matching_provider_hash_case_insensitively() -> None:
+    from clamguardian.intelligence.reports import normalize_file_report
+
+    digest = "a" * 64
+    payload = {"data": {"attributes": {"sha256": digest.upper()}}}
+    report = normalize_file_report(payload, digest)
+    assert report["sha256"] == digest
+
+
 def test_virustotal_provider_key_validation() -> None:
     with pytest.raises(ValueError, match="API key is required"):
         VirusTotalProvider("")
