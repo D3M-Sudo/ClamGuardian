@@ -858,6 +858,7 @@ async def test_clamd_fd_worker_limit_reservation_is_atomic_across_threads(tmp_pa
     socket_path.touch()
     engine = ClamAVEngine(socket_path=socket_path, max_descriptor_workers=1)
     barrier = threading.Barrier(3)
+    attempts_complete = threading.Barrier(3)
     outcomes: list[bool] = []
     outcomes_lock = threading.Lock()
 
@@ -866,6 +867,9 @@ async def test_clamd_fd_worker_limit_reservation_is_atomic_across_threads(tmp_pa
         reserved = engine._reserve_descriptor_worker()
         with outcomes_lock:
             outcomes.append(reserved)
+        # Keep a successful reservation until both threads have attempted,
+        # making the single-slot contention assertion deterministic.
+        attempts_complete.wait()
         if reserved:
             engine._release_descriptor_worker()
 
@@ -873,6 +877,7 @@ async def test_clamd_fd_worker_limit_reservation_is_atomic_across_threads(tmp_pa
     for thread in threads:
         thread.start()
     barrier.wait()
+    attempts_complete.wait()
     for thread in threads:
         thread.join(timeout=2)
 

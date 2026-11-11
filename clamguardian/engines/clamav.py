@@ -90,7 +90,11 @@ class ClamAVEngine(BaseAVEngine):
         command_timeout: float = 300.0,
         max_descriptor_workers: int = 4,
     ) -> None:
-        if isinstance(max_descriptor_workers, bool) or max_descriptor_workers < 1:
+        if (
+            isinstance(max_descriptor_workers, bool)
+            or not isinstance(max_descriptor_workers, int)
+            or max_descriptor_workers < 1
+        ):
             raise ValueError("max_descriptor_workers must be a positive integer")
         self.socket_path = Path(socket_path)
         self.clamscan_binary = clamscan_binary
