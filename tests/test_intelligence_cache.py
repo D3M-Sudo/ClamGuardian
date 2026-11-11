@@ -462,3 +462,74 @@ def test_service_deduplicates_across_event_loops_when_leader_loop_closes(
     finally:
         release_provider.set()
         service.close()
+
+
+def test_service_owned_loop_signals_ready_only_after_running() -> None:
+    worker = service_module._ServiceOwnedEventLoop()
+    ready_states: list[bool] = []
+    original_ready = worker._ready
+
+    class ObservedReady:
+        def wait(self, timeout=None):
+            return original_ready.wait(timeout)
+
+        def set(self):
+            loop = worker._loop
+            ready_states.append(bool(loop and loop.is_running()))
+            original_ready.set()
+
+    worker._ready = ObservedReady()  # type: ignore[assignment]
+    try:
+        future = worker.submit(asyncio.sleep(0, result="ready"))
+        assert future.result(timeout=2) == "ready"
+        assert ready_states == [True]
+    finally:
+        worker.close()
+
+
+def test_service_owned_loop_close_during_startup_stops_worker(monkeypatch) -> None:
+    entered_run_forever = threading.Event()
+    allow_run_forever = threading.Event()
+    stop_queued = threading.Event()
+
+    class GatedEventLoop(asyncio.SelectorEventLoop):
+        def run_forever(self) -> None:
+            entered_run_forever.set()
+            if not allow_run_forever.wait(2):
+                raise TimeoutError("test did not release event-loop startup")
+            super().run_forever()
+
+        def call_soon_threadsafe(self, callback, *args, **kwargs):
+            if callback == self.stop:
+                stop_queued.set()
+            return super().call_soon_threadsafe(callback, *args, **kwargs)
+
+    monkeypatch.setattr(
+        service_module.asyncio, "new_event_loop", GatedEventLoop
+    )
+    worker = service_module._ServiceOwnedEventLoop()
+    submit_errors: list[BaseException] = []
+
+    def submit() -> None:
+        try:
+            worker.submit(asyncio.sleep(0))
+        except BaseException as exc:
+            submit_errors.append(exc)
+
+    submitter = threading.Thread(target=submit)
+    submitter.start()
+    assert entered_run_forever.wait(2)
+
+    closer = threading.Thread(target=worker.close, kwargs={"timeout": 2})
+    closer.start()
+    try:
+        assert stop_queued.wait(2)
+    finally:
+        allow_run_forever.set()
+
+    submitter.join(timeout=2)
+    closer.join(timeout=2)
+    assert not submitter.is_alive()
+    assert not closer.is_alive()
+    assert worker._thread is not None and not worker._thread.is_alive()
+    assert submit_errors and isinstance(submit_errors[0], RuntimeError)
