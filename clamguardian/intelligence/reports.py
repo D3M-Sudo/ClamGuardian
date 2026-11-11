@@ -12,14 +12,13 @@ def normalize_file_report(payload: dict[str, Any], sha256: str) -> dict[str, Any
     if not isinstance(attributes, dict):
         raise RuntimeError("VirusTotal returned an invalid file report")
     reported_sha256 = attributes.get("sha256")
-    if reported_sha256 is not None:
-        if (
-            not isinstance(reported_sha256, str)
-            or len(reported_sha256) != 64
-            or any(ch not in "0123456789abcdefABCDEF" for ch in reported_sha256)
-            or reported_sha256.lower() != sha256.lower()
-        ):
-            raise RuntimeError("VirusTotal returned a report for a different SHA-256")
+    if reported_sha256 is not None and (
+        not isinstance(reported_sha256, str)
+        or len(reported_sha256) != 64
+        or any(ch not in "0123456789abcdefABCDEF" for ch in reported_sha256)
+        or reported_sha256.lower() != sha256.lower()
+    ):
+        raise RuntimeError("VirusTotal returned a report for a different SHA-256")
     stats = attributes.get("last_analysis_stats")
     if not isinstance(stats, dict):
         stats = {}
