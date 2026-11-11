@@ -296,7 +296,11 @@ class ThreatIntelligenceService:
                 and self.cache is not None
             ):
                 try:
-                    await asyncio.to_thread(self.cache.put, digest, profile, report)
+                    # SQLite connections have a finite busy timeout. Keep this
+                    # bounded local write on the service loop rather than
+                    # creating an executor thread whose shutdown can outlive
+                    # the worker lifecycle.
+                    self.cache.put(digest, profile, report)
                 except Exception as exc:
                     logger.warning(
                         "VirusTotal cache write failed (%s)", type(exc).__name__

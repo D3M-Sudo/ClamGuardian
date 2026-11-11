@@ -7,6 +7,7 @@ import hashlib
 import os
 import stat
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -59,7 +60,10 @@ class VirusTotalProvider(BaseThreatProvider):
         self._limiter = PersistentRateLimiter(
             self.profile, state_path=rate_limit_path, min_interval=min_request_interval
         )
-        self._rate_lock = asyncio.Lock()
+        # Provider instances may be shared by async callers on different
+        # event loops. asyncio.Lock is loop-affine; this lock is deliberately
+        # acquired non-blockingly and polled so it is safe across loops.
+        self._rate_lock = threading.Lock()
         self._session_factory = session_factory or aiohttp.ClientSession
         self._min_interval = self._limiter.min_interval
         self._rate_limit_path = self._limiter.path
@@ -71,12 +75,16 @@ class VirusTotalProvider(BaseThreatProvider):
         await self._reserve()
 
     async def _reserve(self) -> None:
-        async with self._rate_lock:
+        while not self._rate_lock.acquire(blocking=False):
+            await asyncio.sleep(0.01)
+        try:
             while True:
                 remaining = await asyncio.to_thread(self._limiter.reserve)
                 if remaining <= 0:
                     return
                 await asyncio.sleep(remaining)
+        finally:
+            self._rate_lock.release()
 
     @staticmethod
     def _retry_after(value: str | None) -> int | None:
