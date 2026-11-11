@@ -331,9 +331,9 @@ class ClamAVEngine(BaseAVEngine):
                 finally:
                     if socket_control is not None:
                         socket_control.detach(probe)
-        except InterruptedError:
+        except (InterruptedError, TimeoutError):
             raise
-        except (OSError, TimeoutError):
+        except OSError:
             if socket_control is not None:
                 socket_control.raise_if_cancelled()
             return self._scan_fd_instream_sync(fd, socket_control)
