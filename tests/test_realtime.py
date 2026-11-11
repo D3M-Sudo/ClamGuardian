@@ -700,7 +700,7 @@ async def test_clamd_fd_probe_cancellation_does_not_start_instream_fallback(
     def serve() -> None:
         conn, _ = server.accept()
         with conn:
-            expected = b"nVERSIONCOMMANDS\\n"
+            expected = b"nVERSIONCOMMANDS\n"
             received = bytearray()
             while len(received) < len(expected):
                 chunk = conn.recv(len(expected) - len(received))
@@ -749,7 +749,7 @@ async def test_clamd_fd_probe_timeout_does_not_fall_back_to_instream(tmp_path: P
     def serve() -> None:
         conn, _ = server.accept()
         with conn:
-            expected = b"nVERSIONCOMMANDS\\n"
+            expected = b"nVERSIONCOMMANDS\n"
             received = bytearray()
             while len(received) < len(expected):
                 chunk = conn.recv(len(expected) - len(received))
