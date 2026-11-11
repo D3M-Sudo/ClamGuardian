@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import contextlib
 import copy
 import logging
 import threading
@@ -112,10 +113,8 @@ class _ServiceOwnedEventLoop:
                 logger.warning(
                     "Threat Intelligence event-loop tasks did not drain cleanly"
                 )
-            try:
+            with contextlib.suppress(RuntimeError):
                 loop.call_soon_threadsafe(loop.stop)
-            except RuntimeError:
-                pass
 
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=max(0.1, timeout))
