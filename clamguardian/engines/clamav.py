@@ -88,14 +88,34 @@ class ClamAVEngine(BaseAVEngine):
         freshclam_binary: str = "freshclam",
         flatpak_host: bool = False,
         command_timeout: float = 300.0,
+        max_descriptor_workers: int = 4,
     ) -> None:
+        if isinstance(max_descriptor_workers, bool) or max_descriptor_workers < 1:
+            raise ValueError("max_descriptor_workers must be a positive integer")
         self.socket_path = Path(socket_path)
         self.clamscan_binary = clamscan_binary
         self.freshclam_binary = freshclam_binary
         self.flatpak_host = flatpak_host
         self.command_timeout = command_timeout
+        self.max_descriptor_workers = max_descriptor_workers
+        self._descriptor_worker_count = 0
         self._descriptor_workers: set[asyncio.Task[tuple[str, int, str]]] = set()
         self._descriptor_workers_lock = threading.Lock()
+
+    def _reserve_descriptor_worker(self) -> bool:
+        """Atomically reserve capacity before duplicating or submitting a descriptor."""
+        with self._descriptor_workers_lock:
+            if self._descriptor_worker_count >= self.max_descriptor_workers:
+                return False
+            self._descriptor_worker_count += 1
+            return True
+
+    def _release_descriptor_worker(self) -> None:
+        """Release capacity only after the worker thread has closed its descriptor."""
+        with self._descriptor_workers_lock:
+            if self._descriptor_worker_count <= 0:
+                raise RuntimeError("descriptor worker reservation underflow")
+            self._descriptor_worker_count -= 1
 
     async def scan(
         self,
@@ -227,11 +247,36 @@ class ClamAVEngine(BaseAVEngine):
                 profile.validate()
             if not self.socket_path.exists():
                 raise OSError("clamd UNIX socket is unavailable; descriptor scan required")
-            owned_fd = os.dup(fd)
+            if not self._reserve_descriptor_worker():
+                result = ScanResult(
+                    target=str(target), clean=False, status=ScanStatus.ERROR,
+                    engine="clamd-descriptor",
+                    error=(
+                        "Realtime descriptor scan capacity exhausted "
+                        f"(limit: {self.max_descriptor_workers})"
+                    ),
+                    started_at=started, finished_at=datetime.now(UTC),
+                )
+                if profile is not None:
+                    result.metadata["profile_id"] = profile.id
+                return result
+
+            try:
+                owned_fd = os.dup(fd)
+            except BaseException:
+                self._release_descriptor_worker()
+                raise
+
             socket_control = _DescriptorSocketControl()
-            worker = asyncio.create_task(
-                asyncio.to_thread(self._scan_fd_owned, owned_fd, socket_control)
-            )
+            worker_coro = asyncio.to_thread(self._scan_fd_owned, owned_fd, socket_control)
+            try:
+                worker = asyncio.create_task(worker_coro)
+            except BaseException:
+                worker_coro.close()
+                with contextlib.suppress(OSError):
+                    os.close(owned_fd)
+                self._release_descriptor_worker()
+                raise
             with self._descriptor_workers_lock:
                 self._descriptor_workers.add(worker)
 
@@ -291,18 +336,21 @@ class ClamAVEngine(BaseAVEngine):
 
     @property
     def active_descriptor_worker_count(self) -> int:
-        """Return descriptor workers whose underlying thread has not completed."""
+        """Return reserved workers, including jobs queued but not yet running."""
         with self._descriptor_workers_lock:
-            return sum(not worker.done() for worker in self._descriptor_workers)
+            return self._descriptor_worker_count
 
     def _scan_fd_owned(
         self, fd: int, socket_control: _DescriptorSocketControl
     ) -> tuple[str, int, str]:
-        """Run descriptor scanning while owning and always closing a duplicate fd."""
+        """Run descriptor scanning and release its reservation after fd cleanup."""
         try:
             return self._scan_fd_sync(fd, socket_control)
         finally:
-            os.close(fd)
+            try:
+                os.close(fd)
+            finally:
+                self._release_descriptor_worker()
 
     def _scan_fd_sync(
         self, fd: int, socket_control: _DescriptorSocketControl | None = None

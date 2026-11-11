@@ -9,6 +9,7 @@
 - Preserve the selected VirusTotal intelligence profile and all unrelated application settings when the Scheduler updates its configuration.
 
 ### Security
+- **Realtime descriptor worker admission:** bound active and queued descriptor workers (default limit: 4), reject excess scans explicitly, and retain each admission slot until the worker closes its duplicated descriptor after timeout or cancellation.
 - **Realtime descriptor timeout and cleanup:** classify descriptor-scan timeouts as `TIMEOUT`, preserve the applied scan profile, prevent probe timeouts or cancellation from triggering INSTREAM fallback, and track worker completion through descriptor cleanup.
 - **Realtime filesystem boundary:** pin configured monitoring roots, reject symlink roots/components, open event targets beneath root directory descriptors with `O_NOFOLLOW`, and use descriptor-bound clamd `FILDES` or `INSTREAM` scanning with no pathname fallback.
 - Keep Public API requests blocked until written VirusTotal eligibility authorization is recorded.

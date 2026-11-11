@@ -781,3 +781,100 @@ async def test_clamd_fd_probe_timeout_does_not_fall_back_to_instream(tmp_path: P
         os.close(fd)
         server.close()
         thread.join(timeout=2)
+
+
+@pytest.mark.asyncio
+async def test_clamd_fd_worker_limit_rejects_until_late_worker_cleanup(tmp_path: Path) -> None:
+    from clamguardian.engines.clamav import ClamAVEngine
+
+    target = tmp_path / "worker-limit.bin"
+    target.write_bytes(b"bounded descriptor workers")
+    socket_path = tmp_path / "clamd.sock"
+    socket_path.touch()
+    engine = ClamAVEngine(
+        socket_path=socket_path, command_timeout=0.05, max_descriptor_workers=1
+    )
+    started = threading.Event()
+    release = threading.Event()
+    duplicate_fds: list[int] = []
+    invocation_count = 0
+    invocation_lock = threading.Lock()
+
+    def blocked_scan(scan_fd: int, _control=None) -> tuple[str, int, str]:
+        nonlocal invocation_count
+        with invocation_lock:
+            invocation_count += 1
+        duplicate_fds.append(scan_fd)
+        started.set()
+        if not release.wait(2):
+            raise TimeoutError("test worker release timed out")
+        return f"{target}: OK", 0, "fildes"
+
+    engine._scan_fd_sync = blocked_scan  # type: ignore[method-assign]
+    fd = os.open(target, os.O_RDONLY | os.O_CLOEXEC)
+    try:
+        first = asyncio.create_task(engine.scan_fd(fd, target=target))
+        assert await asyncio.to_thread(started.wait, 2)
+        first_result = await first
+        assert first_result.status is ScanStatus.TIMEOUT
+        assert engine.active_descriptor_worker_count == 1
+
+        rejected = await engine.scan_fd(fd, target=target)
+        assert rejected.status is ScanStatus.ERROR
+        assert "capacity exhausted" in (rejected.error or "")
+        assert rejected.metadata["profile_id"]
+        assert invocation_count == 1
+        assert engine.active_descriptor_worker_count == 1
+
+        with engine._descriptor_workers_lock:
+            worker = next(iter(engine._descriptor_workers))
+        worker_done = asyncio.Event()
+        worker.add_done_callback(lambda _task: worker_done.set())
+        release.set()
+        await asyncio.wait_for(worker_done.wait(), timeout=2)
+
+        assert engine.active_descriptor_worker_count == 0
+        with pytest.raises(OSError):
+            os.fstat(duplicate_fds[0])
+
+        # Capacity is reusable only after the worker's finally block has closed
+        # its duplicate descriptor and released the reservation.
+        third = await engine.scan_fd(fd, target=target)
+        assert third.status is ScanStatus.CLEAN
+        assert invocation_count == 2
+        assert engine.active_descriptor_worker_count == 0
+    finally:
+        release.set()
+        os.close(fd)
+
+
+@pytest.mark.asyncio
+async def test_clamd_fd_worker_limit_reservation_is_atomic_across_threads(tmp_path: Path) -> None:
+    from clamguardian.engines.clamav import ClamAVEngine
+
+    target = tmp_path / "worker-limit-concurrent.bin"
+    target.write_bytes(b"cross-loop admission")
+    socket_path = tmp_path / "clamd.sock"
+    socket_path.touch()
+    engine = ClamAVEngine(socket_path=socket_path, max_descriptor_workers=1)
+    barrier = threading.Barrier(3)
+    outcomes: list[bool] = []
+    outcomes_lock = threading.Lock()
+
+    def reserve_from_thread() -> None:
+        barrier.wait()
+        reserved = engine._reserve_descriptor_worker()
+        with outcomes_lock:
+            outcomes.append(reserved)
+        if reserved:
+            engine._release_descriptor_worker()
+
+    threads = [threading.Thread(target=reserve_from_thread) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join(timeout=2)
+
+    assert sorted(outcomes) == [False, True]
+    assert engine.active_descriptor_worker_count == 0
