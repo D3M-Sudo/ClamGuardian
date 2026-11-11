@@ -25,7 +25,9 @@ def gtk_app():
     application lives for the duration of the pytest process; no other test
     module registers a ``ClamGuardianApp``.
     """
-    app = gtk_app
+    from clamguardian.ui.app import ClamGuardianApp
+
+    app = ClamGuardianApp()
     assert app.register()
     yield app
 
