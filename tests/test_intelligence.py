@@ -165,7 +165,15 @@ def test_virustotal_default_rate_limit_is_at_least_four_per_minute() -> None:
     assert provider._min_interval >= 15.0
 
 @pytest.mark.asyncio
-async def test_virustotal_rate_limit_is_shared_between_provider_instances(tmp_path) -> None:
+async def test_virustotal_rate_limit_is_shared_between_provider_instances(
+    tmp_path, monkeypatch
+) -> None:
+    # Keep wall-clock time fixed so slow filesystem setup/fsync cannot consume
+    # the entire test interval before the second provider begins waiting.
+    monkeypatch.setattr(
+        "clamguardian.intelligence.rate_limiter.time.time",
+        lambda: 1_800_000_000.0,
+    )
     state = tmp_path / "shared-rate-limit"
     first = VirusTotalProvider("first", min_request_interval=0.05, rate_limit_path=state)
     second = VirusTotalProvider("second", min_request_interval=0.05, rate_limit_path=state)
