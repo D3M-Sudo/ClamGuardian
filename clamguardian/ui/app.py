@@ -566,6 +566,8 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 logging.getLogger(__name__).error(
                     "Background service shutdown did not complete cleanly: %s", error
                 )
+            if self._window is not None:
+                self._window._intelligence_service.close(timeout=8)
             loop.call_soon_threadsafe(loop.stop)
             if self._service_thread is not None:
                 self._service_thread.join(timeout=2)

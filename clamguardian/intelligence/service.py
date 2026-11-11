@@ -29,6 +29,100 @@ _RETRY_BASE_SECONDS = 1.0
 _RETRY_MAX_SECONDS = 8.0
 
 
+class _ServiceOwnedEventLoop:
+    """A private asyncio loop whose lifetime is independent of lookup callers."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._ready = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._closed = False
+
+    def _run(self) -> None:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        self._loop = loop
+        self._ready.set()
+        try:
+            loop.run_forever()
+        finally:
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.run_until_complete(loop.shutdown_default_executor())
+            loop.close()
+
+    def submit(
+        self, coroutine: Any
+    ) -> concurrent.futures.Future[Any]:
+        with self._lock:
+            if self._closed:
+                coroutine.close()
+                raise RuntimeError("Threat Intelligence service is closed")
+            if self._thread is None:
+                self._thread = threading.Thread(
+                    target=self._run,
+                    name="clamguardian-intelligence",
+                    daemon=True,
+                )
+                self._thread.start()
+            if not self._ready.wait(timeout=5):
+                coroutine.close()
+                raise RuntimeError("Threat Intelligence event loop did not start")
+            loop = self._loop
+            if loop is None or loop.is_closed() or not loop.is_running():
+                coroutine.close()
+                raise RuntimeError("Threat Intelligence event loop is unavailable")
+            try:
+                return asyncio.run_coroutine_threadsafe(coroutine, loop)
+            except RuntimeError:
+                coroutine.close()
+                raise
+
+    def close(self, timeout: float = 3.0) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            loop = self._loop
+            thread = self._thread
+
+        if loop is not None and loop.is_running():
+            async def cancel_pending() -> None:
+                current = asyncio.current_task()
+                pending = [
+                    task for task in asyncio.all_tasks()
+                    if task is not current
+                ]
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    await asyncio.gather(*pending, return_exceptions=True)
+
+            try:
+                shutdown = asyncio.run_coroutine_threadsafe(cancel_pending(), loop)
+                shutdown.result(timeout=max(0.1, timeout))
+            except Exception:
+                logger.warning(
+                    "Threat Intelligence event-loop tasks did not drain cleanly"
+                )
+            try:
+                loop.call_soon_threadsafe(loop.stop)
+            except RuntimeError:
+                pass
+
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=max(0.1, timeout))
+            if thread.is_alive():
+                logger.warning("Threat Intelligence event-loop thread did not stop")
+
+
 class ThreatIntelligenceService:
     """Optional VirusTotal enrichment; never modifies the ClamAV verdict."""
 
@@ -44,6 +138,8 @@ class ThreatIntelligenceService:
         self._custom_provider = provider
         self._provider: VirusTotalProvider | None = provider
         self._provider_initialized = provider is not None
+        self._provider_lock = threading.RLock()
+        self._lookup_loop = _ServiceOwnedEventLoop()
         try:
             self.cache: VirusTotalCache | None = cache or VirusTotalCache(
                 self.settings_store.path.with_name("virustotal-cache.db")
@@ -59,9 +155,37 @@ class ThreatIntelligenceService:
         ] = {}
         # Strong references keep service-owned tasks alive independently of
         # whichever caller happened to create the shared lookup.
-        self._lookup_tasks: dict[tuple[str, str], asyncio.Task[None]] = {}
+        self._lookup_tasks: dict[
+            tuple[str, str], concurrent.futures.Future[None]
+        ] = {}
         self._inflight_lock = threading.Lock()
         self._upload_lookup: tuple[str, str, dict[str, Any], float] | None = None
+
+    def close(self, timeout: float = 8.0) -> None:
+        """Drain shared lookups and stop the service-owned worker loop."""
+        deadline = time.monotonic() + max(0.1, timeout)
+        with self._inflight_lock:
+            tasks = tuple(self._lookup_tasks.values())
+        for task in tasks:
+            remaining = max(0.0, deadline - time.monotonic())
+            try:
+                task.result(timeout=remaining)
+            except concurrent.futures.TimeoutError:
+                task.cancel()
+            except concurrent.futures.CancelledError:
+                pass
+            except Exception:
+                logger.warning("Threat Intelligence lookup task ended unexpectedly")
+        self._lookup_loop.close(timeout=max(0.1, deadline - time.monotonic()))
+        with self._inflight_lock:
+            for shared in self._inflight.values():
+                if not shared.done():
+                    shared.set_result({
+                        "provider": "virustotal",
+                        "error": "VirusTotal lookup cancelled",
+                    })
+            self._inflight.clear()
+            self._lookup_tasks.clear()
 
     def is_enabled(self) -> bool:
         return self.settings_store.load().intelligence_enabled
@@ -70,36 +194,40 @@ class ThreatIntelligenceService:
         return APIProfile.parse(self.settings_store.load().intelligence_profile)
 
     def get_provider(self) -> VirusTotalProvider | None:
-        if not self.is_enabled():
-            return None
-        profile = self.selected_profile()
-        if profile is APIProfile.PUBLIC and not VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED:
-            return None
-        if (
-            self._provider_initialized
-            and self._custom_provider is None
-            and self._provider is not None
-            and getattr(self._provider, "profile", profile) is not profile
-        ):
-            self._provider = None
-            self._provider_initialized = False
-            self._upload_lookup = None
-        if self._provider_initialized:
-            return self._provider
-        try:
-            credential = self.secret_store.get_credential(profile)
-            if not credential:
-                logger.warning(
-                    "Threat intelligence enabled but no credential configured for %s",
-                    profile.value,
-                )
+        with self._provider_lock:
+            if not self.is_enabled():
                 return None
-            self._provider = VirusTotalProvider(credential, profile=profile)
-            self._provider_initialized = True
-            return self._provider
-        except SecretStorageError:
-            logger.error("Threat intelligence secure credential retrieval failed")
-            return None
+            profile = self.selected_profile()
+            if (
+                profile is APIProfile.PUBLIC
+                and not VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED
+            ):
+                return None
+            if (
+                self._provider_initialized
+                and self._custom_provider is None
+                and self._provider is not None
+                and getattr(self._provider, "profile", profile) is not profile
+            ):
+                self._provider = None
+                self._provider_initialized = False
+                self._upload_lookup = None
+            if self._provider_initialized:
+                return self._provider
+            try:
+                credential = self.secret_store.get_credential(profile)
+                if not credential:
+                    logger.warning(
+                        "Threat intelligence enabled but no credential configured for %s",
+                        profile.value,
+                    )
+                    return None
+                self._provider = VirusTotalProvider(credential, profile=profile)
+                self._provider_initialized = True
+                return self._provider
+            except SecretStorageError:
+                logger.error("Threat intelligence secure credential retrieval failed")
+                return None
 
     async def _lookup_with_retry(
         self, provider: VirusTotalProvider, sha256: str
@@ -218,14 +346,26 @@ class ThreatIntelligenceService:
             shared = self._inflight.get(key)
             if shared is None:
                 shared = concurrent.futures.Future()
-                task = asyncio.create_task(
-                    self._run_shared_lookup(key, shared, provider, digest, profile)
-                )
                 self._inflight[key] = shared
-                self._lookup_tasks[key] = task
+                try:
+                    task = self._lookup_loop.submit(
+                        self._run_shared_lookup(
+                            key, shared, provider, digest, profile
+                        )
+                    )
+                except RuntimeError:
+                    self._inflight.pop(key, None)
+                    if not shared.done():
+                        shared.set_result({
+                            "provider": provider.name,
+                            "error": "VirusTotal lookup failed",
+                            "sha256": digest,
+                        })
+                else:
+                    self._lookup_tasks[key] = task
 
-        # Every caller, including the first one, is merely a waiter. Cancelling
-        # it cannot cancel the service-owned task or the concurrent Future.
+        # The task runs on a service-owned loop, not on the first caller's loop.
+        # Shielding isolates each waiter; closing any caller loop cannot stop it.
         return await asyncio.shield(asyncio.wrap_future(shared))
 
     def preview_file_upload(self, path):

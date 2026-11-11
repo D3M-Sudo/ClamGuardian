@@ -6,7 +6,7 @@
 - Add hash-first file submission workflow with per-file typed consent, privacy warning, SHA-256 revalidation, upload polling, CLI commands, and GTK profile selection.
 
 - Add a persistent SHA-256-keyed VirusTotal report cache with a configurable 24-hour default TTL, acquisition-time expiry, and strict Public/Premium cache isolation.
-- Deduplicate concurrent hash lookups with service-owned tasks so cancellation of any caller cannot abort the shared operation; apply bounded retries for transient transport/server failures and HTTP 429 responses.
+- Run deduplicated VirusTotal hash lookups on a service-owned asyncio loop, independent of caller-loop cancellation or shutdown; drain and stop the worker during GTK application shutdown. Apply bounded retries for transient transport/server failures and HTTP 429 responses.
 - Store VirusTotal reports independently by SHA-256 and API profile; migrate existing v1 cache databases transactionally while preserving acquisition and expiry timestamps.
 
 ### Security
