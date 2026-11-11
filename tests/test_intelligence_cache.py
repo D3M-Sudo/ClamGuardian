@@ -105,6 +105,54 @@ async def test_service_uses_persistent_cache_for_repeated_hashes(tmp_path, monke
 
 
 @pytest.mark.asyncio
+async def test_scan_lookup_keeps_request_time_api_profile_and_raw_report(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True
+    )
+    settings = SettingsStore(tmp_path / "settings.json")
+    settings.save(
+        AppSettings(intelligence_enabled=True, intelligence_profile="premium")
+    )
+    entered = threading.Event()
+    release = threading.Event()
+    provider = AsyncMock(spec=VirusTotalProvider)
+    provider.profile = service_module.APIProfile.PREMIUM
+
+    async def blocked_lookup(digest: str) -> dict:
+        assert digest == SHA256
+        entered.set()
+        await asyncio.to_thread(release.wait, 2)
+        return REPORT
+
+    provider.lookup_hash.side_effect = blocked_lookup
+    service = ThreatIntelligenceService(
+        settings_store=settings,
+        provider=provider,
+        cache=VirusTotalCache(tmp_path / "vt.db"),
+    )
+    result = ScanResult(target="/sample", clean=True, metadata={"sha256": SHA256})
+    try:
+        lookup = asyncio.create_task(
+            service.lookup_scan_result_with_profile(result)
+        )
+        assert await asyncio.to_thread(entered.wait, 2)
+        settings.save(
+            AppSettings(intelligence_enabled=True, intelligence_profile="public")
+        )
+        release.set()
+        report, profile = await lookup
+        assert report == REPORT
+        assert "profile" not in report
+        assert profile is service_module.APIProfile.PREMIUM
+        provider.lookup_hash.assert_awaited_once_with(SHA256)
+    finally:
+        release.set()
+        service.close()
+
+
+@pytest.mark.asyncio
 async def test_service_deduplicates_concurrent_lookups(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(
         service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True

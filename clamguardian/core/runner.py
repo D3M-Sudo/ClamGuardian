@@ -151,30 +151,6 @@ class ScanTaskRunner:
             )
         )
 
-    async def submit_fd(
-        self,
-        fd: int,
-        target: Path,
-        *,
-        profile: ScanProfile | None = None,
-    ) -> ScanResult:
-        """Scan an already-open descriptor; never fall back to a pathname."""
-        scan_fd = getattr(self.engine, "scan_fd", None)
-        if not callable(scan_fd):
-            raise RuntimeError("engine does not support descriptor-based scanning")
-        task = asyncio.current_task()
-        if task is not None:
-            self._track_task(task, asyncio.get_running_loop())
-        acquired = False
-        try:
-            while not self._semaphore.acquire(blocking=False):
-                await asyncio.sleep(0.01)
-            acquired = True
-            return await scan_fd(fd, target=Path(target), profile=profile)
-        finally:
-            if acquired:
-                self._semaphore.release()
-
     async def cancel_all(self) -> None:
         """Cancel and await all tracked scans, including scans on other loops."""
         current = asyncio.current_task()

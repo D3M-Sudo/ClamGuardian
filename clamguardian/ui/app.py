@@ -303,10 +303,12 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
 
         async def _enrich_scan_result(self, result: ScanResult) -> None:
             """Attach optional hash-only intelligence without changing AV status."""
-            report = await self._intelligence_service.lookup_scan_result(result)
-            if report is None:
+            report, api_profile = (
+                await self._intelligence_service.lookup_scan_result_with_profile(result)
+            )
+            if report is None or api_profile is None:
                 return
-            profile = self._intelligence_service.selected_profile().value
+            profile = api_profile.value
             sha256 = result.metadata.get("sha256")
             status = (
                 "error"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import stat
 from pathlib import Path
@@ -100,7 +101,13 @@ async def test_realtime_path_scan_uses_shared_enrichment_hook(tmp_path) -> None:
     target.write_text("realtime test")
     runner = ScanTaskRunner(StubEngine())
     _attach_enricher(runner, "realtime")
-    orchestrator = RealtimeScanOrchestrator(runner, debounce_seconds=0.01)
+    root_fd = open_root_directory(tmp_path)
+    orchestrator = RealtimeScanOrchestrator(
+        runner,
+        policy=RealtimePolicy(authorized_roots=[tmp_path]),
+        debounce_seconds=0.01,
+        root_fds={tmp_path: root_fd},
+    )
     completed: list[ScanResult] = []
     done = asyncio.Event()
 
@@ -112,16 +119,21 @@ async def test_realtime_path_scan_uses_shared_enrichment_hook(tmp_path) -> None:
         [FileEvent(path=target, event_type=FileEventType.CREATE)],
         on_scan_complete=on_complete,
     )
-    await asyncio.wait_for(done.wait(), timeout=2)
-    await orchestrator.close()
+    try:
+        await asyncio.wait_for(done.wait(), timeout=2)
+    finally:
+        await orchestrator.close()
+        os.close(root_fd)
 
     assert completed[0].clean is True
     assert completed[0].metadata[_ENRICHED_KEY] == "realtime"
 
 
 @pytest.mark.asyncio
-async def test_realtime_descriptor_scan_end_to_end_with_enrichment_and_history(tmp_path: Path) -> None:
-    """inotify → orchestrator → descriptor-based engine scan → enrichment → history persistence.
+async def test_realtime_descriptor_scan_end_to_end_with_enrichment_and_history(
+    tmp_path: Path,
+) -> None:
+    """inotify → descriptor scan → enrichment → history persistence.
 
     Verifica che:
       * il descriptor aperto (fd) venga passato all'engine senza pathname fallback;
@@ -138,6 +150,7 @@ async def test_realtime_descriptor_scan_end_to_end_with_enrichment_and_history(t
 
         def __init__(self) -> None:
             self.scan_fd_calls: list[tuple[int, Path, ScanProfile | None]] = []
+            self.scanned_identity: tuple[int, int, int] | None = None
 
         async def scan(
             self,
@@ -153,6 +166,7 @@ async def test_realtime_descriptor_scan_end_to_end_with_enrichment_and_history(t
         ) -> ScanResult:
             self.scan_fd_calls.append((fd, target, profile))
             fstat = os.fstat(fd)
+            self.scanned_identity = (fstat.st_dev, fstat.st_ino, fstat.st_mode)
             assert stat.S_ISREG(fstat.st_mode), "fd must be a regular file"
             tstat = os.stat(target)
             assert fstat.st_ino == tstat.st_ino and fstat.st_dev == tstat.st_dev, (
@@ -162,7 +176,11 @@ async def test_realtime_descriptor_scan_end_to_end_with_enrichment_and_history(t
                 target=str(target),
                 clean=True,
                 engine=self.name,
-                metadata={"sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+                metadata={
+                    "sha256": (
+                        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                    )
+                },
             )
 
         async def update_signatures(self) -> str:
@@ -172,11 +190,16 @@ async def test_realtime_descriptor_scan_end_to_end_with_enrichment_and_history(t
     runner = ScanTaskRunner(engine)
     history_store = SqliteHistoryStore(tmp_path / "history.db")
 
-    profile_name: list[str] = []
-
     async def enrich(result: ScanResult) -> None:
-        profile_name.append(str(result.metadata.get("profile_id", "<none>")))
-        result.metadata["threat_intelligence"] = '{"provider":"virustotal","profile":"premium","sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","status":"found","metadata":{"found":true}}'
+        result.metadata["threat_intelligence"] = json.dumps(
+            {
+                "provider": "virustotal",
+                "profile": "premium",
+                "sha256": result.metadata["sha256"],
+                "status": "found",
+                "metadata": {"found": True},
+            }
+        )
 
     runner.set_result_enricher(enrich)
 
@@ -201,18 +224,23 @@ async def test_realtime_descriptor_scan_end_to_end_with_enrichment_and_history(t
         [FileEvent(path=target, event_type=FileEventType.CREATE)],
         on_scan_complete=on_complete,
     )
-    await asyncio.wait_for(done.wait(), timeout=5)
-    await orchestrator.close()
-    os.close(root_fd)
+    try:
+        await asyncio.wait_for(done.wait(), timeout=5)
+    finally:
+        await orchestrator.close()
+        os.close(root_fd)
 
     # Verifica: il descriptor è stato usato per la scansione (nessun pathname fallback)
     assert len(engine.scan_fd_calls) == 1
-    fd, fd_target, fd_profile = engine.scan_fd_calls[0]
+    _fd, fd_target, fd_profile = engine.scan_fd_calls[0]
     assert fd_target == target
     assert fd_profile is not None
     assert fd_profile.id == "home"
-    assert fd >= 0
-    assert os.fstat(fd) is not None
+    assert engine.scanned_identity is not None
+    device, inode, mode = engine.scanned_identity
+    assert stat.S_ISREG(mode)
+    target_stat = os.stat(target)
+    assert (device, inode) == (target_stat.st_dev, target_stat.st_ino)
 
     # Verifica: enrichment applicato tramite il percorso condiviso ScanTaskRunner
     assert len(completed) == 1
@@ -220,11 +248,12 @@ async def test_realtime_descriptor_scan_end_to_end_with_enrichment_and_history(t
     assert result.clean is True
     assert result.metadata.get("threat_intelligence") is not None
 
-    # Verifica: profilo propagato nell'enrichment (non riletto dalle impostazioni)
-    assert len(profile_name) == 1
-    assert profile_name[0] == "home"
+    # ClamAV scan profile and VirusTotal API profile are independent contracts.
+    evidence = json.loads(result.metadata["threat_intelligence"])
+    assert evidence["profile"] == "premium"
+    assert evidence["sha256"] == result.metadata["sha256"]
 
-    # Verifica: persistenza nello storico (envelope di evidence separato dal verdetto ClamAV)
+    # Verify history persistence independently from the ClamAV verdict.
     persisted = await history_store.get_scan(result.id)
     assert persisted is not None
     assert persisted.profile_id == "home"
