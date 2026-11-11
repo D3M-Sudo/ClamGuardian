@@ -137,6 +137,113 @@ async def test_service_deduplicates_concurrent_lookups(tmp_path, monkeypatch) ->
 
 
 @pytest.mark.asyncio
+async def test_shared_lookup_returns_independent_report_copies(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True
+    )
+    settings = SettingsStore(tmp_path / "settings.json")
+    settings.save(AppSettings(intelligence_enabled=True, intelligence_profile="public"))
+    provider = AsyncMock(spec=VirusTotalProvider)
+    entered = threading.Event()
+    release = threading.Event()
+
+    async def delayed_lookup(_sha256: str):
+        entered.set()
+        if not await asyncio.to_thread(release.wait, 5):
+            raise TimeoutError("test provider release timed out")
+        return {**REPORT, "nested": {"labels": ["original"]}}
+
+    provider.lookup_hash.side_effect = delayed_lookup
+    service = ThreatIntelligenceService(
+        settings_store=settings, provider=provider,
+        cache=VirusTotalCache(tmp_path / "vt.db"),
+    )
+    result = ScanResult(target="/sample", clean=True, metadata={"sha256": SHA256})
+    try:
+        first = asyncio.create_task(service.lookup_scan_result(result))
+        assert await asyncio.to_thread(entered.wait, 2)
+        second = asyncio.create_task(service.lookup_scan_result(result))
+        await asyncio.sleep(0.02)
+        release.set()
+        first_report, second_report = await asyncio.gather(first, second)
+        assert first_report is not second_report
+        first_report["nested"]["labels"].append("mutated")
+        assert second_report["nested"]["labels"] == ["original"]
+        provider.lookup_hash.assert_awaited_once_with(SHA256)
+    finally:
+        release.set()
+        service.close()
+
+
+@pytest.mark.asyncio
+async def test_cache_read_does_not_block_calling_event_loop(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True
+    )
+    settings = SettingsStore(tmp_path / "settings.json")
+    settings.save(AppSettings(intelligence_enabled=True, intelligence_profile="premium"))
+    cache = VirusTotalCache(tmp_path / "vt.db")
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocked_get(_digest: str, _profile: str):
+        entered.set()
+        if not release.wait(3):
+            raise TimeoutError("test cache release timed out")
+        return REPORT
+
+    monkeypatch.setattr(cache, "get", blocked_get)
+    service = ThreatIntelligenceService(settings_store=settings, cache=cache)
+    result = ScanResult(target="/sample", clean=True, metadata={"sha256": SHA256})
+    try:
+        lookup = asyncio.create_task(service.lookup_scan_result(result))
+        assert await asyncio.to_thread(entered.wait, 2)
+        # The SQLite operation is blocked in its daemon worker, not this loop.
+        await asyncio.wait_for(asyncio.sleep(0), timeout=0.1)
+        assert not lookup.done()
+        release.set()
+        assert await lookup == REPORT
+    finally:
+        release.set()
+        service.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_startup_wait_does_not_block_calling_event_loop(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True
+    )
+    settings = SettingsStore(tmp_path / "settings.json")
+    settings.save(AppSettings(intelligence_enabled=True, intelligence_profile="premium"))
+    provider = AsyncMock(spec=VirusTotalProvider)
+    provider.lookup_hash.return_value = REPORT
+    service = ThreatIntelligenceService(
+        settings_store=settings, provider=provider, cache=None
+    )
+    entered = threading.Event()
+    release = threading.Event()
+    original_run = service._lookup_loop._run
+
+    def delayed_run():
+        entered.set()
+        if not release.wait(2):
+            raise TimeoutError("test startup release timed out")
+        original_run()
+
+    monkeypatch.setattr(service._lookup_loop, "_run", delayed_run)
+    result = ScanResult(target="/sample", clean=True, metadata={"sha256": SHA256})
+    try:
+        lookup = asyncio.create_task(service.lookup_scan_result(result))
+        assert await asyncio.to_thread(entered.wait, 2)
+        await asyncio.wait_for(asyncio.sleep(0), timeout=0.1)
+        release.set()
+        assert await asyncio.wait_for(lookup, timeout=2) == REPORT
+    finally:
+        release.set()
+        service.close()
+
+
+@pytest.mark.asyncio
 async def test_service_retries_transient_lookup_failures(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(
         service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True
