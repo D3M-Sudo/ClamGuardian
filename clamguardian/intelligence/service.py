@@ -316,7 +316,7 @@ class ThreatIntelligenceService:
         operation = self._schedule_cache_operation("read", self.cache.get, digest, profile)
         if operation is None:
             return None
-        result = await asyncio.wrap_future(operation)
+        result = await asyncio.shield(asyncio.wrap_future(operation))
         return result if isinstance(result, dict) else None
 
     async def _lookup_with_retry(
