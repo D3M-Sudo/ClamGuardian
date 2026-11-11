@@ -154,7 +154,8 @@ async def test_realtime_descriptor_scan_end_to_end_with_enrichment_and_history(t
             self.scan_fd_calls.append((fd, target, profile))
             fstat = os.fstat(fd)
             assert stat.S_ISREG(fstat.st_mode), "fd must be a regular file"
-            assert os.readlink("/proc/self/fd/%d" % fd).startswith(target.name), (
+            tstat = os.stat(target)
+            assert fstat.st_ino == tstat.st_ino and fstat.st_dev == tstat.st_dev, (
                 "fd must point at the watched target file"
             )
             return ScanResult(
