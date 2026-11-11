@@ -168,9 +168,9 @@ def test_virustotal_default_rate_limit_is_at_least_four_per_minute() -> None:
 async def test_virustotal_rate_limit_is_shared_between_provider_instances(
     tmp_path, monkeypatch
 ) -> None:
-    # Use a small synthetic timestamp: at large Unix-epoch magnitudes, float
-    # precision can erase sub-microsecond remainders and stall the fake clock.
-    wall_clock = [1_000.0]
+    # Start at zero so the synthetic 50 ms interval does not leave a
+    # sub-ULP remainder that the fake clock cannot advance past.
+    wall_clock = [0.0]
     real_sleep = asyncio.sleep
     monkeypatch.setattr(
         "clamguardian.intelligence.rate_limiter.time.time",
