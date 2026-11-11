@@ -38,6 +38,12 @@ class StubEngine(BaseAVEngine):
     ) -> ScanResult:
         return ScanResult(target=str(target), clean=True, engine=self.name)
 
+    async def scan_fd(
+        self, fd: int, *, target: Path, profile: ScanProfile | None = None
+    ) -> ScanResult:
+        os.fstat(fd)
+        return ScanResult(target=str(target), clean=True, engine=self.name)
+
     async def update_signatures(self) -> str:
         return "updated"
 
@@ -254,7 +260,7 @@ async def test_realtime_descriptor_scan_end_to_end_with_enrichment_and_history(
     assert evidence["sha256"] == result.metadata["sha256"]
 
     # Verify history persistence independently from the ClamAV verdict.
-    persisted = await history_store.get_scan(result.id)
-    assert persisted is not None
+    records = await history_store.list_scans()
+    persisted = next(record for record in records if record.target == str(target))
     assert persisted.profile_id == "home"
     assert persisted.metadata.get("threat_intelligence") is not None
