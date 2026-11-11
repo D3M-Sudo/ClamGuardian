@@ -505,9 +505,14 @@ class ThreatIntelligenceService:
                         self._lookup_tasks[key] = task
 
         # Each waiter receives its own mutable report object. Cancelling one
-        # waiter cannot cancel the service-owned shared lookup.
+        # waiter cannot cancel the service-owned shared lookup. The profile
+        # captured at request time is propagated into the report so the caller
+        # builds the evidence envelope from the same profile used for the
+        # lookup, without re-reading it from settings.
         report = await asyncio.shield(asyncio.wrap_future(shared))
-        return copy.deepcopy(report)
+        report = copy.deepcopy(report)
+        report["profile"] = profile
+        return report
 
     def preview_file_upload(self, path):
         self._upload_lookup = None
