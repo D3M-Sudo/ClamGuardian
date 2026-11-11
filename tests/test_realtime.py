@@ -700,7 +700,7 @@ async def test_clamd_fd_probe_cancellation_does_not_start_instream_fallback(
     def serve() -> None:
         conn, _ = server.accept()
         with conn:
-            assert conn.recv(1024) == b"nVERSIONCOMMANDS\\n"
+            assert conn.recv(1024) == b"nVERSIONCOMMANDS\n"
             accepted.set()
             conn.recv(1)
 
