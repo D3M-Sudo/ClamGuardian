@@ -11,6 +11,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -44,9 +45,11 @@ jobs:
         # Widget-level tests construct real GTK objects, and GTK4 aborts the
         # interpreter when no display is available. Xvfb gives them a
         # headless X server so they run for real instead of being skipped.
+        # Verbose output identifies the last test reached; faulthandler emits
+        # thread stacks for a test that blocks. The job timeout is a final bound.
         env:
           GTK_A11Y: none
-        run: xvfb-run -a pytest
+        run: xvfb-run -a pytest -vv -o faulthandler_timeout=60
 
   audit:
     name: Dependency audit (pinned runtime set)
@@ -73,6 +76,7 @@ jobs:
   runtime-python:
     name: Runtime Python (Flatpak 3.14, headless)
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -90,4 +94,4 @@ jobs:
       - name: Test (headless)
         env:
           GTK_A11Y: none
-        run: pytest
+        run: pytest -vv -o faulthandler_timeout=60
