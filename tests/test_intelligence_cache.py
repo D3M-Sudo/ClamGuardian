@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import fcntl
+import os
 import sqlite3
 import threading
 import time
@@ -16,6 +18,7 @@ from clamguardian.core.settings import AppSettings, SettingsStore
 from clamguardian.intelligence import service as service_module
 from clamguardian.intelligence.cache import VirusTotalCache
 from clamguardian.intelligence.service import ThreatIntelligenceService
+from clamguardian.intelligence.rate_limiter import PersistentRateLimiter
 from clamguardian.intelligence.virustotal import (
     VirusTotalAPIError,
     VirusTotalProvider,
@@ -94,6 +97,8 @@ async def test_service_uses_persistent_cache_for_repeated_hashes(tmp_path, monke
     assert await service.lookup_scan_result(result) == REPORT
     assert await service.lookup_scan_result(result) == REPORT
     provider.lookup_hash.assert_awaited_once_with(SHA256)
+    assert service._lookup_loop._loop is not None
+    assert service._lookup_loop._loop._default_executor is None
     service.close()
 
 
@@ -533,3 +538,91 @@ def test_service_owned_loop_close_during_startup_stops_worker(monkeypatch) -> No
     assert not closer.is_alive()
     assert worker._thread is not None and not worker._thread.is_alive()
     assert submit_errors and isinstance(submit_errors[0], RuntimeError)
+
+
+
+def test_provider_rate_lock_serializes_calls_from_distinct_event_loops(tmp_path) -> None:
+    provider = VirusTotalProvider(
+        "test-key",
+        profile="premium",
+        min_request_interval=0,
+        rate_limit_path=tmp_path / "quota.json",
+    )
+    entered = threading.Event()
+    release = threading.Event()
+    state_lock = threading.Lock()
+    active = 0
+    maximum_active = 0
+
+    def reserve() -> float:
+        nonlocal active, maximum_active
+        with state_lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+            first = active == 1
+        if first:
+            entered.set()
+            assert release.wait(2)
+        with state_lock:
+            active -= 1
+        return 0.0
+
+    provider._limiter.reserve = reserve
+
+    def run_reservation() -> None:
+        asyncio.run(provider._reserve())
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(run_reservation)
+        assert entered.wait(2)
+        second = pool.submit(run_reservation)
+        time.sleep(0.05)
+        release.set()
+        first.result(timeout=3)
+        second.result(timeout=3)
+
+    assert maximum_active == 1
+
+
+def test_rate_limiter_lock_wait_is_bounded(tmp_path) -> None:
+    path = tmp_path / "quota.json"
+    limiter = PersistentRateLimiter(
+        "premium", state_path=path, min_interval=0, lock_timeout=0.1
+    )
+    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    started = time.monotonic()
+    try:
+        with pytest.raises(TimeoutError, match="quota state lock"):
+            limiter.reserve()
+        assert time.monotonic() - started < 1.0
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def test_service_worker_shutdown_drains_bounded_limiter_executor(tmp_path) -> None:
+    limiter = PersistentRateLimiter(
+        "premium",
+        state_path=tmp_path / "quota.json",
+        min_interval=0,
+        lock_timeout=0.15,
+    )
+    fd = os.open(limiter.path, os.O_CREAT | os.O_RDWR, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    worker = service_module._ServiceOwnedEventLoop()
+    started = threading.Event()
+
+    async def reserve_while_locked() -> float:
+        started.set()
+        return await asyncio.to_thread(limiter.reserve)
+
+    try:
+        future = worker.submit(reserve_while_locked())
+        assert started.wait(2)
+        worker.close(timeout=2)
+        assert worker._thread is not None and not worker._thread.is_alive()
+        assert future.done()
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)

@@ -27,6 +27,7 @@ class PersistentRateLimiter:
         state_path: Path | None = None,
         min_interval: float | None = None,
         public_daily_limit: int = 500,
+        lock_timeout: float = 2.0,
     ) -> None:
         from .profiles import profile_minute_interval
 
@@ -43,6 +44,14 @@ class PersistentRateLimiter:
         ):
             raise ValueError("public_daily_limit must be a non-negative integer")
         self.public_daily_limit = public_daily_limit
+        if (
+            isinstance(lock_timeout, bool)
+            or not isinstance(lock_timeout, (int, float))
+            or not math.isfinite(lock_timeout)
+            or lock_timeout < 0
+        ):
+            raise ValueError("lock_timeout must be a finite non-negative number")
+        self.lock_timeout = float(lock_timeout)
         self.path = state_path or (
             Path.home() / ".local" / "share" / "clamguardian" / "virustotal-quota.json"
         )
@@ -107,6 +116,21 @@ class PersistentRateLimiter:
             raise RuntimeError("VirusTotal quota state is corrupt; refusing network access")
         return entry
 
+    def _acquire_lock(self, fd: int) -> None:
+        """Acquire the cross-process state lock without an unbounded wait."""
+        deadline = time.monotonic() + self.lock_timeout
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return
+            except BlockingIOError:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(
+                        "Timed out waiting for VirusTotal quota state lock"
+                    )
+                time.sleep(min(0.05, remaining))
+
     def defer(self, seconds: int | float) -> None:
         """Persist a server-provided Retry-After cooldown across processes."""
         if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
@@ -117,9 +141,11 @@ class PersistentRateLimiter:
             return
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o600)
+        locked = False
         try:
             os.fchmod(fd, 0o600)
-            fcntl.flock(fd, fcntl.LOCK_EX)
+            self._acquire_lock(fd)
+            locked = True
             state = self._read_state(fd)
             today = datetime.now(UTC).date().isoformat()
             entry = self._entry_for_today(state, today)
@@ -129,16 +155,19 @@ class PersistentRateLimiter:
             state[self.profile.value] = entry
             self._write_state(fd, state)
         finally:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+            if locked:
+                fcntl.flock(fd, fcntl.LOCK_UN)
             os.close(fd)
 
     def reserve(self) -> float:
         """Reserve a request slot, or return seconds until one becomes available."""
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o600)
+        locked = False
         try:
             os.fchmod(fd, 0o600)
-            fcntl.flock(fd, fcntl.LOCK_EX)
+            self._acquire_lock(fd)
+            locked = True
             state = self._read_state(fd)
             now = time.time()
             today = datetime.now(UTC).date().isoformat()
@@ -163,5 +192,6 @@ class PersistentRateLimiter:
             self._write_state(fd, state)
             return 0.0
         finally:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+            if locked:
+                fcntl.flock(fd, fcntl.LOCK_UN)
             os.close(fd)
