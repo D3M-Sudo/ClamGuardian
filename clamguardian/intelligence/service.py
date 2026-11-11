@@ -43,11 +43,26 @@ class _ServiceOwnedEventLoop:
     def _run(self) -> None:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        self._loop = loop
-        self._ready.set()
+        with self._lock:
+            self._loop = loop
+            should_run = not self._closed
+            if should_run:
+                # This callback runs only after run_forever() has entered its
+                # running state. Signalling before run_forever() creates a
+                # startup window in which submit() sees is_running() == False.
+                loop.call_soon(self._ready.set)
+            else:
+                self._ready.set()
+
+        if not should_run:
+            loop.close()
+            return
+
         try:
             loop.run_forever()
         finally:
+            # Always release submitters if startup or the loop itself fails.
+            self._ready.set()
             pending = asyncio.all_tasks(loop)
             for task in pending:
                 task.cancel()
@@ -59,9 +74,7 @@ class _ServiceOwnedEventLoop:
             loop.run_until_complete(loop.shutdown_default_executor())
             loop.close()
 
-    def submit(
-        self, coroutine: Any
-    ) -> concurrent.futures.Future[Any]:
+    def submit(self, coroutine: Any) -> concurrent.futures.Future[Any]:
         with self._lock:
             if self._closed:
                 coroutine.close()
@@ -73,9 +86,18 @@ class _ServiceOwnedEventLoop:
                     daemon=True,
                 )
                 self._thread.start()
-            if not self._ready.wait(timeout=5):
+
+        # Do not hold _lock while waiting: the worker needs it to publish its
+        # loop. The second locked section closes the race with close().
+        if not self._ready.wait(timeout=5):
+            coroutine.close()
+            self.close(timeout=0.1)
+            raise RuntimeError("Threat Intelligence event loop did not start")
+
+        with self._lock:
+            if self._closed:
                 coroutine.close()
-                raise RuntimeError("Threat Intelligence event loop did not start")
+                raise RuntimeError("Threat Intelligence service is closed")
             loop = self._loop
             if loop is None or loop.is_closed() or not loop.is_running():
                 coroutine.close()
@@ -88,31 +110,34 @@ class _ServiceOwnedEventLoop:
 
     def close(self, timeout: float = 3.0) -> None:
         with self._lock:
-            if self._closed:
-                return
             self._closed = True
             loop = self._loop
             thread = self._thread
 
-        if loop is not None and loop.is_running():
-            async def cancel_pending() -> None:
-                current = asyncio.current_task()
-                pending = [
-                    task for task in asyncio.all_tasks()
-                    if task is not current
-                ]
-                for task in pending:
-                    task.cancel()
-                if pending:
-                    await asyncio.gather(*pending, return_exceptions=True)
+        if loop is not None and not loop.is_closed():
+            if loop.is_running():
+                async def cancel_pending() -> None:
+                    current = asyncio.current_task()
+                    pending = [
+                        task for task in asyncio.all_tasks()
+                        if task is not current
+                    ]
+                    for task in pending:
+                        task.cancel()
+                    if pending:
+                        await asyncio.gather(*pending, return_exceptions=True)
 
-            try:
-                shutdown = asyncio.run_coroutine_threadsafe(cancel_pending(), loop)
-                shutdown.result(timeout=max(0.1, timeout))
-            except Exception:
-                logger.warning(
-                    "Threat Intelligence event-loop tasks did not drain cleanly"
-                )
+                try:
+                    shutdown = asyncio.run_coroutine_threadsafe(cancel_pending(), loop)
+                    shutdown.result(timeout=max(0.1, timeout))
+                except Exception:
+                    logger.warning(
+                        "Threat Intelligence event-loop tasks did not drain cleanly"
+                    )
+
+            # Also signal stop when the thread has published its loop but has
+            # not entered run_forever() yet. The queued stop is consumed as
+            # soon as run_forever() starts.
             with contextlib.suppress(RuntimeError):
                 loop.call_soon_threadsafe(loop.stop)
 
@@ -120,7 +145,6 @@ class _ServiceOwnedEventLoop:
             thread.join(timeout=max(0.1, timeout))
             if thread.is_alive():
                 logger.warning("Threat Intelligence event-loop thread did not stop")
-
 
 class ThreatIntelligenceService:
     """Optional VirusTotal enrichment; never modifies the ClamAV verdict."""
