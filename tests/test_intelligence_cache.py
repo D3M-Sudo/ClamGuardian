@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock
 
 import pytest
@@ -310,3 +314,125 @@ async def test_retry_after_above_budget_is_not_shortened_or_retried(
     assert report["error"] == "VirusTotal lookup failed"
     provider.lookup_hash.assert_awaited_once_with(SHA256)
     sleep.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancelling_leader_does_not_cancel_shared_lookup(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True
+    )
+    settings = SettingsStore(tmp_path / "settings.json")
+    settings.save(AppSettings(intelligence_enabled=True, intelligence_profile="public"))
+    provider = AsyncMock(spec=VirusTotalProvider)
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def delayed_lookup(_sha256: str):
+        entered.set()
+        await release.wait()
+        return REPORT
+
+    provider.lookup_hash.side_effect = delayed_lookup
+    service = ThreatIntelligenceService(
+        settings_store=settings, provider=provider,
+        cache=VirusTotalCache(tmp_path / "vt.db"),
+    )
+    result = ScanResult(target="/sample", clean=True, metadata={"sha256": SHA256})
+
+    leader = asyncio.create_task(service.lookup_scan_result(result))
+    await entered.wait()
+    waiter = asyncio.create_task(service.lookup_scan_result(result))
+    await asyncio.sleep(0)
+    leader.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await leader
+
+    release.set()
+    assert await waiter == REPORT
+    assert not service._inflight
+    assert not service._lookup_tasks
+    provider.lookup_hash.assert_awaited_once_with(SHA256)
+
+
+def test_cache_v1_migrates_and_keeps_profile_entries_independent(tmp_path) -> None:
+    path = tmp_path / "legacy-vt.db"
+    acquired = 1000.0
+    report_public = {**REPORT, "profile_marker": "public"}
+    report_premium = {**REPORT, "profile_marker": "premium"}
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE vt_hash_cache (
+                sha256 TEXT PRIMARY KEY,
+                profile TEXT NOT NULL CHECK(profile IN ('public', 'premium')),
+                acquired_at REAL NOT NULL,
+                expires_at REAL NOT NULL,
+                report_json TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            "INSERT INTO vt_hash_cache VALUES (?, ?, ?, ?, ?)",
+            (SHA256, "public", acquired, acquired + 5000,
+             __import__("json").dumps(report_public)),
+        )
+        connection.execute("PRAGMA user_version = 1")
+
+    cache = VirusTotalCache(path, clock=lambda: acquired + 10)
+    assert cache.get(SHA256, "public") == report_public
+    assert cache.get(SHA256, "premium") is None
+    cache.put(SHA256, "premium", report_premium)
+    assert cache.get(SHA256, "public") == report_public
+    assert cache.get(SHA256, "premium") == report_premium
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute(
+            "SELECT COUNT(*) FROM vt_hash_cache WHERE sha256 = ?", (SHA256,)
+        ).fetchone()[0] == 2
+
+
+def test_service_deduplicates_across_event_loops(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True
+    )
+    settings = SettingsStore(tmp_path / "settings.json")
+    settings.save(AppSettings(intelligence_enabled=True, intelligence_profile="public"))
+    provider = AsyncMock(spec=VirusTotalProvider)
+    provider_started = threading.Event()
+    release_provider = threading.Event()
+
+    async def delayed_lookup(_sha256: str):
+        provider_started.set()
+        await asyncio.to_thread(release_provider.wait, 5)
+        return REPORT
+
+    provider.lookup_hash.side_effect = delayed_lookup
+    service = ThreatIntelligenceService(
+        settings_store=settings, provider=provider,
+        cache=VirusTotalCache(tmp_path / "vt.db"),
+    )
+    result = ScanResult(target="/sample", clean=True, metadata={"sha256": SHA256})
+    waiter_entered = threading.Event()
+
+    def run_leader():
+        return asyncio.run(service.lookup_scan_result(result))
+
+    def run_waiter():
+        async def call():
+            waiter_entered.set()
+            return await service.lookup_scan_result(result)
+        return asyncio.run(call())
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        leader_future = pool.submit(run_leader)
+        assert provider_started.wait(2)
+        waiter_future = pool.submit(run_waiter)
+        assert waiter_entered.wait(2)
+        time.sleep(0.1)
+        release_provider.set()
+        assert leader_future.result(timeout=5) == REPORT
+        assert waiter_future.result(timeout=5) == REPORT
+
+    provider.lookup_hash.assert_awaited_once_with(SHA256)
+    assert not service._inflight
+    assert not service._lookup_tasks
