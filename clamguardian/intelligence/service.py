@@ -315,15 +315,33 @@ class ThreatIntelligenceService:
         key: tuple[str, str],
         shared: concurrent.futures.Future[dict[str, Any]],
         report: dict[str, Any],
+        *,
+        keep_until: concurrent.futures.Future[Any] | None = None,
     ) -> None:
-        # Remove the completed lookup before waking waiters, under the same
-        # lock used by new callers, so no caller sees a stale inflight entry.
+        # Keep the completed result joinable until its cache write finishes.
+        # A caller whose cache read began just before that write was queued
+        # must not start a duplicate provider request after the lookup ends.
         with self._inflight_lock:
-            if self._inflight.get(key) is shared:
-                self._inflight.pop(key, None)
             self._lookup_tasks.pop(key, None)
-            if not shared.done():
-                shared.set_result(report)
+            if (
+                self._inflight.get(key) is shared
+                and (keep_until is None or keep_until.done())
+            ):
+                self._inflight.pop(key, None)
+            publish = not shared.done()
+
+        if publish:
+            shared.set_result(report)
+
+        if keep_until is not None and not keep_until.done():
+            def forget_after_write(
+                completed: concurrent.futures.Future[Any],
+            ) -> None:
+                with self._inflight_lock:
+                    if self._inflight.get(key) is shared:
+                        self._inflight.pop(key, None)
+
+            keep_until.add_done_callback(forget_after_write)
 
     def _track_cache_write(
         self, key: tuple[str, str], operation: concurrent.futures.Future[Any]
@@ -406,7 +424,14 @@ class ThreatIntelligenceService:
                 )
                 if cache_write is not None:
                     self._track_cache_write(key, cache_write)
-            self._publish_shared_result(key, shared, report)
+            self._publish_shared_result(
+                key, shared, report, keep_until=cache_write if (
+                    isinstance(report, dict)
+                    and report.get("error") is None
+                    and isinstance(report.get("found"), bool)
+                    and self.cache is not None
+                ) else None
+            )
         except asyncio.CancelledError:
             # Cancellation of the owning event loop is exceptional (normal
             # caller cancellation is shielded below); still release waiters.
@@ -425,8 +450,9 @@ class ThreatIntelligenceService:
             })
         finally:
             with self._inflight_lock:
-                if self._inflight.get(key) is shared:
-                    self._inflight.pop(key, None)
+                # Successful lookups with cache persistence stay joinable
+                # until the write callback removes them.
+                if self._inflight.get(key) is shared and shared.done():
                     self._lookup_tasks.pop(key, None)
 
     async def lookup_scan_result(self, result: ScanResult) -> dict[str, Any] | None:
@@ -447,10 +473,22 @@ class ThreatIntelligenceService:
         ):
             return None
         profile = selected_profile.value
-        if self.cache is not None:
+        key = (digest, profile)
+        with self._inflight_lock:
+            shared = self._inflight.get(key)
+
+        if shared is None and self.cache is not None:
             cached = await self._read_cached_report(digest, profile)
             if cached is not None:
                 return copy.deepcopy(cached)
+            # Close the race where the first cache read started before an
+            # in-flight lookup queued its persistence operation.
+            with self._inflight_lock:
+                shared = self._inflight.get(key)
+            if shared is None:
+                cached = await self._read_cached_report(digest, profile)
+                if cached is not None:
+                    return copy.deepcopy(cached)
 
         provider = self.get_provider()
         if provider is None:
@@ -461,7 +499,6 @@ class ThreatIntelligenceService:
         ):
             return None
 
-        key = (digest, profile)
         created = False
         with self._inflight_lock:
             shared = self._inflight.get(key)
