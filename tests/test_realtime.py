@@ -633,3 +633,95 @@ async def test_scan_remains_bound_to_open_inode_after_path_replacement(tmp_path:
     finally:
         os.close(file_fd)
         os.close(root_fd)
+
+
+@pytest.mark.asyncio
+async def test_clamd_fd_timeout_tracks_worker_until_descriptor_cleanup(tmp_path: Path) -> None:
+    from clamguardian.core.profiles import DEFAULT_PROFILE
+    from clamguardian.engines.clamav import ClamAVEngine
+
+    target = tmp_path / "timeout.bin"
+    target.write_bytes(b"descriptor timeout")
+    socket_path = tmp_path / "clamd.sock"
+    socket_path.touch()
+    engine = ClamAVEngine(socket_path=socket_path, command_timeout=0.05)
+    started = threading.Event()
+    release = threading.Event()
+    duplicate_fds: list[int] = []
+
+    def blocked_scan(scan_fd: int, _control=None) -> tuple[str, int, str]:
+        duplicate_fds.append(scan_fd)
+        started.set()
+        if not release.wait(2):
+            raise TimeoutError("test worker release timed out")
+        return f"{target}: OK", 0, "fildes"
+
+    engine._scan_fd_sync = blocked_scan  # type: ignore[method-assign]
+    fd = os.open(target, os.O_RDONLY | os.O_CLOEXEC)
+    try:
+        result_task = asyncio.create_task(
+            engine.scan_fd(fd, target=target, profile=DEFAULT_PROFILE)
+        )
+        assert await asyncio.to_thread(started.wait, 2)
+        result = await result_task
+        assert result.status is ScanStatus.TIMEOUT
+        assert result.metadata["profile_id"] == DEFAULT_PROFILE.id
+        assert engine.active_descriptor_worker_count == 1
+
+        with engine._descriptor_workers_lock:
+            worker = next(iter(engine._descriptor_workers))
+        worker_done = asyncio.Event()
+        worker.add_done_callback(lambda _task: worker_done.set())
+        release.set()
+        await asyncio.wait_for(worker_done.wait(), timeout=2)
+
+        assert engine.active_descriptor_worker_count == 0
+        with pytest.raises(OSError):
+            os.fstat(duplicate_fds[0])
+    finally:
+        release.set()
+        os.close(fd)
+
+
+@pytest.mark.asyncio
+async def test_clamd_fd_probe_cancellation_does_not_start_instream_fallback(
+    tmp_path: Path,
+) -> None:
+    from clamguardian.engines.clamav import ClamAVEngine, _DescriptorSocketControl
+
+    target = tmp_path / "probe-cancel.bin"
+    target.write_bytes(b"probe cancellation")
+    socket_path = tmp_path / "clamd.sock"
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(os.fspath(socket_path))
+    server.listen(1)
+    accepted = threading.Event()
+
+    def serve() -> None:
+        conn, _ = server.accept()
+        with conn:
+            assert conn.recv(1024) == b"nVERSIONCOMMANDS\\n"
+            accepted.set()
+            conn.recv(1)
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    engine = ClamAVEngine(socket_path=socket_path)
+    control = _DescriptorSocketControl()
+
+    def forbidden_fallback(_fd: int, _control=None):
+        raise AssertionError("INSTREAM fallback must not start after cancellation")
+
+    engine._scan_fd_instream_sync = forbidden_fallback  # type: ignore[method-assign]
+    fd = os.open(target, os.O_RDONLY | os.O_CLOEXEC)
+    try:
+        worker = asyncio.create_task(asyncio.to_thread(engine._scan_fd_sync, fd, control))
+        assert await asyncio.to_thread(accepted.wait, 2)
+        control.cancel()
+        with pytest.raises(InterruptedError):
+            await worker
+    finally:
+        control.cancel()
+        os.close(fd)
+        server.close()
+        thread.join(timeout=2)
