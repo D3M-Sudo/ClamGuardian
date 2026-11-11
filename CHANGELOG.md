@@ -5,6 +5,9 @@
 - Add persistent profile-aware request pacing, Public daily quota enforcement, and cross-process Retry-After cooldowns.
 - Add hash-first file submission workflow with per-file typed consent, privacy warning, SHA-256 revalidation, upload polling, CLI commands, and GTK profile selection.
 
+### Fixed
+- Preserve the selected VirusTotal intelligence profile and all unrelated application settings when the Scheduler updates its configuration.
+
 ### Security
 - Keep Public API requests blocked until written VirusTotal eligibility authorization is recorded.
 - Remove upstream response bodies and sensitive request details from VirusTotal error logs; never fall back between API profiles.
