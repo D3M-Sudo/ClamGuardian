@@ -17,6 +17,23 @@ from clamguardian.intelligence.service import ThreatIntelligenceService
 from clamguardian.intelligence.virustotal import VirusTotalProvider
 
 
+def test_file_report_rejects_provider_hash_mismatch() -> None:
+    from clamguardian.intelligence.reports import normalize_file_report
+
+    payload = {"data": {"attributes": {"sha256": "b" * 64}}}
+    with pytest.raises(RuntimeError, match="different SHA-256"):
+        normalize_file_report(payload, "a" * 64)
+
+
+def test_file_report_accepts_matching_provider_hash_case_insensitively() -> None:
+    from clamguardian.intelligence.reports import normalize_file_report
+
+    digest = "a" * 64
+    payload = {"data": {"attributes": {"sha256": digest.upper()}}}
+    report = normalize_file_report(payload, digest)
+    assert report["sha256"] == digest
+
+
 def test_virustotal_provider_key_validation() -> None:
     with pytest.raises(ValueError, match="API key is required"):
         VirusTotalProvider("")
@@ -110,6 +127,7 @@ async def test_intelligence_service_lookup_when_enabled(tmp_path, monkeypatch) -
     assert verdict["malicious"] is True
     assert result.clean is True
     assert result.status is ScanStatus.CLEAN
+    service.close()
 
 
 @pytest.mark.asyncio
@@ -147,15 +165,31 @@ def test_virustotal_default_rate_limit_is_at_least_four_per_minute() -> None:
     assert provider._min_interval >= 15.0
 
 @pytest.mark.asyncio
-async def test_virustotal_rate_limit_is_shared_between_provider_instances(tmp_path) -> None:
+async def test_virustotal_rate_limit_is_shared_between_provider_instances(
+    tmp_path, monkeypatch
+) -> None:
+    # Start at zero so the synthetic 50 ms interval does not leave a
+    # sub-ULP remainder that the fake clock cannot advance past.
+    wall_clock = [0.0]
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(
+        "clamguardian.intelligence.rate_limiter.time.time",
+        lambda: wall_clock[0],
+    )
+
+    async def advance_clock(seconds: float) -> None:
+        wall_clock[0] += seconds
+        await real_sleep(0)
+
+    monkeypatch.setattr("clamguardian.intelligence.virustotal.asyncio.sleep", advance_clock)
     state = tmp_path / "shared-rate-limit"
     first = VirusTotalProvider("first", min_request_interval=0.05, rate_limit_path=state)
     second = VirusTotalProvider("second", min_request_interval=0.05, rate_limit_path=state)
 
     await first._enforce_rate_limit()
-    started = asyncio.get_running_loop().time()
+    started = wall_clock[0]
     await second._enforce_rate_limit()
-    assert asyncio.get_running_loop().time() - started >= 0.04
+    assert wall_clock[0] - started >= 0.04
 
 
 @pytest.mark.asyncio

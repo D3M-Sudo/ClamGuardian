@@ -5,9 +5,12 @@ import asyncio
 import email.utils
 import hashlib
 import os
+import socket
 import stat
 import tempfile
+import threading
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -24,6 +27,102 @@ from .reports import normalize_analysis_report, normalize_file_report
 VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED = False
 MAX_UPLOAD_SIZE = 650 * 1024 * 1024
 STANDARD_UPLOAD_SIZE = 32 * 1024 * 1024
+_DNS_THREAD_SLOTS = threading.BoundedSemaphore(4)
+
+
+class _BoundedDaemonResolver(aiohttp.abc.AbstractResolver):
+    """Resolve DNS without the asyncio default executor.
+
+    getaddrinfo is blocking on some Linux resolver configurations. Isolate it
+    in a daemon thread with a process-wide concurrency cap so a stuck NSS/DNS
+    lookup cannot hold the service-owned event loop or its shutdown hostage.
+    """
+
+    def __init__(self, timeout: float = 5.0) -> None:
+        self._timeout = timeout
+        self._closed = False
+
+    async def resolve(
+        self,
+        host: str,
+        port: int = 0,
+        family: socket.AddressFamily = socket.AF_INET,
+    ) -> list[aiohttp.abc.ResolveResult]:
+        if self._closed:
+            raise OSError("DNS resolver is closed")
+        if not _DNS_THREAD_SLOTS.acquire(blocking=False):
+            raise OSError(socket.EAI_AGAIN, "DNS resolver concurrency limit reached")
+
+        loop = asyncio.get_running_loop()
+        result_future: asyncio.Future[list[aiohttp.abc.ResolveResult]] = (
+            loop.create_future()
+        )
+
+        def deliver(
+            result: list[aiohttp.abc.ResolveResult] | None = None,
+            error: OSError | None = None,
+        ) -> None:
+            def complete() -> None:
+                if result_future.done():
+                    return
+                if error is not None:
+                    result_future.set_exception(error)
+                else:
+                    result_future.set_result(result or [])
+
+            # The awaiting loop may have been closed after cancellation.
+            with suppress(RuntimeError):
+                loop.call_soon_threadsafe(complete)
+
+        def resolve_blocking() -> None:
+            try:
+                records = socket.getaddrinfo(
+                    host, port, family=family, type=socket.SOCK_STREAM
+                )
+                addresses: list[aiohttp.abc.ResolveResult] = [
+                    {
+                        "hostname": host,
+                        "host": str(record[4][0]),
+                        "port": int(record[4][1]),
+                        "family": record[0],
+                        "proto": record[2],
+                        "flags": 0,
+                    }
+                    for record in records
+                ]
+                if not addresses:
+                    deliver(error=OSError(socket.EAI_NONAME, "DNS returned no addresses"))
+                else:
+                    deliver(result=addresses)
+            except OSError as exc:
+                deliver(error=exc)
+            except Exception as exc:
+                deliver(error=OSError(f"DNS resolution failed: {type(exc).__name__}"))
+            finally:
+                _DNS_THREAD_SLOTS.release()
+
+        thread = threading.Thread(
+            target=resolve_blocking,
+            name="clamguardian-vt-dns",
+            daemon=True,
+        )
+        try:
+            thread.start()
+        except Exception:
+            _DNS_THREAD_SLOTS.release()
+            raise
+
+        try:
+            return await asyncio.wait_for(result_future, timeout=self._timeout)
+        except TimeoutError:
+            raise OSError(socket.EAI_AGAIN, "DNS resolution timed out") from None
+
+    async def close(self) -> None:
+        self._closed = True
+
+
+class VirusTotalTransientError(RuntimeError):
+    """A temporary transport or server failure eligible for bounded retry."""
 
 
 class VirusTotalAPIError(RuntimeError):
@@ -31,6 +130,11 @@ class VirusTotalAPIError(RuntimeError):
         super().__init__(message)
         self.status = status
         self.retry_after = retry_after
+
+    def __reduce__(self):
+        # BaseException's default reconstruction passes only args; preserve the
+        # provider-specific status and Retry-After fields when copied.
+        return (type(self), (self.status, str(self), self.retry_after))
 
 
 class VirusTotalProvider(BaseThreatProvider):
@@ -55,10 +159,28 @@ class VirusTotalProvider(BaseThreatProvider):
         self._limiter = PersistentRateLimiter(
             self.profile, state_path=rate_limit_path, min_interval=min_request_interval
         )
-        self._rate_lock = asyncio.Lock()
-        self._session_factory = session_factory or aiohttp.ClientSession
+        # Provider instances may be shared by async callers on different
+        # event loops. asyncio.Lock is loop-affine; this lock is deliberately
+        # acquired non-blockingly and polled so it is safe across loops.
+        self._rate_lock = threading.Lock()
+        # Tests and embedders may inject a session factory. Production sessions
+        # use the bounded resolver above instead of aiohttp's executor-backed
+        # ThreadedResolver.
+        self._session_factory = session_factory
         self._min_interval = self._limiter.min_interval
         self._rate_limit_path = self._limiter.path
+
+    def _create_session(self, headers: dict[str, str]) -> aiohttp.ClientSession | Any:
+        """Create an HTTP session with executor-independent DNS by default."""
+        if self._session_factory is not None:
+            return self._session_factory(timeout=self._timeout, headers=headers)
+        resolver = _BoundedDaemonResolver(timeout=5.0)
+        connector = aiohttp.TCPConnector(resolver=resolver, ttl_dns_cache=10)
+        return aiohttp.ClientSession(
+            timeout=self._timeout,
+            headers=headers,
+            connector=connector,
+        )
 
     def _reserve_rate_limit_slot(self) -> float:
         return self._limiter.reserve()
@@ -67,12 +189,18 @@ class VirusTotalProvider(BaseThreatProvider):
         await self._reserve()
 
     async def _reserve(self) -> None:
-        async with self._rate_lock:
+        while not self._rate_lock.acquire(blocking=False):
+            await asyncio.sleep(0.01)
+        try:
             while True:
-                remaining = await asyncio.to_thread(self._limiter.reserve)
+                # The cross-loop lock serializes this bounded (2s lock wait)
+                # local state operation. Do not create a worker-executor thread.
+                remaining = self._limiter.reserve()
                 if remaining <= 0:
                     return
                 await asyncio.sleep(remaining)
+        finally:
+            self._rate_lock.release()
 
     @staticmethod
     def _retry_after(value: str | None) -> int | None:
@@ -91,7 +219,7 @@ class VirusTotalProvider(BaseThreatProvider):
         await self._reserve()
         headers = {"x-apikey": self._api_key, "accept": "application/json"}
         kwargs.setdefault("allow_redirects", False)
-        async with self._session_factory(timeout=self._timeout, headers=headers) as session:
+        async with self._create_session(headers) as session:
             try:
                 requester = getattr(session, method.lower(), None)
                 if requester is None:
@@ -105,9 +233,13 @@ class VirusTotalProvider(BaseThreatProvider):
                     if response.status == 429:
                         retry = self._retry_after(response.headers.get("Retry-After"))
                         if retry:
-                            await asyncio.to_thread(self._limiter.defer, retry)
+                            self._limiter.defer(retry)
                         raise VirusTotalAPIError(
                             429, "VirusTotal API rate/quota limit reached", retry
+                        )
+                    if response.status >= 500 or response.status in (408, 425):
+                        raise VirusTotalTransientError(
+                            f"VirusTotal temporary API failure (HTTP {response.status})"
                         )
                     if response.status >= 400:
                         raise VirusTotalAPIError(
@@ -119,7 +251,9 @@ class VirusTotalProvider(BaseThreatProvider):
                         raise RuntimeError("VirusTotal returned an invalid response")
                     return payload
             except (aiohttp.ClientError, TimeoutError) as exc:
-                raise RuntimeError("VirusTotal network request failed or timed out") from exc
+                raise VirusTotalTransientError(
+                    "VirusTotal network request failed or timed out"
+                ) from exc
 
     def _ensure_profile_eligible(self) -> None:
         if (
@@ -183,7 +317,7 @@ class VirusTotalProvider(BaseThreatProvider):
                 content_type="application/octet-stream",
             )
             headers = {"x-apikey": self._api_key}
-            async with self._session_factory(timeout=self._timeout, headers=headers) as session:
+            async with self._create_session(headers) as session:
                 try:
                     async with session.post(
                         upload_url, data=form, allow_redirects=False
@@ -195,7 +329,7 @@ class VirusTotalProvider(BaseThreatProvider):
                         if response.status == 429:
                             retry = self._retry_after(response.headers.get("Retry-After"))
                             if retry:
-                                await asyncio.to_thread(self._limiter.defer, retry)
+                                self._limiter.defer(retry)
                             raise VirusTotalAPIError(
                                 429, "VirusTotal upload rate/quota limit reached", retry
                             )
