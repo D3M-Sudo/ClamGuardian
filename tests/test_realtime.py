@@ -742,7 +742,7 @@ async def test_clamd_fd_probe_timeout_does_not_fall_back_to_instream(tmp_path: P
     def serve() -> None:
         conn, _ = server.accept()
         with conn:
-            assert conn.recv(1024) == b"nVERSIONCOMMANDS\\n"
+            assert conn.recv(1024) == b"nVERSIONCOMMANDS\n"
             accepted.set()
             conn.recv(1)
 
