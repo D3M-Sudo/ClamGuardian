@@ -87,3 +87,28 @@ def test_shell_applies_the_persisted_color_scheme(gtk_app, tmp_path: Path) -> No
     assert window.settings.default_profile_id == "home"
     assert window.settings.color_scheme == "dark"
     window.destroy()
+
+
+@pytest.mark.parametrize("service_loop_state", ["missing", "closed"])
+def test_shutdown_always_closes_intelligence_worker(
+    gtk_app, service_loop_state: str
+) -> None:
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from clamguardian.ui.app import ClamGuardianApp
+
+    app = ClamGuardianApp()
+    intelligence_service = Mock()
+    app._window = SimpleNamespace(_intelligence_service=intelligence_service)
+    service_loop = None
+    if service_loop_state == "closed":
+        import asyncio
+
+        service_loop = asyncio.new_event_loop()
+        service_loop.close()
+    app._service_loop = service_loop
+
+    app._on_shutdown(app)
+
+    intelligence_service.close.assert_called_once_with(timeout=8)
