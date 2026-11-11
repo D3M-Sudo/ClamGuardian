@@ -43,8 +43,11 @@ class _BoundedDaemonResolver(aiohttp.abc.AbstractResolver):
         self._closed = False
 
     async def resolve(
-        self, host: str, port: int = 0, family: int = socket.AF_INET
-    ) -> list[dict[str, Any]]:
+        self,
+        host: str,
+        port: int = 0,
+        family: socket.AddressFamily = socket.AF_INET,
+    ) -> list[aiohttp.abc.ResolveResult]:
         if self._closed:
             raise OSError("DNS resolver is closed")
         if not _DNS_THREAD_SLOTS.acquire(blocking=False):
@@ -79,11 +82,11 @@ class _BoundedDaemonResolver(aiohttp.abc.AbstractResolver):
                 addresses: list[aiohttp.abc.ResolveResult] = [
                     {
                         "hostname": host,
-                        "host": record[4][0],
-                        "port": record[4][1],
+                        "host": str(record[4][0]),
+                        "port": int(record[4][1]),
                         "family": record[0],
                         "proto": record[2],
-                        "flags": record[3],
+                        "flags": 0,
                     }
                     for record in records
                 ]
@@ -114,7 +117,7 @@ class _BoundedDaemonResolver(aiohttp.abc.AbstractResolver):
         except TimeoutError:
             raise OSError(socket.EAI_AGAIN, "DNS resolution timed out") from None
 
-    def close(self) -> None:
+    async def close(self) -> None:
         self._closed = True
 
 
@@ -162,6 +165,18 @@ class VirusTotalProvider(BaseThreatProvider):
         self._min_interval = self._limiter.min_interval
         self._rate_limit_path = self._limiter.path
 
+    def _create_session(self, headers: dict[str, str]) -> aiohttp.ClientSession | Any:
+        """Create an HTTP session with executor-independent DNS by default."""
+        if self._session_factory is not None:
+            return self._session_factory(timeout=self._timeout, headers=headers)
+        resolver = _BoundedDaemonResolver(timeout=5.0)
+        connector = aiohttp.TCPConnector(resolver=resolver, ttl_dns_cache=10)
+        return aiohttp.ClientSession(
+            timeout=self._timeout,
+            headers=headers,
+            connector=connector,
+        )
+
     def _reserve_rate_limit_slot(self) -> float:
         return self._limiter.reserve()
 
@@ -199,19 +214,7 @@ class VirusTotalProvider(BaseThreatProvider):
         await self._reserve()
         headers = {"x-apikey": self._api_key, "accept": "application/json"}
         kwargs.setdefault("allow_redirects", False)
-        if self._session_factory is None:
-            resolver = _BoundedDaemonResolver(timeout=5.0)
-            connector = aiohttp.TCPConnector(resolver=resolver, ttl_dns_cache=10)
-            session_context = aiohttp.ClientSession(
-                timeout=self._timeout,
-                headers=headers,
-                connector=connector,
-            )
-        else:
-            session_context = self._session_factory(
-                timeout=self._timeout, headers=headers
-            )
-        async with session_context as session:
+        async with self._create_session(headers) as session:
             try:
                 requester = getattr(session, method.lower(), None)
                 if requester is None:
@@ -309,7 +312,7 @@ class VirusTotalProvider(BaseThreatProvider):
                 content_type="application/octet-stream",
             )
             headers = {"x-apikey": self._api_key}
-            async with self._session_factory(timeout=self._timeout, headers=headers) as session:
+            async with self._create_session(headers) as session:
                 try:
                     async with session.post(
                         upload_url, data=form, allow_redirects=False
@@ -321,7 +324,7 @@ class VirusTotalProvider(BaseThreatProvider):
                         if response.status == 429:
                             retry = self._retry_after(response.headers.get("Retry-After"))
                             if retry:
-                                await asyncio.to_thread(self._limiter.defer, retry)
+                                self._limiter.defer(retry)
                             raise VirusTotalAPIError(
                                 429, "VirusTotal upload rate/quota limit reached", retry
                             )
