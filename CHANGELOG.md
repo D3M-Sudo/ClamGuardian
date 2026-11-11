@@ -11,6 +11,11 @@
 - Serialize provider rate reservations safely across distinct asyncio event loops; bound cross-process quota-lock waits and keep cache reads/writes and rate-state operations out of the worker's default executor.
 - Resolve VirusTotal DNS through a process-bounded daemon-thread resolver with a timeout, so a stuck system DNS/NSS lookup cannot prevent the service-owned event loop from shutting down.
 
+### Fixed
+- Keep VirusTotal cache reads and writes off asyncio caller and service loops using a single bounded daemon worker; cache persistence no longer delays completed lookups.
+- Make service-owned event-loop startup waits cooperative for async callers, and return an independent deep copy of each shared lookup report to prevent cross-caller mutation.
+- Reject VirusTotal file reports whose provider-supplied SHA-256 does not match the requested digest.
+
 ### Security
 - **Realtime descriptor worker admission:** bound active and queued descriptor workers (default limit: 4), reject excess scans explicitly, and retain each admission slot until the worker closes its duplicated descriptor after timeout or cancellation.
 - **Realtime descriptor timeout and cleanup:** classify descriptor-scan timeouts as `TIMEOUT`, preserve the applied scan profile, prevent probe timeouts or cancellation from triggering INSTREAM fallback, and track worker completion through descriptor cleanup.
