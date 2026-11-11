@@ -81,6 +81,7 @@ class InotifyMonitor(FileMonitor):
             | IN_DELETE
             | IN_MOVED_FROM
             | IN_EXCL_UNLINK
+            | IN_DONT_FOLLOW
         )
 
     @property

@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import array
 import asyncio
+import contextlib
+import hashlib
 import os
 import signal
+import socket
+import stat
+import struct
+import threading
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,6 +30,48 @@ MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 _CONTROL_BYTES = (b"\x00", b"\n", b"\r")
 
 
+class _DescriptorSocketControl:
+    """Allow cancellation to interrupt a blocking descriptor-scan socket worker."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._socket: socket.socket | None = None
+        self._cancelled = False
+
+    def attach(self, sock: socket.socket) -> None:
+        with self._lock:
+            if self._cancelled:
+                reject = True
+            else:
+                self._socket = sock
+                reject = False
+        if reject:
+            sock.close()
+            raise InterruptedError("descriptor scan was cancelled")
+
+    def detach(self, sock: socket.socket) -> None:
+        with self._lock:
+            if self._socket is sock:
+                self._socket = None
+
+    def raise_if_cancelled(self) -> None:
+        """Stop the worker at cooperative cancellation boundaries."""
+        with self._lock:
+            cancelled = self._cancelled
+        if cancelled:
+            raise InterruptedError("descriptor scan was cancelled")
+
+    def cancel(self) -> None:
+        with self._lock:
+            self._cancelled = True
+            sock = self._socket
+            self._socket = None
+        if sock is not None:
+            with contextlib.suppress(OSError):
+                sock.shutdown(socket.SHUT_RDWR)
+            sock.close()
+
+
 class ClamAVEngine(BaseAVEngine):
     """Use clamd over UNIX socket when available, otherwise clamscan/freshclam.
 
@@ -39,12 +88,38 @@ class ClamAVEngine(BaseAVEngine):
         freshclam_binary: str = "freshclam",
         flatpak_host: bool = False,
         command_timeout: float = 300.0,
+        max_descriptor_workers: int = 4,
     ) -> None:
+        if (
+            isinstance(max_descriptor_workers, bool)
+            or not isinstance(max_descriptor_workers, int)
+            or max_descriptor_workers < 1
+        ):
+            raise ValueError("max_descriptor_workers must be a positive integer")
         self.socket_path = Path(socket_path)
         self.clamscan_binary = clamscan_binary
         self.freshclam_binary = freshclam_binary
         self.flatpak_host = flatpak_host
         self.command_timeout = command_timeout
+        self.max_descriptor_workers = max_descriptor_workers
+        self._descriptor_worker_count = 0
+        self._descriptor_workers: set[asyncio.Task[tuple[str, int, str]]] = set()
+        self._descriptor_workers_lock = threading.Lock()
+
+    def _reserve_descriptor_worker(self) -> bool:
+        """Atomically reserve capacity before duplicating or submitting a descriptor."""
+        with self._descriptor_workers_lock:
+            if self._descriptor_worker_count >= self.max_descriptor_workers:
+                return False
+            self._descriptor_worker_count += 1
+            return True
+
+    def _release_descriptor_worker(self) -> None:
+        """Release capacity only after the worker thread has closed its descriptor."""
+        with self._descriptor_workers_lock:
+            if self._descriptor_worker_count <= 0:
+                raise RuntimeError("descriptor worker reservation underflow")
+            self._descriptor_worker_count -= 1
 
     async def scan(
         self,
@@ -152,6 +227,292 @@ class ClamAVEngine(BaseAVEngine):
         if sha256 is not None:
             result.metadata["sha256"] = sha256
         return result
+
+    async def scan_fd(
+        self,
+        fd: int,
+        *,
+        target: Path,
+        profile: ScanProfile | None = None,
+    ) -> ScanResult:
+        """Scan the exact opened inode using descriptor-preserving clamd transports.
+
+        FILDES is preferred; INSTREAM reads from the same descriptor when
+        FILDES is unavailable. There is never a pathname-based fallback.
+        """
+        started = datetime.now(UTC)
+        try:
+            before = os.fstat(fd)
+            if not stat.S_ISREG(before.st_mode):
+                raise OSError("descriptor is not a regular file")
+            if profile is None:
+                profile = DEFAULT_PROFILE
+            else:
+                profile.validate()
+            if not self.socket_path.exists():
+                raise OSError("clamd UNIX socket is unavailable; descriptor scan required")
+            if not self._reserve_descriptor_worker():
+                result = ScanResult(
+                    target=str(target), clean=False, status=ScanStatus.ERROR,
+                    engine="clamd-descriptor",
+                    error=(
+                        "Realtime descriptor scan capacity exhausted "
+                        f"(limit: {self.max_descriptor_workers})"
+                    ),
+                    started_at=started, finished_at=datetime.now(UTC),
+                )
+                if profile is not None:
+                    result.metadata["profile_id"] = profile.id
+                return result
+
+            try:
+                owned_fd = os.dup(fd)
+            except BaseException:
+                self._release_descriptor_worker()
+                raise
+
+            socket_control = _DescriptorSocketControl()
+            worker_coro = asyncio.to_thread(self._scan_fd_owned, owned_fd, socket_control)
+            try:
+                worker = asyncio.create_task(worker_coro)
+            except BaseException:
+                worker_coro.close()
+                with contextlib.suppress(OSError):
+                    os.close(owned_fd)
+                self._release_descriptor_worker()
+                raise
+            with self._descriptor_workers_lock:
+                self._descriptor_workers.add(worker)
+
+            def consume_worker_result(task: asyncio.Task[tuple[str, int, str]]) -> None:
+                if not task.cancelled():
+                    task.exception()
+                with self._descriptor_workers_lock:
+                    self._descriptor_workers.discard(task)
+
+            worker.add_done_callback(consume_worker_result)
+
+            try:
+                output, exit_code, transport = await asyncio.wait_for(
+                    asyncio.shield(worker), self.command_timeout
+                )
+            except TimeoutError:
+                socket_control.cancel()
+                raise
+            except asyncio.CancelledError:
+                socket_control.cancel()
+                raise
+            exit_code = self._descriptor_response_code(output)
+            if self._file_identity_changed(before, os.fstat(fd)):
+                raise OSError("file changed while clamd was scanning the opened descriptor")
+            result = self._result(
+                Path(target), started, output, exit_code, f"clamd-{transport}"
+            )
+            result.metadata["scan_transport"] = transport
+            result.metadata["sha256"] = self._sha256_fd(fd)
+            if self._file_identity_changed(before, os.fstat(fd)):
+                raise OSError("file changed while hashing the opened descriptor")
+            result.metadata["profile_id"] = profile.id
+            unsupported = self._clamd_unsupported_options(profile)
+            if unsupported:
+                result.metadata["profile_unsupported_clamd"] = ",".join(unsupported)
+            return result
+        except TimeoutError as exc:
+            result = ScanResult(
+                target=str(target), clean=False, status=ScanStatus.TIMEOUT,
+                engine="clamd-descriptor",
+                error=f"Realtime descriptor scan timed out: {exc}",
+                started_at=started, finished_at=datetime.now(UTC),
+            )
+            if profile is not None:
+                result.metadata["profile_id"] = profile.id
+            return result
+        except (OSError, ValueError) as exc:
+            result = ScanResult(
+                target=str(target), clean=False, status=ScanStatus.ERROR,
+                engine="clamd-descriptor",
+                error=f"Realtime descriptor scan rejected: {exc}",
+                started_at=started, finished_at=datetime.now(UTC),
+            )
+            if profile is not None:
+                result.metadata["profile_id"] = profile.id
+            return result
+
+    @property
+    def active_descriptor_worker_count(self) -> int:
+        """Return reserved workers, including jobs queued but not yet running."""
+        with self._descriptor_workers_lock:
+            return self._descriptor_worker_count
+
+    def _scan_fd_owned(
+        self, fd: int, socket_control: _DescriptorSocketControl
+    ) -> tuple[str, int, str]:
+        """Run descriptor scanning and release its reservation after fd cleanup."""
+        try:
+            return self._scan_fd_sync(fd, socket_control)
+        finally:
+            try:
+                os.close(fd)
+            finally:
+                self._release_descriptor_worker()
+
+    def _scan_fd_sync(
+        self, fd: int, socket_control: _DescriptorSocketControl | None = None
+    ) -> tuple[str, int, str]:
+        """Use FILDES or INSTREAM while preserving the opened descriptor identity."""
+        capabilities = bytearray()
+        if socket_control is not None:
+            socket_control.raise_if_cancelled()
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                if socket_control is not None:
+                    socket_control.attach(probe)
+                try:
+                    probe.settimeout(min(self.command_timeout, 10.0))
+                    probe.connect(os.fspath(self.socket_path))
+                    probe.sendall(b"nVERSIONCOMMANDS\n")
+                    while True:
+                        chunk = probe.recv(4096)
+                        if not chunk:
+                            break
+                        capabilities.extend(chunk)
+                        if len(capabilities) > 65536:
+                            raise ValueError(
+                                "clamd VERSIONCOMMANDS response exceeded the size limit"
+                            )
+                finally:
+                    if socket_control is not None:
+                        socket_control.detach(probe)
+        except (InterruptedError, TimeoutError):
+            raise
+        except OSError:
+            if socket_control is not None:
+                socket_control.raise_if_cancelled()
+            return self._scan_fd_instream_sync(fd, socket_control)
+
+        if socket_control is not None:
+            socket_control.raise_if_cancelled()
+        if b"FILDES" not in bytes(capabilities).split():
+            return self._scan_fd_instream_sync(fd, socket_control)
+
+        response = bytearray()
+        if socket_control is not None:
+            socket_control.raise_if_cancelled()
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            if socket_control is not None:
+                socket_control.attach(sock)
+            try:
+                sock.settimeout(self.command_timeout)
+                sock.connect(os.fspath(self.socket_path))
+                if socket_control is not None:
+                    socket_control.raise_if_cancelled()
+                sock.sendall(b"nFILDES\n")
+                rights = array.array("i", [fd]).tobytes()
+                # The protocol requires a separate ancillary-data packet with at
+                # least one dummy byte after the FILDES command record.
+                sock.sendmsg([b" "], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights)])
+                while True:
+                    chunk = sock.recv(65536)
+                    if not chunk:
+                        break
+                    response.extend(chunk)
+                    if len(response) > MAX_RESPONSE_BYTES:
+                        raise ValueError("clamd FILDES response exceeded the size limit")
+            finally:
+                if socket_control is not None:
+                    socket_control.detach(sock)
+        if socket_control is not None:
+            socket_control.raise_if_cancelled()
+        output = bytes(response).decode("utf-8", errors="replace")
+        if "COMMAND UNAVAILABLE" in output or "UNKNOWN COMMAND" in output:
+            if socket_control is not None:
+                socket_control.raise_if_cancelled()
+            return self._scan_fd_instream_sync(fd, socket_control)
+        code = self._descriptor_response_code(output)
+        return output, code, "fildes"
+
+    def _scan_fd_instream_sync(
+        self, fd: int, socket_control: _DescriptorSocketControl | None = None
+    ) -> tuple[str, int, str]:
+        """Stream bytes read from the opened descriptor, never from its pathname."""
+        response = bytearray()
+        if socket_control is not None:
+            socket_control.raise_if_cancelled()
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            if socket_control is not None:
+                socket_control.attach(sock)
+            try:
+                sock.settimeout(self.command_timeout)
+                sock.connect(os.fspath(self.socket_path))
+                if socket_control is not None:
+                    socket_control.raise_if_cancelled()
+                sock.sendall(b"nINSTREAM\n")
+                offset = 0
+                while True:
+                    if socket_control is not None:
+                        socket_control.raise_if_cancelled()
+                    chunk = os.pread(fd, 65536, offset)
+                    if not chunk:
+                        break
+                    if socket_control is not None:
+                        socket_control.raise_if_cancelled()
+                    sock.sendall(struct.pack("!I", len(chunk)))
+                    sock.sendall(chunk)
+                    offset += len(chunk)
+                sock.sendall(bytes(4))
+                while True:
+                    chunk = sock.recv(65536)
+                    if not chunk:
+                        break
+                    response.extend(chunk)
+                    if len(response) > MAX_RESPONSE_BYTES:
+                        raise ValueError("clamd INSTREAM response exceeded the size limit")
+            finally:
+                if socket_control is not None:
+                    socket_control.detach(sock)
+        if socket_control is not None:
+            socket_control.raise_if_cancelled()
+        output = bytes(response).decode("utf-8", errors="replace")
+        code = self._descriptor_response_code(output)
+        return output, code, "instream"
+
+    @staticmethod
+    def _descriptor_response_code(output: str) -> int:
+        """Reject empty or unrecognized clamd replies instead of treating them as clean."""
+        lines = [line.strip() for line in output.splitlines() if line.strip()]
+        if not lines:
+            raise OSError("clamd returned an empty descriptor-scan response")
+        if any("COMMAND UNAVAILABLE" in line or "UNKNOWN COMMAND" in line for line in lines):
+            raise OSError("clamd does not support the requested descriptor scan command")
+        valid = any(
+            line.endswith(" OK") or line.endswith(" FOUND") or line.endswith(" ERROR")
+            for line in lines
+        )
+        if not valid:
+            raise OSError("clamd returned an unrecognized descriptor-scan response")
+        return 1 if any(line.endswith(" ERROR") for line in lines) else 0
+
+    @staticmethod
+    def _file_identity_changed(before: os.stat_result, after: os.stat_result) -> bool:
+        return (
+            before.st_dev != after.st_dev
+            or before.st_ino != after.st_ino
+            or before.st_size != after.st_size
+            or before.st_mtime_ns != after.st_mtime_ns
+            or before.st_ctime_ns != after.st_ctime_ns
+        )
+
+    @staticmethod
+    def _sha256_fd(fd: int) -> str:
+        digest = hashlib.sha256()
+        offset = 0
+        while True:
+            chunk = os.pread(fd, 65536, offset)
+            if not chunk:
+                break
+            digest.update(chunk)
+            offset += len(chunk)
+        return digest.hexdigest()
 
     async def update_signatures(self) -> str:
         """Run freshclam using the host when Flatpak integration is enabled."""
