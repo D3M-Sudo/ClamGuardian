@@ -131,6 +131,11 @@ class VirusTotalAPIError(RuntimeError):
         self.status = status
         self.retry_after = retry_after
 
+    def __reduce__(self):
+        # BaseException's default reconstruction passes only args; preserve the
+        # provider-specific status and Retry-After fields when copied.
+        return (type(self), (self.status, str(self), self.retry_after))
+
 
 class VirusTotalProvider(BaseThreatProvider):
     name = "virustotal"
