@@ -672,11 +672,14 @@ def test_bounded_dns_resolver_uses_daemon_thread_without_executor(monkeypatch) -
         assert records[0]["host"] == "127.0.0.1"
         assert records[0]["port"] == 443
 
-    try:
-        asyncio.run(resolve())
-    finally:
-        release.set()
-        resolver.close()
+    async def run() -> None:
+        try:
+            await resolve()
+        finally:
+            release.set()
+            await resolver.close()
+
+    asyncio.run(run())
 
 
 def test_worker_shutdown_does_not_wait_for_blocked_dns_thread(monkeypatch) -> None:
@@ -707,5 +710,5 @@ def test_worker_shutdown_does_not_wait_for_blocked_dns_thread(monkeypatch) -> No
         assert future.done()
     finally:
         release.set()
-        resolver.close()
+        asyncio.run(resolver.close())
         worker.close(timeout=1)
