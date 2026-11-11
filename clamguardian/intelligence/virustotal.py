@@ -10,6 +10,7 @@ import stat
 import tempfile
 import threading
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -66,11 +67,9 @@ class _BoundedDaemonResolver(aiohttp.abc.AbstractResolver):
                 else:
                     result_future.set_result(result or [])
 
-            try:
+            # The awaiting loop may have been closed after cancellation.
+            with suppress(RuntimeError):
                 loop.call_soon_threadsafe(complete)
-            except RuntimeError:
-                # The awaiting loop may have been closed after cancellation.
-                pass
 
         def resolve_blocking() -> None:
             try:
@@ -112,7 +111,7 @@ class _BoundedDaemonResolver(aiohttp.abc.AbstractResolver):
 
         try:
             return await asyncio.wait_for(result_future, timeout=self._timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise OSError(socket.EAI_AGAIN, "DNS resolution timed out") from None
 
     def close(self) -> None:

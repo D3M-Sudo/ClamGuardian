@@ -17,10 +17,10 @@ import pytest
 from clamguardian.core.base import ScanResult
 from clamguardian.core.settings import AppSettings, SettingsStore
 from clamguardian.intelligence import service as service_module
+from clamguardian.intelligence import virustotal as virustotal_module
 from clamguardian.intelligence.cache import VirusTotalCache
 from clamguardian.intelligence.rate_limiter import PersistentRateLimiter
 from clamguardian.intelligence.service import ThreatIntelligenceService
-from clamguardian.intelligence import virustotal as virustotal_module
 from clamguardian.intelligence.virustotal import (
     VirusTotalAPIError,
     VirusTotalProvider,
