@@ -153,29 +153,29 @@ class ThreatIntelligenceService:
         except asyncio.CancelledError:
             # Cancellation of the owning event loop is exceptional (normal
             # caller cancellation is shielded below); still release waiters.
-            report = {
-                "provider": provider.name,
-                "error": "VirusTotal lookup cancelled",
-                "sha256": digest,
-            }
             if not shared.done():
-                shared.set_result(report)
+                shared.set_result({
+                    "provider": provider.name,
+                    "error": "VirusTotal lookup cancelled",
+                    "sha256": digest,
+                })
             raise
         except Exception as exc:
             logger.error("Threat intelligence lookup failed (%s)", type(exc).__name__)
-            report = {
-                "provider": provider.name,
-                "error": "VirusTotal lookup failed",
-                "sha256": digest,
-            }
+            if not shared.done():
+                shared.set_result({
+                    "provider": provider.name,
+                    "error": "VirusTotal lookup failed",
+                    "sha256": digest,
+                })
         else:
-            pass
-        if not shared.done():
-            shared.set_result(report)
-        with self._inflight_lock:
-            if self._inflight.get(key) is shared:
-                self._inflight.pop(key, None)
-                self._lookup_tasks.pop(key, None)
+            if not shared.done():
+                shared.set_result(report)
+        finally:
+            with self._inflight_lock:
+                if self._inflight.get(key) is shared:
+                    self._inflight.pop(key, None)
+                    self._lookup_tasks.pop(key, None)
 
     async def lookup_scan_result(self, result: ScanResult) -> dict[str, Any] | None:
         if not self.is_enabled():
