@@ -108,6 +108,32 @@ class _ServiceOwnedEventLoop:
                 coroutine.close()
                 raise
 
+    async def submit_async(self, coroutine: Any) -> concurrent.futures.Future[Any]:
+        """Submit without blocking the caller's event loop during worker startup."""
+        with self._lock:
+            if self._closed:
+                coroutine.close()
+                raise RuntimeError("Threat Intelligence service is closed")
+            if self._thread is None:
+                self._thread = threading.Thread(
+                    target=self._run,
+                    name="clamguardian-intelligence",
+                    daemon=True,
+                )
+                self._thread.start()
+
+        try:
+            while not self._ready.is_set():
+                with self._lock:
+                    if self._closed:
+                        coroutine.close()
+                        raise RuntimeError("Threat Intelligence service is closed")
+                await asyncio.sleep(0.005)
+            return self.submit(coroutine)
+        except BaseException:
+            coroutine.close()
+            raise
+
     def close(self, timeout: float = 3.0) -> None:
         with self._lock:
             self._closed = True
@@ -183,6 +209,9 @@ class ThreatIntelligenceService:
         ] = {}
         self._inflight_lock = threading.Lock()
         self._upload_lookup: tuple[str, str, dict[str, Any], float] | None = None
+        # One daemon worker bounds cache I/O without blocking either asyncio
+        # loop or creating threads in asyncio's default executor.
+        self._cache_worker_slots = threading.BoundedSemaphore(1)
 
     def close(self, timeout: float = 8.0) -> None:
         """Drain shared lookups and stop the service-owned worker loop."""
@@ -252,6 +281,44 @@ class ThreatIntelligenceService:
                 logger.error("Threat intelligence secure credential retrieval failed")
                 return None
 
+    def _schedule_cache_operation(
+        self, label: str, operation: Any, *args: Any
+    ) -> concurrent.futures.Future[Any] | None:
+        if self.cache is None or not self._cache_worker_slots.acquire(blocking=False):
+            return None
+        completed: concurrent.futures.Future[Any] = concurrent.futures.Future()
+
+        def run() -> None:
+            try:
+                completed.set_result(operation(*args))
+            except Exception as exc:
+                logger.warning("VirusTotal cache %s failed (%s)", label, type(exc).__name__)
+                completed.set_result(None)
+            finally:
+                self._cache_worker_slots.release()
+
+        worker = threading.Thread(
+            target=run, name="clamguardian-intelligence-cache", daemon=True
+        )
+        try:
+            worker.start()
+        except Exception as exc:
+            self._cache_worker_slots.release()
+            logger.warning("VirusTotal cache %s worker failed (%s)", label, type(exc).__name__)
+            completed.set_result(None)
+        return completed
+
+    async def _read_cached_report(
+        self, digest: str, profile: str
+    ) -> dict[str, Any] | None:
+        if self.cache is None:
+            return None
+        operation = self._schedule_cache_operation("read", self.cache.get, digest, profile)
+        if operation is None:
+            return None
+        result = await asyncio.wrap_future(operation)
+        return result if isinstance(result, dict) else None
+
     async def _lookup_with_retry(
         self, provider: VirusTotalProvider, sha256: str
     ) -> dict[str, Any]:
@@ -289,22 +356,19 @@ class ThreatIntelligenceService:
         """Run a deduplicated lookup under service, not caller, ownership."""
         try:
             report = await self._lookup_with_retry(provider, digest)
+            # Publish the result before best-effort cache persistence. A locked
+            # SQLite database must not delay callers after the network lookup.
+            if not shared.done():
+                shared.set_result(report)
             if (
                 isinstance(report, dict)
                 and report.get("error") is None
                 and isinstance(report.get("found"), bool)
                 and self.cache is not None
             ):
-                try:
-                    # SQLite connections have a finite busy timeout. Keep this
-                    # bounded local write on the service loop rather than
-                    # creating an executor thread whose shutdown can outlive
-                    # the worker lifecycle.
-                    self.cache.put(digest, profile, report)
-                except Exception as exc:
-                    logger.warning(
-                        "VirusTotal cache write failed (%s)", type(exc).__name__
-                    )
+                self._schedule_cache_operation(
+                    "write", self.cache.put, digest, profile, report
+                )
         except asyncio.CancelledError:
             # Cancellation of the owning event loop is exceptional (normal
             # caller cancellation is shielded below); still release waiters.
@@ -351,16 +415,9 @@ class ThreatIntelligenceService:
             return None
         profile = selected_profile.value
         if self.cache is not None:
-            try:
-                # SQLite access has a finite busy timeout. Keep this small,
-                # local operation on the service loop rather than creating a
-                # default-executor thread that can outlive worker shutdown.
-                cached = self.cache.get(digest, profile)
-            except Exception as exc:
-                logger.warning("VirusTotal cache read failed (%s)", type(exc).__name__)
-                cached = None
+            cached = await self._read_cached_report(digest, profile)
             if cached is not None:
-                return cached
+                return copy.deepcopy(cached)
 
         provider = self.get_provider()
         if provider is None:
@@ -372,31 +429,50 @@ class ThreatIntelligenceService:
             return None
 
         key = (digest, profile)
+        created = False
         with self._inflight_lock:
             shared = self._inflight.get(key)
             if shared is None:
                 shared = concurrent.futures.Future()
                 self._inflight[key] = shared
-                try:
-                    task = self._lookup_loop.submit(
-                        self._run_shared_lookup(
-                            key, shared, provider, digest, profile
-                        )
-                    )
-                except RuntimeError:
-                    self._inflight.pop(key, None)
-                    if not shared.done():
-                        shared.set_result({
-                            "provider": provider.name,
-                            "error": "VirusTotal lookup failed",
-                            "sha256": digest,
-                        })
-                else:
-                    self._lookup_tasks[key] = task
+                created = True
 
-        # The task runs on a service-owned loop, not on the first caller's loop.
-        # Shielding isolates each waiter; closing any caller loop cannot stop it.
-        return await asyncio.shield(asyncio.wrap_future(shared))
+        if created:
+            try:
+                task = await self._lookup_loop.submit_async(
+                    self._run_shared_lookup(key, shared, provider, digest, profile)
+                )
+            except asyncio.CancelledError:
+                with self._inflight_lock:
+                    if self._inflight.get(key) is shared:
+                        self._inflight.pop(key, None)
+                if not shared.done():
+                    shared.set_result({
+                        "provider": provider.name,
+                        "error": "VirusTotal lookup cancelled",
+                        "sha256": digest,
+                    })
+                raise
+            except RuntimeError:
+                with self._inflight_lock:
+                    if self._inflight.get(key) is shared:
+                        self._inflight.pop(key, None)
+                if not shared.done():
+                    shared.set_result({
+                        "provider": provider.name,
+                        "error": "VirusTotal lookup failed",
+                        "sha256": digest,
+                    })
+            else:
+                with self._inflight_lock:
+                    # The worker may finish before submit_async returns.
+                    if not shared.done():
+                        self._lookup_tasks[key] = task
+
+        # Each waiter receives its own mutable report object. Cancelling one
+        # waiter cannot cancel the service-owned shared lookup.
+        report = await asyncio.shield(asyncio.wrap_future(shared))
+        return copy.deepcopy(report)
 
     def preview_file_upload(self, path):
         self._upload_lookup = None
