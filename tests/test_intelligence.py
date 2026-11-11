@@ -168,20 +168,28 @@ def test_virustotal_default_rate_limit_is_at_least_four_per_minute() -> None:
 async def test_virustotal_rate_limit_is_shared_between_provider_instances(
     tmp_path, monkeypatch
 ) -> None:
-    # Keep wall-clock time fixed so slow filesystem setup/fsync cannot consume
-    # the entire test interval before the second provider begins waiting.
+    # Use a controllable wall clock so filesystem latency cannot consume the
+    # interval before the second provider starts waiting.
+    wall_clock = [1_800_000_000.0]
+    real_sleep = asyncio.sleep
     monkeypatch.setattr(
         "clamguardian.intelligence.rate_limiter.time.time",
-        lambda: 1_800_000_000.0,
+        lambda: wall_clock[0],
     )
+
+    async def advance_clock(seconds: float) -> None:
+        wall_clock[0] += seconds
+        await real_sleep(0)
+
+    monkeypatch.setattr("clamguardian.intelligence.virustotal.asyncio.sleep", advance_clock)
     state = tmp_path / "shared-rate-limit"
     first = VirusTotalProvider("first", min_request_interval=0.05, rate_limit_path=state)
     second = VirusTotalProvider("second", min_request_interval=0.05, rate_limit_path=state)
 
     await first._enforce_rate_limit()
-    started = asyncio.get_running_loop().time()
+    started = wall_clock[0]
     await second._enforce_rate_limit()
-    assert asyncio.get_running_loop().time() - started >= 0.04
+    assert wall_clock[0] - started >= 0.04
 
 
 @pytest.mark.asyncio
