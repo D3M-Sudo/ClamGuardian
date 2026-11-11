@@ -725,3 +725,45 @@ async def test_clamd_fd_probe_cancellation_does_not_start_instream_fallback(
         os.close(fd)
         server.close()
         thread.join(timeout=2)
+
+
+@pytest.mark.asyncio
+async def test_clamd_fd_probe_timeout_does_not_fall_back_to_instream(tmp_path: Path) -> None:
+    from clamguardian.engines.clamav import ClamAVEngine
+
+    target = tmp_path / "probe-timeout.bin"
+    target.write_bytes(b"probe timeout")
+    socket_path = tmp_path / "clamd.sock"
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(os.fspath(socket_path))
+    server.listen(1)
+    accepted = threading.Event()
+
+    def serve() -> None:
+        conn, _ = server.accept()
+        with conn:
+            assert conn.recv(1024) == b"nVERSIONCOMMANDS\\n"
+            accepted.set()
+            conn.recv(1)
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    engine = ClamAVEngine(socket_path=socket_path, command_timeout=0.5)
+    fallback_called = threading.Event()
+
+    def forbidden_fallback(_fd: int, _control=None):
+        fallback_called.set()
+        raise AssertionError("probe timeout must not start INSTREAM fallback")
+
+    engine._scan_fd_instream_sync = forbidden_fallback  # type: ignore[method-assign]
+    fd = os.open(target, os.O_RDONLY | os.O_CLOEXEC)
+    try:
+        scan = asyncio.create_task(engine.scan_fd(fd, target=target))
+        assert await asyncio.to_thread(accepted.wait, 2)
+        result = await scan
+        assert result.status is ScanStatus.TIMEOUT
+        assert not fallback_called.is_set()
+    finally:
+        os.close(fd)
+        server.close()
+        thread.join(timeout=2)
