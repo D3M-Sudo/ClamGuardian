@@ -128,7 +128,7 @@ class PersistentRateLimiter:
                 if remaining <= 0:
                     raise TimeoutError(
                         "Timed out waiting for VirusTotal quota state lock"
-                    )
+                    ) from None
                 time.sleep(min(0.05, remaining))
 
     def defer(self, seconds: int | float) -> None:
