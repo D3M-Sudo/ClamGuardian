@@ -54,6 +54,13 @@ class _DescriptorSocketControl:
             if self._socket is sock:
                 self._socket = None
 
+    def raise_if_cancelled(self) -> None:
+        """Stop the worker at cooperative cancellation boundaries."""
+        with self._lock:
+            cancelled = self._cancelled
+        if cancelled:
+            raise InterruptedError("descriptor scan was cancelled")
+
     def cancel(self) -> None:
         with self._lock:
             self._cancelled = True
@@ -87,6 +94,8 @@ class ClamAVEngine(BaseAVEngine):
         self.freshclam_binary = freshclam_binary
         self.flatpak_host = flatpak_host
         self.command_timeout = command_timeout
+        self._descriptor_workers: set[asyncio.Task[tuple[str, int, str]]] = set()
+        self._descriptor_workers_lock = threading.Lock()
 
     async def scan(
         self,
@@ -223,10 +232,16 @@ class ClamAVEngine(BaseAVEngine):
             worker = asyncio.create_task(
                 asyncio.to_thread(self._scan_fd_owned, owned_fd, socket_control)
             )
+            with self._descriptor_workers_lock:
+                self._descriptor_workers.add(worker)
 
             def consume_worker_result(task: asyncio.Task[tuple[str, int, str]]) -> None:
                 if not task.cancelled():
                     task.exception()
+                with self._descriptor_workers_lock:
+                    self._descriptor_workers.discard(task)
+
+            worker.add_done_callback(consume_worker_result)
 
             try:
                 output, exit_code, transport = await asyncio.wait_for(
@@ -234,11 +249,9 @@ class ClamAVEngine(BaseAVEngine):
                 )
             except TimeoutError:
                 socket_control.cancel()
-                worker.add_done_callback(consume_worker_result)
                 raise
             except asyncio.CancelledError:
                 socket_control.cancel()
-                worker.add_done_callback(consume_worker_result)
                 raise
             exit_code = self._descriptor_response_code(output)
             if self._file_identity_changed(before, os.fstat(fd)):
@@ -276,6 +289,12 @@ class ClamAVEngine(BaseAVEngine):
                 result.metadata["profile_id"] = profile.id
             return result
 
+    @property
+    def active_descriptor_worker_count(self) -> int:
+        """Return descriptor workers whose underlying thread has not completed."""
+        with self._descriptor_workers_lock:
+            return sum(not worker.done() for worker in self._descriptor_workers)
+
     def _scan_fd_owned(
         self, fd: int, socket_control: _DescriptorSocketControl
     ) -> tuple[str, int, str]:
@@ -290,6 +309,8 @@ class ClamAVEngine(BaseAVEngine):
     ) -> tuple[str, int, str]:
         """Use FILDES or INSTREAM while preserving the opened descriptor identity."""
         capabilities = bytearray()
+        if socket_control is not None:
+            socket_control.raise_if_cancelled()
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
                 if socket_control is not None:
@@ -310,19 +331,29 @@ class ClamAVEngine(BaseAVEngine):
                 finally:
                     if socket_control is not None:
                         socket_control.detach(probe)
+        except InterruptedError:
+            raise
         except (OSError, TimeoutError):
+            if socket_control is not None:
+                socket_control.raise_if_cancelled()
             return self._scan_fd_instream_sync(fd, socket_control)
 
+        if socket_control is not None:
+            socket_control.raise_if_cancelled()
         if b"FILDES" not in bytes(capabilities).split():
             return self._scan_fd_instream_sync(fd, socket_control)
 
         response = bytearray()
+        if socket_control is not None:
+            socket_control.raise_if_cancelled()
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             if socket_control is not None:
                 socket_control.attach(sock)
             try:
                 sock.settimeout(self.command_timeout)
                 sock.connect(os.fspath(self.socket_path))
+                if socket_control is not None:
+                    socket_control.raise_if_cancelled()
                 sock.sendall(b"nFILDES\n")
                 rights = array.array("i", [fd]).tobytes()
                 # The protocol requires a separate ancillary-data packet with at
@@ -338,8 +369,12 @@ class ClamAVEngine(BaseAVEngine):
             finally:
                 if socket_control is not None:
                     socket_control.detach(sock)
+        if socket_control is not None:
+            socket_control.raise_if_cancelled()
         output = bytes(response).decode("utf-8", errors="replace")
         if "COMMAND UNAVAILABLE" in output or "UNKNOWN COMMAND" in output:
+            if socket_control is not None:
+                socket_control.raise_if_cancelled()
             return self._scan_fd_instream_sync(fd, socket_control)
         code = self._descriptor_response_code(output)
         return output, code, "fildes"
@@ -349,18 +384,26 @@ class ClamAVEngine(BaseAVEngine):
     ) -> tuple[str, int, str]:
         """Stream bytes read from the opened descriptor, never from its pathname."""
         response = bytearray()
+        if socket_control is not None:
+            socket_control.raise_if_cancelled()
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             if socket_control is not None:
                 socket_control.attach(sock)
             try:
                 sock.settimeout(self.command_timeout)
                 sock.connect(os.fspath(self.socket_path))
+                if socket_control is not None:
+                    socket_control.raise_if_cancelled()
                 sock.sendall(b"nINSTREAM\n")
                 offset = 0
                 while True:
+                    if socket_control is not None:
+                        socket_control.raise_if_cancelled()
                     chunk = os.pread(fd, 65536, offset)
                     if not chunk:
                         break
+                    if socket_control is not None:
+                        socket_control.raise_if_cancelled()
                     sock.sendall(struct.pack("!I", len(chunk)))
                     sock.sendall(chunk)
                     offset += len(chunk)
@@ -375,6 +418,8 @@ class ClamAVEngine(BaseAVEngine):
             finally:
                 if socket_control is not None:
                     socket_control.detach(sock)
+        if socket_control is not None:
+            socket_control.raise_if_cancelled()
         output = bytes(response).decode("utf-8", errors="replace")
         code = self._descriptor_response_code(output)
         return output, code, "instream"
