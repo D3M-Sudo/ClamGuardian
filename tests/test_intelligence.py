@@ -110,6 +110,7 @@ async def test_intelligence_service_lookup_when_enabled(tmp_path, monkeypatch) -
     assert verdict["malicious"] is True
     assert result.clean is True
     assert result.status is ScanStatus.CLEAN
+    service.close()
 
 
 @pytest.mark.asyncio

@@ -94,6 +94,7 @@ async def test_service_uses_persistent_cache_for_repeated_hashes(tmp_path, monke
     assert await service.lookup_scan_result(result) == REPORT
     assert await service.lookup_scan_result(result) == REPORT
     provider.lookup_hash.assert_awaited_once_with(SHA256)
+    service.close()
 
 
 @pytest.mark.asyncio
@@ -104,10 +105,11 @@ async def test_service_deduplicates_concurrent_lookups(tmp_path, monkeypatch) ->
     settings = SettingsStore(tmp_path / "settings.json")
     settings.save(AppSettings(intelligence_enabled=True, intelligence_profile="public"))
     provider = AsyncMock(spec=VirusTotalProvider)
-    release = asyncio.Event()
+    release = threading.Event()
 
     async def delayed_lookup(_sha256: str):
-        await release.wait()
+        if not await asyncio.to_thread(release.wait, 5):
+            raise TimeoutError("test provider release timed out")
         return REPORT
 
     provider.lookup_hash.side_effect = delayed_lookup
@@ -124,6 +126,7 @@ async def test_service_deduplicates_concurrent_lookups(tmp_path, monkeypatch) ->
     release.set()
     assert await asyncio.gather(first, second) == [REPORT, REPORT]
     provider.lookup_hash.assert_awaited_once_with(SHA256)
+    service.close()
 
 
 @pytest.mark.asyncio
@@ -149,6 +152,7 @@ async def test_service_retries_transient_lookup_failures(tmp_path, monkeypatch) 
 
     assert await service.lookup_scan_result(result) == REPORT
     assert provider.lookup_hash.await_count == 3
+    service.close()
 
 
 @pytest.mark.asyncio
@@ -159,12 +163,13 @@ async def test_cancelling_waiter_does_not_cancel_shared_lookup(tmp_path, monkeyp
     settings = SettingsStore(tmp_path / "settings.json")
     settings.save(AppSettings(intelligence_enabled=True, intelligence_profile="public"))
     provider = AsyncMock(spec=VirusTotalProvider)
-    entered = asyncio.Event()
-    release = asyncio.Event()
+    entered = threading.Event()
+    release = threading.Event()
 
     async def delayed_lookup(_sha256: str):
         entered.set()
-        await release.wait()
+        if not await asyncio.to_thread(release.wait, 5):
+            raise TimeoutError("test provider release timed out")
         return REPORT
 
     provider.lookup_hash.side_effect = delayed_lookup
@@ -176,7 +181,7 @@ async def test_cancelling_waiter_does_not_cancel_shared_lookup(tmp_path, monkeyp
     result = ScanResult(target="/sample", clean=True, metadata={"sha256": SHA256})
 
     leader = asyncio.create_task(service.lookup_scan_result(result))
-    await entered.wait()
+    assert await asyncio.to_thread(entered.wait, 2)
     waiter = asyncio.create_task(service.lookup_scan_result(result))
     await asyncio.sleep(0)
     waiter.cancel()
@@ -186,6 +191,7 @@ async def test_cancelling_waiter_does_not_cancel_shared_lookup(tmp_path, monkeyp
     release.set()
     assert await leader == REPORT
     provider.lookup_hash.assert_awaited_once_with(SHA256)
+    service.close()
 
 
 @pytest.mark.asyncio
@@ -243,6 +249,7 @@ async def test_service_honors_retry_after_for_rate_limited_lookup(
     provider.lookup_hash.assert_awaited_with(SHA256)
     assert provider.lookup_hash.await_count == 2
     sleep.assert_awaited_once_with(3.0)
+    service.close()
 
 
 @pytest.mark.asyncio
@@ -314,6 +321,7 @@ async def test_retry_after_above_budget_is_not_shortened_or_retried(
     assert report["error"] == "VirusTotal lookup failed"
     provider.lookup_hash.assert_awaited_once_with(SHA256)
     sleep.assert_not_awaited()
+    service.close()
 
 
 @pytest.mark.asyncio
@@ -324,12 +332,13 @@ async def test_cancelling_leader_does_not_cancel_shared_lookup(tmp_path, monkeyp
     settings = SettingsStore(tmp_path / "settings.json")
     settings.save(AppSettings(intelligence_enabled=True, intelligence_profile="public"))
     provider = AsyncMock(spec=VirusTotalProvider)
-    entered = asyncio.Event()
-    release = asyncio.Event()
+    entered = threading.Event()
+    release = threading.Event()
 
     async def delayed_lookup(_sha256: str):
         entered.set()
-        await release.wait()
+        if not await asyncio.to_thread(release.wait, 5):
+            raise TimeoutError("test provider release timed out")
         return REPORT
 
     provider.lookup_hash.side_effect = delayed_lookup
@@ -340,7 +349,7 @@ async def test_cancelling_leader_does_not_cancel_shared_lookup(tmp_path, monkeyp
     result = ScanResult(target="/sample", clean=True, metadata={"sha256": SHA256})
 
     leader = asyncio.create_task(service.lookup_scan_result(result))
-    await entered.wait()
+    assert await asyncio.to_thread(entered.wait, 2)
     waiter = asyncio.create_task(service.lookup_scan_result(result))
     await asyncio.sleep(0)
     leader.cancel()
@@ -352,6 +361,7 @@ async def test_cancelling_leader_does_not_cancel_shared_lookup(tmp_path, monkeyp
     assert not service._inflight
     assert not service._lookup_tasks
     provider.lookup_hash.assert_awaited_once_with(SHA256)
+    service.close()
 
 
 def test_cache_v1_migrates_and_keeps_profile_entries_independent(tmp_path) -> None:
@@ -391,7 +401,9 @@ def test_cache_v1_migrates_and_keeps_profile_entries_independent(tmp_path) -> No
         ).fetchone()[0] == 2
 
 
-def test_service_deduplicates_across_event_loops(tmp_path, monkeypatch) -> None:
+def test_service_deduplicates_across_event_loops_when_leader_loop_closes(
+    tmp_path, monkeypatch
+) -> None:
     monkeypatch.setattr(
         service_module, "VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED", True
     )
@@ -403,7 +415,8 @@ def test_service_deduplicates_across_event_loops(tmp_path, monkeypatch) -> None:
 
     async def delayed_lookup(_sha256: str):
         provider_started.set()
-        await asyncio.to_thread(release_provider.wait, 5)
+        if not await asyncio.to_thread(release_provider.wait, 5):
+            raise TimeoutError("test provider release timed out")
         return REPORT
 
     provider.lookup_hash.side_effect = delayed_lookup
@@ -415,7 +428,15 @@ def test_service_deduplicates_across_event_loops(tmp_path, monkeypatch) -> None:
     waiter_entered = threading.Event()
 
     def run_leader():
-        return asyncio.run(service.lookup_scan_result(result))
+        async def call():
+            leader = asyncio.create_task(service.lookup_scan_result(result))
+            if not await asyncio.to_thread(provider_started.wait, 2):
+                raise AssertionError("provider lookup did not start")
+            leader.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await leader
+            return "leader loop closed"
+        return asyncio.run(call())
 
     def run_waiter():
         async def call():
@@ -423,16 +444,21 @@ def test_service_deduplicates_across_event_loops(tmp_path, monkeypatch) -> None:
             return await service.lookup_scan_result(result)
         return asyncio.run(call())
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        leader_future = pool.submit(run_leader)
-        assert provider_started.wait(2)
-        waiter_future = pool.submit(run_waiter)
-        assert waiter_entered.wait(2)
-        time.sleep(0.1)
-        release_provider.set()
-        assert leader_future.result(timeout=5) == REPORT
-        assert waiter_future.result(timeout=5) == REPORT
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            leader_future = pool.submit(run_leader)
+            assert provider_started.wait(2)
+            waiter_future = pool.submit(run_waiter)
+            assert waiter_entered.wait(2)
+            time.sleep(0.1)
+            # asyncio.run() has returned: the leader's caller loop is now closed.
+            assert leader_future.result(timeout=5) == "leader loop closed"
+            release_provider.set()
+            assert waiter_future.result(timeout=5) == REPORT
 
-    provider.lookup_hash.assert_awaited_once_with(SHA256)
-    assert not service._inflight
-    assert not service._lookup_tasks
+        provider.lookup_hash.assert_awaited_once_with(SHA256)
+        assert not service._inflight
+        assert not service._lookup_tasks
+    finally:
+        release_provider.set()
+        service.close()
