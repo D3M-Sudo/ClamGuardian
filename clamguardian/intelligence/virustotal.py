@@ -50,10 +50,12 @@ class _BoundedDaemonResolver(aiohttp.abc.AbstractResolver):
             raise OSError(socket.EAI_AGAIN, "DNS resolver concurrency limit reached")
 
         loop = asyncio.get_running_loop()
-        result_future: asyncio.Future[list[dict[str, Any]]] = loop.create_future()
+        result_future: asyncio.Future[list[aiohttp.abc.ResolveResult]] = (
+            loop.create_future()
+        )
 
         def deliver(
-            result: list[dict[str, Any]] | None = None,
+            result: list[aiohttp.abc.ResolveResult] | None = None,
             error: OSError | None = None,
         ) -> None:
             def complete() -> None:
@@ -75,7 +77,7 @@ class _BoundedDaemonResolver(aiohttp.abc.AbstractResolver):
                 records = socket.getaddrinfo(
                     host, port, family=family, type=socket.SOCK_STREAM
                 )
-                addresses = [
+                addresses: list[aiohttp.abc.ResolveResult] = [
                     {
                         "hostname": host,
                         "host": record[4][0],
@@ -112,11 +114,6 @@ class _BoundedDaemonResolver(aiohttp.abc.AbstractResolver):
             return await asyncio.wait_for(result_future, timeout=self._timeout)
         except asyncio.TimeoutError:
             raise OSError(socket.EAI_AGAIN, "DNS resolution timed out") from None
-
-    async def resolve_reverse(
-        self, *args: Any, **kwargs: Any
-    ) -> list[dict[str, Any]]:
-        raise NotImplementedError("Reverse DNS is not used by VirusTotal requests")
 
     def close(self) -> None:
         self._closed = True
