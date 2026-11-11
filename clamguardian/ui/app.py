@@ -550,6 +550,11 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             return False
 
         def _on_shutdown(self, _app: Adw.Application) -> None:
+            # Intelligence owns a separate event-loop thread. Its shutdown
+            # must not depend on the optional app-services loop being present.
+            if self._window is not None:
+                self._window._intelligence_service.close(timeout=8)
+
             loop = self._service_loop
             if loop is None or loop.is_closed():
                 return
@@ -566,8 +571,6 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 logging.getLogger(__name__).error(
                     "Background service shutdown did not complete cleanly: %s", error
                 )
-            if self._window is not None:
-                self._window._intelligence_service.close(timeout=8)
             loop.call_soon_threadsafe(loop.stop)
             if self._service_thread is not None:
                 self._service_thread.join(timeout=2)
