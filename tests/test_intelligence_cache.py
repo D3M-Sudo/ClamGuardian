@@ -198,10 +198,17 @@ async def test_cache_read_does_not_block_calling_event_loop(tmp_path, monkeypatc
     try:
         lookup = asyncio.create_task(service.lookup_scan_result(result))
         assert await asyncio.to_thread(entered.wait, 2)
-        # The SQLite operation is blocked in its daemon worker, not this loop.
-        await asyncio.wait_for(asyncio.sleep(0), timeout=0.1)
-        assert not lookup.done()
-        release.set()
+        # A ticker must run while the cache worker is blocked.
+        ticked = asyncio.Event()
+        async def ticker() -> None:
+            await asyncio.sleep(0)
+            ticked.set()
+        ticker_task = asyncio.create_task(ticker())
+        threading.Timer(0.25, release.set).start()
+        started = asyncio.get_running_loop().time()
+        await asyncio.wait_for(ticked.wait(), timeout=0.15)
+        assert asyncio.get_running_loop().time() - started < 0.15
+        await ticker_task
         assert await lookup == REPORT
     finally:
         release.set()
@@ -235,8 +242,16 @@ async def test_worker_startup_wait_does_not_block_calling_event_loop(tmp_path, m
     try:
         lookup = asyncio.create_task(service.lookup_scan_result(result))
         assert await asyncio.to_thread(entered.wait, 2)
-        await asyncio.wait_for(asyncio.sleep(0), timeout=0.1)
-        release.set()
+        ticked = asyncio.Event()
+        async def ticker() -> None:
+            await asyncio.sleep(0)
+            ticked.set()
+        ticker_task = asyncio.create_task(ticker())
+        threading.Timer(0.25, release.set).start()
+        started = asyncio.get_running_loop().time()
+        await asyncio.wait_for(ticked.wait(), timeout=0.15)
+        assert asyncio.get_running_loop().time() - started < 0.15
+        await ticker_task
         assert await asyncio.wait_for(lookup, timeout=2) == REPORT
     finally:
         release.set()
