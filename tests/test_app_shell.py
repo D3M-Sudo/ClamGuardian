@@ -94,9 +94,7 @@ def test_shutdown_always_closes_intelligence_worker(
     from types import SimpleNamespace
     from unittest.mock import Mock
 
-    from clamguardian.ui.app import ClamGuardianApp
-
-    app = ClamGuardianApp()
+    app = gtk_app
     intelligence_service = Mock()
     app._window = SimpleNamespace(_intelligence_service=intelligence_service)
     service_loop = None
