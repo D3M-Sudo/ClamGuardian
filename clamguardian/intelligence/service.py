@@ -313,35 +313,18 @@ class ThreatIntelligenceService:
     def _publish_shared_result(
         self,
         key: tuple[str, str],
-        shared: concurrent.futures.Future[dict[str, Any]],
-        report: dict[str, Any],
-        *,
-        keep_until: concurrent.futures.Future[Any] | None = None,
+        shared: concurrent.futures.Future[dict[str, Any] | None],
+        report: dict[str, Any] | None,
     ) -> None:
-        # Keep the completed result joinable until its cache write finishes.
-        # A caller whose cache read began just before that write was queued
-        # must not start a duplicate provider request after the lookup ends.
+        # Remove the inflight entry and publish atomically. New callers then
+        # create a new shared operation whose cache read waits for any pending
+        # persistence write registered before this publication.
         with self._inflight_lock:
-            self._lookup_tasks.pop(key, None)
-            if (
-                self._inflight.get(key) is shared
-                and (keep_until is None or keep_until.done())
-            ):
+            if self._inflight.get(key) is shared:
                 self._inflight.pop(key, None)
-            publish = not shared.done()
-
-        if publish:
-            shared.set_result(report)
-
-        if keep_until is not None and not keep_until.done():
-            def forget_after_write(
-                completed: concurrent.futures.Future[Any],
-            ) -> None:
-                with self._inflight_lock:
-                    if self._inflight.get(key) is shared:
-                        self._inflight.pop(key, None)
-
-            keep_until.add_done_callback(forget_after_write)
+            self._lookup_tasks.pop(key, None)
+            if not shared.done():
+                shared.set_result(report)
 
     def _track_cache_write(
         self, key: tuple[str, str], operation: concurrent.futures.Future[Any]
@@ -403,16 +386,30 @@ class ThreatIntelligenceService:
     async def _run_shared_lookup(
         self,
         key: tuple[str, str],
-        shared: concurrent.futures.Future[dict[str, Any]],
-        provider: VirusTotalProvider,
+        shared: concurrent.futures.Future[dict[str, Any] | None],
         digest: str,
         profile: str,
+        selected_profile: APIProfile,
     ) -> None:
-        """Run a deduplicated lookup under service, not caller, ownership."""
+        """Run cache lookup and provider enrichment under service ownership."""
         try:
+            # The shared Future is registered before this read starts. This
+            # prevents concurrent callers from racing through independent
+            # cache misses and issuing duplicate provider requests.
+            cached = await self._read_cached_report(digest, profile)
+            if cached is not None:
+                self._publish_shared_result(key, shared, cached)
+                return
+
+            provider = self.get_provider()
+            if provider is None or (
+                self._custom_provider is None
+                and getattr(provider, "profile", selected_profile) is not selected_profile
+            ):
+                self._publish_shared_result(key, shared, None)
+                return
+
             report = await self._lookup_with_retry(provider, digest)
-            # Publish the result before best-effort cache persistence. A locked
-            # SQLite database must not delay callers after the network lookup.
             if (
                 isinstance(report, dict)
                 and report.get("error") is None
@@ -424,19 +421,13 @@ class ThreatIntelligenceService:
                 )
                 if cache_write is not None:
                     self._track_cache_write(key, cache_write)
-            self._publish_shared_result(
-                key, shared, report, keep_until=cache_write if (
-                    isinstance(report, dict)
-                    and report.get("error") is None
-                    and isinstance(report.get("found"), bool)
-                    and self.cache is not None
-                ) else None
-            )
+
+            # Cache persistence is best-effort and deliberately does not hold
+            # the shared lookup open. Later leaders wait for the tracked write.
+            self._publish_shared_result(key, shared, report)
         except asyncio.CancelledError:
-            # Cancellation of the owning event loop is exceptional (normal
-            # caller cancellation is shielded below); still release waiters.
             self._publish_shared_result(key, shared, {
-                "provider": provider.name,
+                "provider": "virustotal",
                 "error": "VirusTotal lookup cancelled",
                 "sha256": digest,
             })
@@ -444,14 +435,12 @@ class ThreatIntelligenceService:
         except Exception as exc:
             logger.error("Threat intelligence lookup failed (%s)", type(exc).__name__)
             self._publish_shared_result(key, shared, {
-                "provider": provider.name,
+                "provider": "virustotal",
                 "error": "VirusTotal lookup failed",
                 "sha256": digest,
             })
         finally:
             with self._inflight_lock:
-                # Successful lookups with cache persistence stay joinable
-                # until the write callback removes them.
                 if self._inflight.get(key) is shared and shared.done():
                     self._lookup_tasks.pop(key, None)
 
@@ -474,31 +463,9 @@ class ThreatIntelligenceService:
             return None
         profile = selected_profile.value
         key = (digest, profile)
-        with self._inflight_lock:
-            shared = self._inflight.get(key)
 
-        if shared is None and self.cache is not None:
-            cached = await self._read_cached_report(digest, profile)
-            if cached is not None:
-                return copy.deepcopy(cached)
-            # Close the race where the first cache read started before an
-            # in-flight lookup queued its persistence operation.
-            with self._inflight_lock:
-                shared = self._inflight.get(key)
-            if shared is None:
-                cached = await self._read_cached_report(digest, profile)
-                if cached is not None:
-                    return copy.deepcopy(cached)
-
-        provider = self.get_provider()
-        if provider is None:
-            return None
-        if (
-            self._custom_provider is None
-            and getattr(provider, "profile", selected_profile) is not selected_profile
-        ):
-            return None
-
+        # Elect one leader before any cache I/O. All callers, including those
+        # on different event loops, join the same service-owned operation.
         created = False
         with self._inflight_lock:
             shared = self._inflight.get(key)
@@ -510,7 +477,9 @@ class ThreatIntelligenceService:
         if created:
             try:
                 task = await self._lookup_loop.submit_async(
-                    self._run_shared_lookup(key, shared, provider, digest, profile)
+                    self._run_shared_lookup(
+                        key, shared, digest, profile, selected_profile
+                    )
                 )
             except asyncio.CancelledError:
                 with self._inflight_lock:
@@ -518,25 +487,21 @@ class ThreatIntelligenceService:
                         self._inflight.pop(key, None)
                 if not shared.done():
                     shared.set_result({
-                        "provider": provider.name,
+                        "provider": "virustotal",
                         "error": "VirusTotal lookup cancelled",
                         "sha256": digest,
                     })
                 raise
             except RuntimeError:
-                with self._inflight_lock:
-                    if self._inflight.get(key) is shared:
-                        self._inflight.pop(key, None)
-                if not shared.done():
-                    shared.set_result({
-                        "provider": provider.name,
-                        "error": "VirusTotal lookup failed",
-                        "sha256": digest,
-                    })
+                self._publish_shared_result(key, shared, {
+                    "provider": "virustotal",
+                    "error": "VirusTotal lookup failed",
+                    "sha256": digest,
+                })
             else:
                 with self._inflight_lock:
                     # The worker may finish before submit_async returns.
-                    if not shared.done():
+                    if not shared.done() and self._inflight.get(key) is shared:
                         self._lookup_tasks[key] = task
 
         # Each waiter receives its own mutable report object. Cancelling one
