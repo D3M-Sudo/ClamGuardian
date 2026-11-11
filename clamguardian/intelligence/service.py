@@ -49,8 +49,6 @@ class ThreatIntelligenceService:
                 self.settings_store.path.with_name("virustotal-cache.db")
             )
         except Exception as exc:
-            # Cache storage is optional: its failure must never prevent local
-            # ClamAV scans or the best-effort remote lookup itself.
             self.cache = None
             logger.warning(
                 "VirusTotal cache initialization failed (%s); continuing without cache",
@@ -59,6 +57,9 @@ class ThreatIntelligenceService:
         self._inflight: dict[
             tuple[str, str], concurrent.futures.Future[dict[str, Any]]
         ] = {}
+        # Strong references keep service-owned tasks alive independently of
+        # whichever caller happened to create the shared lookup.
+        self._lookup_tasks: dict[tuple[str, str], asyncio.Task[None]] = {}
         self._inflight_lock = threading.Lock()
         self._upload_lookup: tuple[str, str, dict[str, Any], float] | None = None
 
@@ -111,9 +112,6 @@ class ThreatIntelligenceService:
                 if not retryable or attempt + 1 >= _MAX_LOOKUP_ATTEMPTS:
                     raise
                 if exc.retry_after is not None:
-                    # Never retry earlier than the provider's requested
-                    # cooldown. If it exceeds our bounded wait budget, stop
-                    # retrying and surface the rate limit instead.
                     delay = float(exc.retry_after)
                     if delay > _RETRY_MAX_SECONDS:
                         raise
@@ -128,6 +126,56 @@ class ThreatIntelligenceService:
                 delay = min(_RETRY_BASE_SECONDS * (2**attempt), _RETRY_MAX_SECONDS)
             await asyncio.sleep(max(0.0, delay))
         raise RuntimeError("VirusTotal lookup retry loop exhausted")
+
+    async def _run_shared_lookup(
+        self,
+        key: tuple[str, str],
+        shared: concurrent.futures.Future[dict[str, Any]],
+        provider: VirusTotalProvider,
+        digest: str,
+        profile: str,
+    ) -> None:
+        """Run a deduplicated lookup under service, not caller, ownership."""
+        try:
+            report = await self._lookup_with_retry(provider, digest)
+            if (
+                isinstance(report, dict)
+                and report.get("error") is None
+                and isinstance(report.get("found"), bool)
+                and self.cache is not None
+            ):
+                try:
+                    await asyncio.to_thread(self.cache.put, digest, profile, report)
+                except Exception as exc:
+                    logger.warning(
+                        "VirusTotal cache write failed (%s)", type(exc).__name__
+                    )
+        except asyncio.CancelledError:
+            # Cancellation of the owning event loop is exceptional (normal
+            # caller cancellation is shielded below); still release waiters.
+            report = {
+                "provider": provider.name,
+                "error": "VirusTotal lookup cancelled",
+                "sha256": digest,
+            }
+            if not shared.done():
+                shared.set_result(report)
+            raise
+        except Exception as exc:
+            logger.error("Threat intelligence lookup failed (%s)", type(exc).__name__)
+            report = {
+                "provider": provider.name,
+                "error": "VirusTotal lookup failed",
+                "sha256": digest,
+            }
+        else:
+            pass
+        if not shared.done():
+            shared.set_result(report)
+        with self._inflight_lock:
+            if self._inflight.get(key) is shared:
+                self._inflight.pop(key, None)
+                self._lookup_tasks.pop(key, None)
 
     async def lookup_scan_result(self, result: ScanResult) -> dict[str, Any] | None:
         if not self.is_enabled():
@@ -147,17 +195,14 @@ class ThreatIntelligenceService:
         ):
             return None
         profile = selected_profile.value
-
-        # A valid, unexpired report can be reused offline; cache access does
-        # not require the API credential to be present or reachable.
-        cached = None
         if self.cache is not None:
             try:
                 cached = await asyncio.to_thread(self.cache.get, digest, profile)
             except Exception as exc:
                 logger.warning("VirusTotal cache read failed (%s)", type(exc).__name__)
-        if cached is not None:
-            return cached
+                cached = None
+            if cached is not None:
+                return cached
 
         provider = self.get_provider()
         if provider is None:
@@ -171,52 +216,17 @@ class ThreatIntelligenceService:
         key = (digest, profile)
         with self._inflight_lock:
             shared = self._inflight.get(key)
-            leader = shared is None
             if shared is None:
                 shared = concurrent.futures.Future()
+                task = asyncio.create_task(
+                    self._run_shared_lookup(key, shared, provider, digest, profile)
+                )
                 self._inflight[key] = shared
+                self._lookup_tasks[key] = task
 
-        if not leader:
-            return await asyncio.shield(asyncio.wrap_future(shared))
-
-        try:
-            report = await self._lookup_with_retry(provider, digest)
-            if (
-                isinstance(report, dict)
-                and report.get("error") is None
-                and isinstance(report.get("found"), bool)
-                and self.cache is not None
-            ):
-                try:
-                    await asyncio.to_thread(self.cache.put, digest, profile, report)
-                except Exception as exc:
-                    logger.warning(
-                        "VirusTotal cache write failed (%s)", type(exc).__name__
-                    )
-            shared.set_result(report)
-            return report
-        except asyncio.CancelledError:
-            shared.set_result(
-                {
-                    "provider": provider.name,
-                    "error": "VirusTotal lookup cancelled",
-                    "sha256": digest,
-                }
-            )
-            raise
-        except Exception as exc:
-            logger.error("Threat intelligence lookup failed (%s)", type(exc).__name__)
-            report = {
-                "provider": provider.name,
-                "error": "VirusTotal lookup failed",
-                "sha256": digest,
-            }
-            shared.set_result(report)
-            return report
-        finally:
-            with self._inflight_lock:
-                if self._inflight.get(key) is shared:
-                    self._inflight.pop(key, None)
+        # Every caller, including the first one, is merely a waiter. Cancelling
+        # it cannot cancel the service-owned task or the concurrent Future.
+        return await asyncio.shield(asyncio.wrap_future(shared))
 
     def preview_file_upload(self, path):
         self._upload_lookup = None
@@ -232,8 +242,6 @@ class ThreatIntelligenceService:
         if provider is None:
             raise PermissionError("Selected VirusTotal API profile is unavailable or blocked")
         report = await self._lookup_with_retry(provider, preview.sha256)
-        # Keep an isolated authorization snapshot: the caller receives a
-        # separate object and cannot mutate the evidence used by upload_file.
         stored_report = copy.deepcopy(report)
         self._upload_lookup = (
             preview.sha256,
