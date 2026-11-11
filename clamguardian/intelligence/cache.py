@@ -16,7 +16,7 @@ from typing import Any
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _ALLOWED_PROFILES = frozenset({"public", "premium"})
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 
 
 def default_cache_path() -> Path:
@@ -27,12 +27,7 @@ def default_cache_path() -> Path:
 
 
 class VirusTotalCache:
-    """SQLite cache keyed by SHA-256, with profile-checked reuse.
-
-    A cache entry is reusable only when its API profile matches the currently
-    selected profile. This preserves the SHA-256 cache key without allowing a
-    Public result to stand in for a Premium result (or vice versa).
-    """
+    """SQLite cache keyed by SHA-256 and API profile."""
 
     def __init__(
         self,
@@ -77,24 +72,52 @@ class VirusTotalCache:
                     f"VirusTotal cache schema {version} is newer than supported "
                     f"schema {_SCHEMA_VERSION}"
                 )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS vt_hash_cache (
-                    sha256 TEXT PRIMARY KEY,
-                    profile TEXT NOT NULL CHECK(profile IN ('public', 'premium')),
-                    acquired_at REAL NOT NULL,
-                    expires_at REAL NOT NULL,
-                    report_json TEXT NOT NULL
+            if version == 0:
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS vt_hash_cache (
+                        sha256 TEXT NOT NULL,
+                        profile TEXT NOT NULL CHECK(profile IN ('public', 'premium')),
+                        acquired_at REAL NOT NULL,
+                        expires_at REAL NOT NULL,
+                        report_json TEXT NOT NULL,
+                        PRIMARY KEY (sha256, profile)
+                    )
+                    """
                 )
-                """
-            )
+            elif version == 1:
+                # Preserve all valid v1 entries and their original expiry.
+                # Since v1 held one profile per digest, each row maps directly
+                # to the corresponding composite key in v2.
+                connection.execute(
+                    """
+                    CREATE TABLE vt_hash_cache_v2 (
+                        sha256 TEXT NOT NULL,
+                        profile TEXT NOT NULL CHECK(profile IN ('public', 'premium')),
+                        acquired_at REAL NOT NULL,
+                        expires_at REAL NOT NULL,
+                        report_json TEXT NOT NULL,
+                        PRIMARY KEY (sha256, profile)
+                    )
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO vt_hash_cache_v2
+                        (sha256, profile, acquired_at, expires_at, report_json)
+                    SELECT sha256, profile, acquired_at, expires_at, report_json
+                    FROM vt_hash_cache
+                    """
+                )
+                connection.execute("DROP TABLE vt_hash_cache")
+                connection.execute(
+                    "ALTER TABLE vt_hash_cache_v2 RENAME TO vt_hash_cache"
+                )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_vt_hash_cache_expiry "
                 "ON vt_hash_cache(expires_at)"
             )
             connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
-        # Harden existing files too; this cache contains persistent
-        # intelligence metadata and must not inherit permissive modes.
         with suppress(OSError):
             os.chmod(self.path, 0o600)
         self._harden_sidecars()
@@ -125,25 +148,25 @@ class VirusTotalCache:
         now = float(self._clock())
         with self._lock, self._transaction() as connection:
             row = connection.execute(
-                "SELECT profile, expires_at, report_json FROM vt_hash_cache "
-                "WHERE sha256 = ?",
-                (digest,),
+                "SELECT expires_at, report_json FROM vt_hash_cache "
+                "WHERE sha256 = ? AND profile = ?",
+                (digest, selected_profile),
             ).fetchone()
             if row is None:
                 return None
-            cached_profile, expires_at, report_json = row
+            expires_at, report_json = row
             if float(expires_at) <= now:
                 connection.execute(
-                    "DELETE FROM vt_hash_cache WHERE sha256 = ?", (digest,)
+                    "DELETE FROM vt_hash_cache WHERE sha256 = ? AND profile = ?",
+                    (digest, selected_profile),
                 )
-                return None
-            if cached_profile != selected_profile:
                 return None
             try:
                 report = json.loads(report_json)
             except (TypeError, json.JSONDecodeError):
                 connection.execute(
-                    "DELETE FROM vt_hash_cache WHERE sha256 = ?", (digest,)
+                    "DELETE FROM vt_hash_cache WHERE sha256 = ? AND profile = ?",
+                    (digest, selected_profile),
                 )
                 return None
             reported_hash = (
@@ -157,7 +180,8 @@ class VirusTotalCache:
                 or report.get("error") is not None
             ):
                 connection.execute(
-                    "DELETE FROM vt_hash_cache WHERE sha256 = ?", (digest,)
+                    "DELETE FROM vt_hash_cache WHERE sha256 = ? AND profile = ?",
+                    (digest, selected_profile),
                 )
                 return None
             return report
@@ -167,7 +191,6 @@ class VirusTotalCache:
         selected_profile = self._validate_profile(profile)
         if not isinstance(report, dict):
             raise ValueError("report must be a dictionary")
-        # Only definitive provider responses are cacheable.
         reported_hash = report.get("sha256", digest)
         if (
             report.get("error") is not None
@@ -187,8 +210,7 @@ class VirusTotalCache:
                 INSERT INTO vt_hash_cache
                     (sha256, profile, acquired_at, expires_at, report_json)
                 VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(sha256) DO UPDATE SET
-                    profile = excluded.profile,
+                ON CONFLICT(sha256, profile) DO UPDATE SET
                     acquired_at = excluded.acquired_at,
                     expires_at = excluded.expires_at,
                     report_json = excluded.report_json
@@ -200,9 +222,7 @@ class VirusTotalCache:
     def invalidate(self, sha256: str) -> None:
         digest = self._validate_key(sha256)
         with self._lock, self._transaction() as connection:
-            connection.execute(
-                "DELETE FROM vt_hash_cache WHERE sha256 = ?", (digest,)
-            )
+            connection.execute("DELETE FROM vt_hash_cache WHERE sha256 = ?", (digest,))
 
     def clear_expired(self) -> int:
         with self._lock, self._transaction() as connection:
