@@ -24,6 +24,7 @@ from .virustotal import (
 )
 
 logger = logging.getLogger(__name__)
+_asyncio_sleep = asyncio.sleep
 
 _MAX_LOOKUP_ATTEMPTS = 3
 _RETRY_BASE_SECONDS = 1.0
@@ -128,7 +129,7 @@ class _ServiceOwnedEventLoop:
                     if self._closed:
                         coroutine.close()
                         raise RuntimeError("Threat Intelligence service is closed")
-                await asyncio.sleep(0.005)
+                await _asyncio_sleep(0.005)
             return self.submit(coroutine)
         except BaseException:
             coroutine.close()
@@ -208,6 +209,7 @@ class ThreatIntelligenceService:
             tuple[str, str], concurrent.futures.Future[None]
         ] = {}
         self._inflight_lock = threading.Lock()
+        self._cache_writes: dict[tuple[str, str], concurrent.futures.Future[Any]] = {}
         self._upload_lookup: tuple[str, str, dict[str, Any], float] | None = None
         # One daemon worker bounds cache I/O without blocking either asyncio
         # loop or creating threads in asyncio's default executor.
@@ -308,11 +310,46 @@ class ThreatIntelligenceService:
             completed.set_result(None)
         return completed
 
+    def _publish_shared_result(
+        self,
+        key: tuple[str, str],
+        shared: concurrent.futures.Future[dict[str, Any]],
+        report: dict[str, Any],
+    ) -> None:
+        # Remove the completed lookup before waking waiters, under the same
+        # lock used by new callers, so no caller sees a stale inflight entry.
+        with self._inflight_lock:
+            if self._inflight.get(key) is shared:
+                self._inflight.pop(key, None)
+            self._lookup_tasks.pop(key, None)
+            if not shared.done():
+                shared.set_result(report)
+
+    def _track_cache_write(
+        self, key: tuple[str, str], operation: concurrent.futures.Future[Any]
+    ) -> None:
+        with self._inflight_lock:
+            self._cache_writes[key] = operation
+
+        def forget(completed: concurrent.futures.Future[Any]) -> None:
+            with self._inflight_lock:
+                if self._cache_writes.get(key) is completed:
+                    self._cache_writes.pop(key, None)
+
+        operation.add_done_callback(forget)
+
+    async def _wait_for_cache_write(self, key: tuple[str, str]) -> None:
+        with self._inflight_lock:
+            operation = self._cache_writes.get(key)
+        if operation is not None:
+            await asyncio.shield(asyncio.wrap_future(operation))
+
     async def _read_cached_report(
         self, digest: str, profile: str
     ) -> dict[str, Any] | None:
         if self.cache is None:
             return None
+        await self._wait_for_cache_write((digest, profile))
         operation = self._schedule_cache_operation("read", self.cache.get, digest, profile)
         if operation is None:
             return None
@@ -358,38 +395,34 @@ class ThreatIntelligenceService:
             report = await self._lookup_with_retry(provider, digest)
             # Publish the result before best-effort cache persistence. A locked
             # SQLite database must not delay callers after the network lookup.
-            if not shared.done():
-                shared.set_result(report)
             if (
                 isinstance(report, dict)
                 and report.get("error") is None
                 and isinstance(report.get("found"), bool)
                 and self.cache is not None
             ):
-                self._schedule_cache_operation(
+                cache_write = self._schedule_cache_operation(
                     "write", self.cache.put, digest, profile, report
                 )
+                if cache_write is not None:
+                    self._track_cache_write(key, cache_write)
+            self._publish_shared_result(key, shared, report)
         except asyncio.CancelledError:
             # Cancellation of the owning event loop is exceptional (normal
             # caller cancellation is shielded below); still release waiters.
-            if not shared.done():
-                shared.set_result({
-                    "provider": provider.name,
-                    "error": "VirusTotal lookup cancelled",
-                    "sha256": digest,
-                })
+            self._publish_shared_result(key, shared, {
+                "provider": provider.name,
+                "error": "VirusTotal lookup cancelled",
+                "sha256": digest,
+            })
             raise
         except Exception as exc:
             logger.error("Threat intelligence lookup failed (%s)", type(exc).__name__)
-            if not shared.done():
-                shared.set_result({
-                    "provider": provider.name,
-                    "error": "VirusTotal lookup failed",
-                    "sha256": digest,
-                })
-        else:
-            if not shared.done():
-                shared.set_result(report)
+            self._publish_shared_result(key, shared, {
+                "provider": provider.name,
+                "error": "VirusTotal lookup failed",
+                "sha256": digest,
+            })
         finally:
             with self._inflight_lock:
                 if self._inflight.get(key) is shared:
