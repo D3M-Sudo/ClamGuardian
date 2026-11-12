@@ -195,7 +195,30 @@ jobs:
             test "$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l)" -eq 1
             cp "$matches" release/
           done
-          (cd release && sha256sum "${expected[@]}" > SHA256SUMS && sha256sum --check SHA256SUMS)
+          required_evidence=(
+            "aggregate-${arch}.spdx.json"
+            "aggregate-${arch}.cdx.json"
+            "appdir.spdx.json"
+            "appdir.cdx.json"
+            "artifact-${arch}.json"
+            "schema-validation-${arch}.json"
+            "native-packages.json"
+            "license-evidence-${arch}.tar.gz"
+          )
+          for arch in x86_64 aarch64; do
+            mkdir -p "release/sbom-${arch}"
+            for evidence in "${required_evidence[@]}"; do
+              evidence="${evidence//\${arch}/$arch}"
+              matches="$(find release-assets -type f -path "*/sbom/${arch}/${evidence}" -print)"
+              test "$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l)" -eq 1
+              cp "$matches" "release/sbom-${arch}/"
+            done
+            tar -C "release/sbom-${arch}" \
+              -czf "release/ClamGuardian-${version}-sbom-${arch}.tar.gz" .
+            rm -rf "release/sbom-${arch}"
+          done
+          (cd release && find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\0' \
+            | sort -z | xargs -0 sha256sum > SHA256SUMS && sha256sum --check SHA256SUMS)
       - name: Create GitHub Release as Draft
         env:
           GH_TOKEN: ${{ github.token }}

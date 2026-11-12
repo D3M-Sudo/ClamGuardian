@@ -58,3 +58,8 @@ the final AppImage SHA-256 and architecture. SPDX 2.3 and CycloneDX 1.6 output
 is validated against the official JSON schemas whose upstream Git blob IDs
 and source refs are pinned in `install-sbom-validator.sh`. CI uploads the AppImage and all
 license/SBOM evidence together.
+
+
+## Release SBOM evidence
+
+The release workflow attaches one architecture-specific SBOM evidence archive for each of x86_64 and aarch64. Each archive contains the aggregate SPDX 2.3 and CycloneDX 1.6 documents, the AppDir SBOM pair, the artifact SHA-256 manifest, the schema-validation report, the native package inventory, and the complete staged license-evidence tree. The release-level `SHA256SUMS` covers both application artifacts and both evidence archives. The Draft release is not published automatically.

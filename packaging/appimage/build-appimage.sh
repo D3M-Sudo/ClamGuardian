@@ -120,4 +120,8 @@ python3 "$ROOT/packaging/appimage/validate-sbom.py" \
     --sbom-dir "$sbom_dir" \
     --schema-dir "$SBOM_SCHEMA_DIR" \
     --architecture "$APPIMAGE_ARCH"
+cp "$APPDIR/usr/share/licenses/ClamGuardian/native-packages.json" \
+    "$sbom_dir/native-packages.json"
+tar -C "$APPDIR/usr/share/licenses" \
+    -czf "$sbom_dir/license-evidence-$APPIMAGE_ARCH.tar.gz" ClamGuardian
 echo "Built native AppImage: $output"

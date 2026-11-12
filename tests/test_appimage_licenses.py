@@ -1477,3 +1477,24 @@ def test_debian_non_spdx_license_identifiers_remain_unasserted() -> None:
     assert module._debian_license_expression(
         b"Files: src/example.c\nLicense: X11\n"
     ) == ("X11", "verified")
+
+def test_release_workflow_requires_architecture_sbom_evidence_archives() -> None:
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    build = (ROOT / "packaging/appimage/build-appimage.sh").read_text(
+        encoding="utf-8"
+    )
+    for evidence in (
+        "aggregate-${arch}.spdx.json",
+        "aggregate-${arch}.cdx.json",
+        "appdir.spdx.json",
+        "appdir.cdx.json",
+        "artifact-${arch}.json",
+        "schema-validation-${arch}.json",
+        "native-packages.json",
+        "license-evidence-${arch}.tar.gz",
+    ):
+        assert evidence in workflow
+    assert "ClamGuardian-${version}-sbom-${arch}.tar.gz" in workflow
+    assert "sha256sum --check SHA256SUMS" in workflow
+    assert 'tar -C "$APPDIR/usr/share/licenses"' in build
+    assert '"$sbom_dir/native-packages.json"' in build
