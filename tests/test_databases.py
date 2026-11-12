@@ -421,3 +421,54 @@ async def test_update_creates_missing_database_parent_directory(tmp_path: Path) 
     assert result.status is DatabaseStatus.INSTALLED
     assert (database_dir / "thirdparty.cvd").read_bytes() == b"good"
     assert list(base.glob(".clamguardian-db-*")) == []
+
+
+class _BlockingDownloadResponse(_FakeResponse):
+    def __init__(self, started: asyncio.Event) -> None:
+        super().__init__(b"partial payload")
+        self._started = started
+
+    async def iter_chunked(self, size: int):
+        yield b"partial"
+        self._started.set()
+        await asyncio.Future()
+
+
+class _BlockingDownloadSession(_FakeSession):
+    def __init__(self, started: asyncio.Event) -> None:
+        super().__init__(b"")
+        self._started = started
+
+    def get(self, url: str, allow_redirects: bool = True) -> _BlockingDownloadResponse:
+        return _BlockingDownloadResponse(self._started)
+
+
+@pytest.mark.asyncio
+async def test_provider_removes_partial_file_when_download_is_cancelled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from clamguardian.databases import provider as provider_module
+    from clamguardian.databases.provider import FileDatabaseProvider
+
+    started = asyncio.Event()
+    monkeypatch.setattr(
+        provider_module.aiohttp,
+        "ClientSession",
+        lambda *a, **k: _BlockingDownloadSession(started),
+    )
+    payload = b"expected payload"
+    artifact_source = _artifact_source(payload, hashlib.sha256(payload).hexdigest())
+    destination = tmp_path / "cancelled-download"
+    provider = FileDatabaseProvider()
+
+    async def consume() -> None:
+        async for _ in provider.download(artifact_source, destination):
+            pass
+
+    task = asyncio.create_task(consume())
+    await asyncio.wait_for(started.wait(), timeout=2)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert list(destination.iterdir()) == []
