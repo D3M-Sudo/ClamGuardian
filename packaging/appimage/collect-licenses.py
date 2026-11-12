@@ -484,7 +484,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--appdir", type=Path, required=True)
     parser.add_argument("--dpkg-info-dir", type=Path, default=Path("/var/lib/dpkg/info"))
     parser.add_argument("--doc-root", type=Path, default=Path("/usr/share/doc"))
-    parser.add_argument("--common-licenses-dir", type=Path, default=Path("/usr/share/common-licenses"))
+    parser.add_argument(
+        "--common-licenses-dir", type=Path, default=Path("/usr/share/common-licenses")
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--architecture", required=True, choices=("x86_64", "aarch64"))
     args = parser.parse_args(argv)
