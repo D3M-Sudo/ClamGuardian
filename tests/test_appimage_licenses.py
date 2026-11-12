@@ -1060,3 +1060,46 @@ def test_native_license_collector_resolves_symlink_target_for_dpkg_ownership(
     package = next(item for item in result["packages"] if item["package"] == "libexample1:amd64")
     assert "usr/lib/x86_64-linux-gnu/libexample.so.2" in package["artifact_paths"]
     assert package["copyright_status"] == "present"
+
+
+
+def test_native_license_collector_attributes_flattened_elf_by_unique_soname_filename(
+    tmp_path: Path,
+) -> None:
+    module_path = ROOT / "packaging" / "appimage" / "collect-licenses.py"
+    spec = importlib.util.spec_from_file_location("appimage_flattened_library_provenance", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    appdir = tmp_path / "AppDir"
+    info = tmp_path / "dpkg-info"
+    docs = tmp_path / "doc"
+    flattened_library = appdir / "usr/lib/libexample.so.2"
+    flattened_library.parent.mkdir(parents=True)
+    flattened_library.write_bytes(b"\\x7fELF" + b"fixture")
+    info.mkdir()
+    (info / "libexample1:amd64.list").write_text(
+        "/usr/lib/x86_64-linux-gnu/libexample.so.2.0.0\\n", encoding="utf-8"
+    )
+    (docs / "libexample1").mkdir(parents=True)
+    (docs / "libexample1/copyright").write_text(
+        "Files: *\\nLicense: MIT\\n", encoding="utf-8"
+    )
+
+    result = module.collect_package_provenance(
+        appdir,
+        info,
+        docs,
+        appdir / "usr/share/licenses/ClamGuardian",
+        package_metadata_resolver=lambda package: {
+            "version": "2.0-1", "source_package": "libexample1", "source_version": "2.0-1",
+        },
+    )
+
+    package = next(item for item in result["packages"] if item["package"] == "libexample1:amd64")
+    assert "usr/lib/libexample.so.2" in package["artifact_paths"]
+    assert "/usr/lib/x86_64-linux-gnu/libexample.so.2.0.0" in package["source_paths"]
+    assert package["detection_method"] == "dpkg-file-list-unique-soname-filename"
+    assert package["copyright_status"] == "present"
