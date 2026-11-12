@@ -54,6 +54,7 @@ verify_sha512 "$ROOT/sources/mimalloc-2.1.7-candidate.tar.gz" "4e30976758015c76a
 cp "$WORK/type2-runtime/src/runtime/Makefile" "$ROOT/build-inputs/type2-runtime/"
 cp "$WORK/type2-runtime/scripts/common/install-dependencies.sh" "$ROOT/build-inputs/type2-runtime/"
 cp "$WORK/type2-runtime/scripts/docker/Dockerfile" "$ROOT/build-inputs/type2-runtime/"
+test -s "$WORK/type2-runtime/patches/libfuse/mount.c.diff"
 cp -a "$WORK/type2-runtime/patches" "$ROOT/build-inputs/type2-runtime/"
 for item in zstd zlib musl; do
     fetch "https://raw.githubusercontent.com/alpinelinux/aports/v3.21.0/main/$item/APKBUILD" "$ROOT/build-inputs/alpine-3.21/$item.APKBUILD"
