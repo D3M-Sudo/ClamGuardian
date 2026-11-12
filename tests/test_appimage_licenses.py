@@ -83,11 +83,6 @@ def test_valid_appdir_and_runtime_inventories_are_accepted() -> None:
     appdir, runtime = _valid_inventories()
 
     assert validator.validate_inventories(appdir, runtime) == []
-    components = {item["id"]: item for item in appdir["components"]}
-    assert components["python-aiosignal"]["license"] == "Apache-2.0"
-    assert components["python-multidict"]["license"] == "Apache-2.0"
-    assert components["native-adwaita-icon-theme"]["license"] == "NOASSERTION"
-    assert components["native-adwaita-icon-theme"]["license_status"] == "unknown"
 
 
 def test_component_missing_required_field_is_rejected() -> None:
@@ -666,6 +661,11 @@ def test_runtime_inventory_has_explicit_mimalloc_and_upstream_license_evidence()
         (ROOT / "packaging/appimage/licenses/runtime-type2.json").read_text(encoding="utf-8")
     )
     assert validator.validate_inventories(appdir, runtime) == []
+    components = {item["id"]: item for item in appdir["components"]}
+    assert components["python-aiosignal"]["license"] == "Apache-2.0"
+    assert components["python-multidict"]["license"] == "Apache-2.0"
+    assert components["native-adwaita-icon-theme"]["license"] == "NOASSERTION"
+    assert components["native-adwaita-icon-theme"]["license_status"] == "unknown"
     names = {item["name"] for item in runtime["components"]}
     assert {
         "AppImage Type 2 runtime", "musl", "libfuse", "squashfuse",
