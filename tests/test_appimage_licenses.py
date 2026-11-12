@@ -1667,3 +1667,68 @@ def test_extracted_appimage_sbom_report_requires_semantic_validation(
     report_path.write_text(json.dumps(invalid), encoding="utf-8")
     with pytest.raises(ValueError, match="semantic license validation"):
         module.validate_report(report_path)
+
+
+def _load_dep5_test_module() -> Any:
+    module_path = ROOT / "packaging" / "appimage" / "collect-licenses.py"
+    spec = importlib.util.spec_from_file_location("appimage_dep5_test_parser", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_dep5_header_license_is_used_as_package_level_declaration() -> None:
+    module = _load_dep5_test_module()
+    content = (
+        b"Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\\n"
+        b"Upstream-Name: Example\\n"
+        b"License: GPL-2+ AND MIT\\n"
+        b"\\n"
+        b"Files: *\\nCopyright: Example\\nLicense: GPL-2+\\n"
+        b"\\n"
+        b"Files: vendor/*\\nCopyright: Vendor\\nLicense: MIT\\n"
+        b"\\n"
+        b"License: GPL-2+\\n GNU GPL text.\\n"
+        b"\\n"
+        b"License: MIT\\n MIT text.\\n"
+    )
+
+    assert module._debian_license_expression(content) == (
+        "GPL-2.0-or-later AND MIT",
+        "verified",
+    )
+
+
+def test_dep5_partial_files_stanza_is_not_promoted_to_package_license() -> None:
+    module = _load_dep5_test_module()
+    content = (
+        b"Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\\n"
+        b"Upstream-Name: Example\\n"
+        b"\\n"
+        b"Files: src/specific.c\\nCopyright: Example\\nLicense: MIT\\n"
+        b"\\n"
+        b"License: MIT\\n MIT text.\\n"
+    )
+
+    assert module._debian_license_expression(content) == ("NOASSERTION", "unknown")
+
+
+def test_dep5_license_evidence_excludes_header_and_standalone_license_paragraphs() -> None:
+    module = _load_dep5_test_module()
+    content = (
+        b"Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\\n"
+        b"Upstream-Name: Example\\n"
+        b"License: GPL-2+\\n"
+        b"\\n"
+        b"Files: src/example.c\\nCopyright: Example\\nLicense: MIT\\n"
+        b"\\n"
+        b"License: MIT\\n Full MIT license text.\\n"
+    )
+
+    evidence = module._debian_license_evidence(content, "third-party/native/example/copyright")
+
+    assert len(evidence) == 1
+    assert evidence[0]["file_patterns"] == ["src/example.c"]
+    assert evidence[0]["license_declaration"] == "MIT"
