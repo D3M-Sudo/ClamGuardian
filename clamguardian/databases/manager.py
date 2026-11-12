@@ -243,14 +243,26 @@ class DatabaseManager:
             except asyncio.CancelledError:
                 rollback_complete = self._rollback_moved(moved)
                 with self._state_lock:
-                    if previous is None:
-                        self._installed.pop(source_id, None)
-                        restored_status = InstalledDatabase(
-                            source, DatabaseStatus.AVAILABLE
-                        )
+                    if rollback_complete:
+                        if previous is None:
+                            self._installed.pop(source_id, None)
+                            restored_status = InstalledDatabase(
+                                source, DatabaseStatus.AVAILABLE
+                            )
+                        else:
+                            self._installed[source_id] = previous
+                            restored_status = previous
                     else:
-                        self._installed[source_id] = previous
-                        restored_status = previous
+                        recovery_path = str(backup) if backup is not None else "unknown"
+                        restored_status = InstalledDatabase(
+                            source,
+                            DatabaseStatus.ERROR,
+                            previous.installed_at if previous else None,
+                            "Cancelled update could not be fully rolled back; "
+                            f"recovery data preserved at {recovery_path}",
+                            previous.artifact_files if previous else (),
+                        )
+                        self._installed[source_id] = restored_status
                     try:
                         self._persist()
                     except Exception:
