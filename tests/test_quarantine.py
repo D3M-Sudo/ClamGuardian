@@ -347,3 +347,92 @@ def test_vault_directory_symlink_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="symbolic link"):
         QuarantineVault(link, QuarantineVault.generate_key())
 
+
+
+def test_restore_refuses_symlink_destination_without_overwriting_target(tmp_path: Path) -> None:
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"quarantined payload")
+    vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
+    entry = vault.quarantine(source)
+
+    protected = tmp_path / "protected.bin"
+    protected.write_bytes(b"must remain unchanged")
+    destination = tmp_path / "restore-link.bin"
+    destination.symlink_to(protected)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        vault.restore(entry.item_id, destination)
+
+    assert protected.read_bytes() == b"must remain unchanged"
+    assert destination.is_symlink()
+    assert vault._path(entry.item_id).exists()
+
+
+def test_restore_refuses_symlink_parent_directory(tmp_path: Path) -> None:
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"quarantined payload")
+    vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
+    entry = vault.quarantine(source)
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    linked_parent = tmp_path / "linked-parent"
+    linked_parent.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        vault.restore(entry.item_id, linked_parent / "restored.bin")
+
+    assert list(outside.iterdir()) == []
+    assert vault._path(entry.item_id).exists()
+
+
+def test_restore_refuses_symlink_replaced_original_path(tmp_path: Path) -> None:
+    original = tmp_path / "original.bin"
+    original.write_bytes(b"quarantined payload")
+    vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
+    entry = vault.quarantine(original)
+
+    protected = tmp_path / "protected.bin"
+    protected.write_bytes(b"must remain unchanged")
+    original.symlink_to(protected)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        vault.restore(entry.item_id)
+
+    assert protected.read_bytes() == b"must remain unchanged"
+    assert original.is_symlink()
+    assert vault._path(entry.item_id).exists()
+
+
+def test_quarantine_rejects_same_size_source_mutation(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "changing.bin"
+    source.write_bytes(b"good")
+    vault = QuarantineVault(
+        tmp_path / "vault", QuarantineVault.generate_key(), chunk_size=4
+    )
+    encrypt_chunk = vault._encrypt_chunk
+    mutated = False
+
+    def mutate_during_encryption(nonce, aad, index, last, chunk):
+        nonlocal mutated
+        encrypted = encrypt_chunk(nonce, aad, index, last, chunk)
+        if not mutated:
+            source.write_bytes(b"evil")
+            mutated = True
+        return encrypted
+
+    monkeypatch.setattr(vault, "_encrypt_chunk", mutate_during_encryption)
+
+    with pytest.raises(ValueError, match="File changed while being quarantined"):
+        vault.quarantine(source)
+
+    assert source.read_bytes() == b"evil"
+    assert list(vault.directory.glob("*.qtn")) == []
+
+
+def test_parse_metadata_rejects_non_object_json() -> None:
+    from clamguardian.core.quarantine import _parse_metadata
+
+    for payload in (b"[]", b"null", b'"text"'):
+        with pytest.raises(ValueError, match="Invalid quarantine metadata"):
+            _parse_metadata(payload, "0123456789abcdef0123456789abcdef")
