@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-APPIMAGE="$(realpath "\${1:?usage: test-appimage.sh /path/to/ClamGuardian.AppImage}")"
+APPIMAGE="$(realpath "${1:?usage: test-appimage.sh /path/to/ClamGuardian.AppImage}")"
 test -x "$APPIMAGE"
-expected_arch="\${APPIMAGE_ARCH:-$(uname -m)}"
+expected_arch="${APPIMAGE_ARCH:-$(uname -m)}"
 actual_arch="$(uname -m)"
 if [ "$actual_arch" != "$expected_arch" ]; then
   echo "Native runner architecture mismatch: expected $expected_arch, got $actual_arch" >&2

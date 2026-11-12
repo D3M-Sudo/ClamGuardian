@@ -440,3 +440,9 @@ def test_appimage_recipe_bundles_required_gi_typelibs_and_icon() -> None:
     assert "rsvg-convert" in recipe
     assert "$TARGET_APPDIR/.DirIcon" in recipe
     assert "wheelhouse/" in recipe
+
+
+def test_generated_packaging_wheelhouses_are_ignored() -> None:
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert "/packaging/flatpak/wheelhouse/" in gitignore
+    assert "/packaging/appimage/wheelhouse/" in gitignore
