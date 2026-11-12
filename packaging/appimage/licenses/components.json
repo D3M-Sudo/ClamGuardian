@@ -295,13 +295,13 @@
       "architecture": "both",
       "license": "GPL-2.0-or-later",
       "license_status": "declared",
-      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source": "Native package ownership, exact installed version and copied copyright evidence are recorded in the build-generated native-packages.json manifest",
       "source_package": null,
       "artifact_paths": [
-        "liblzo2.so.2"
+        "usr/lib/*/liblzo2.so.2"
       ],
       "evidence_paths": [
-        "native package copyright/NOTICE to be collected during AppImage build"
+        "usr/share/licenses/ClamGuardian/native-packages.json"
       ],
       "detection_method": "native-package-provenance",
       "verification_status": "partial",
@@ -317,13 +317,13 @@
       "architecture": "both",
       "license": "LGPL-2.1-or-later",
       "license_status": "declared",
-      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source": "Native package ownership, exact installed version and copied copyright evidence are recorded in the build-generated native-packages.json manifest",
       "source_package": null,
       "artifact_paths": [
         "usr/lib/python3/dist-packages/gi"
       ],
       "evidence_paths": [
-        "native package copyright/NOTICE to be collected during AppImage build"
+        "usr/share/licenses/ClamGuardian/native-packages.json"
       ],
       "detection_method": "native-package-provenance",
       "verification_status": "partial",
@@ -339,13 +339,13 @@
       "architecture": "both",
       "license": "MPL-1.1 OR LGPL-2.1-only",
       "license_status": "declared",
-      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source": "Native package ownership, exact installed version and copied copyright evidence are recorded in the build-generated native-packages.json manifest",
       "source_package": null,
       "artifact_paths": [
         "usr/lib/python3/dist-packages/cairo"
       ],
       "evidence_paths": [
-        "native package copyright/NOTICE to be collected during AppImage build"
+        "usr/share/licenses/ClamGuardian/native-packages.json"
       ],
       "detection_method": "native-package-provenance",
       "verification_status": "partial",
@@ -361,13 +361,13 @@
       "architecture": "both",
       "license": "LGPL-2.1-or-later",
       "license_status": "declared",
-      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source": "Native package ownership, exact installed version and copied copyright evidence are recorded in the build-generated native-packages.json manifest",
       "source_package": null,
       "artifact_paths": [
         "usr/lib/*/gio/modules/libdconfsettings.so"
       ],
       "evidence_paths": [
-        "native package copyright/NOTICE to be collected during AppImage build"
+        "usr/share/licenses/ClamGuardian/native-packages.json"
       ],
       "detection_method": "native-package-provenance",
       "verification_status": "partial",
@@ -383,13 +383,13 @@
       "architecture": "both",
       "license": "LGPL-3.0-only OR CC-BY-SA-3.0-US",
       "license_status": "declared",
-      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source": "Native package ownership, exact installed version and copied copyright evidence are recorded in the build-generated native-packages.json manifest",
       "source_package": null,
       "artifact_paths": [
         "usr/share/icons/Adwaita"
       ],
       "evidence_paths": [
-        "native package copyright/NOTICE to be collected during AppImage build"
+        "usr/share/licenses/ClamGuardian/native-packages.json"
       ],
       "detection_method": "native-package-provenance",
       "verification_status": "partial",
@@ -405,13 +405,13 @@
       "architecture": "both",
       "license": "GPL-2.0-or-later",
       "license_status": "declared",
-      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source": "Native package ownership, exact installed version and copied copyright evidence are recorded in the build-generated native-packages.json manifest",
       "source_package": null,
       "artifact_paths": [
         "usr/share/icons/hicolor"
       ],
       "evidence_paths": [
-        "native package copyright/NOTICE to be collected during AppImage build"
+        "usr/share/licenses/ClamGuardian/native-packages.json"
       ],
       "detection_method": "native-package-provenance",
       "verification_status": "partial",
@@ -427,13 +427,13 @@
       "architecture": "both",
       "license": "LGPL-2.1-or-later",
       "license_status": "declared",
-      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source": "Native package ownership, exact installed version and copied copyright evidence are recorded in the build-generated native-packages.json manifest",
       "source_package": null,
       "artifact_paths": [
         "usr/share/glib-2.0/schemas"
       ],
       "evidence_paths": [
-        "native package copyright/NOTICE to be collected during AppImage build"
+        "usr/share/licenses/ClamGuardian/native-packages.json"
       ],
       "detection_method": "native-package-provenance",
       "verification_status": "partial",
@@ -449,13 +449,13 @@
       "architecture": "both",
       "license": "NOASSERTION",
       "license_status": "unknown",
-      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source": "Native package ownership, exact installed version and copied copyright evidence are recorded in the build-generated native-packages.json manifest",
       "source_package": null,
       "artifact_paths": [
         "etc/ssl/certs/ca-certificates.crt"
       ],
       "evidence_paths": [
-        "native package copyright/NOTICE to be collected during AppImage build"
+        "usr/share/licenses/ClamGuardian/native-packages.json"
       ],
       "detection_method": "native-package-provenance",
       "verification_status": "partial",
@@ -471,13 +471,13 @@
       "architecture": "both",
       "license": "NOASSERTION",
       "license_status": "unknown",
-      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source": "Native package ownership, exact installed version and copied copyright evidence are recorded in the build-generated native-packages.json manifest",
       "source_package": null,
       "artifact_paths": [
         "usr/lib/python3.12"
       ],
       "evidence_paths": [
-        "native package copyright/NOTICE to be collected during AppImage build"
+        "usr/share/licenses/ClamGuardian/native-packages.json"
       ],
       "detection_method": "native-package-provenance",
       "verification_status": "partial",
@@ -494,13 +494,13 @@
       "architecture": "both",
       "license": "NOASSERTION",
       "license_status": "unknown",
-      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source": "Native package ownership, exact installed version and copied copyright evidence are recorded in the build-generated native-packages.json manifest",
       "source_package": null,
       "artifact_paths": [
         "usr/lib/python3.12/lib-dynload/_decimal*.so"
       ],
       "evidence_paths": [
-        "native package copyright/NOTICE to be collected during AppImage build"
+        "usr/share/licenses/ClamGuardian/native-packages.json"
       ],
       "detection_method": "native-package-provenance",
       "verification_status": "partial",
