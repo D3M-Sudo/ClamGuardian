@@ -60,8 +60,8 @@ ln -sfn ../usr/lib/python3.12 "$APPDIR/lib/python3.12"
 python -m pip install --no-index --no-deps --target "$APPDIR/opt/python" "$WHEELHOUSE"/*.whl
 cp -a "$ROOT/clamguardian" "$APPDIR/opt/python/"
 
-# The AppRun is a small, auditable shell entrypoint; no generated AppRun patch.
-install -Dm755 "$ROOT/packaging/appimage/AppRun" "$APPDIR/AppRun"
+# linuxdeploy installs the reviewed custom AppRun via --custom-apprun.
+# Do not pre-create AppDir/AppRun: that makes linuxdeploy replace it noisily.
 install -Dm644 "$ROOT/data/io.github.clamguardian.ClamGuardian.desktop" \
     "$APPDIR/io.github.clamguardian.ClamGuardian.desktop"
 sed -i 's/^Exec=.*/Exec=AppRun ui/' "$APPDIR/io.github.clamguardian.ClamGuardian.desktop"

@@ -66,6 +66,14 @@ test -f "$APPDIR/usr/lib/$MULTIARCH/gdk-pixbuf-2.0/2.10.0/loaders/libpixbufloade
 install -Dm644 /etc/ssl/certs/ca-certificates.crt \
     "$APPDIR/etc/ssl/certs/ca-certificates.crt"
 
+# CPython's python.o is a static-link input, not a runtime object. linuxdeploy
+# cannot patch it (patchelf reports "wrong ELF type"), so omit it from AppDir.
+for static_object in "$APPDIR"/usr/lib/python3.12/config-*/python.o; do
+    if [ -f "$static_object" ]; then
+        rm -f "$static_object"
+    fi
+done
+
 # linuxdeploy is pinned per native architecture and verifies its SHA-256 before
 # execution. No appimage-builder source patching or generated AppRun runtime.
 # Its default dependency resolver excludes host glibc and graphics drivers.
