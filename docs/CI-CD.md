@@ -35,12 +35,12 @@ A tag matching `vX.Y.Z` starts `.github/workflows/release.yml`. The pipeline:
 
 ## Single publication approval
 
-Publication is separate from candidate creation. Run
-`Publish release` (`.github/workflows/publish-release.yml`) manually and
-enter the exact tag while selecting the protected `feature` branch. Runs
-dispatched from any other ref are skipped. That single workflow dispatch is
-the sole publication approval. The workflow requires a Draft, verifies all four artifacts and
-`SHA256SUMS`, validates every checksum, and only then publishes the Draft.
+Publication is separate from candidate creation. After reviewing the
+Draft release on GitHub, a maintainer performs the single approval by using
+**Publish release** in the GitHub Releases UI. Before publishing, verify that
+the Draft contains exactly the four expected architecture-specific artifacts
+and `SHA256SUMS`, and that the checksums validate. No second workflow dispatch
+or per-artifact approval is required.
 
 There is no automatic Flathub publication, partial publication or Wheel/sdist
 distribution.
@@ -53,4 +53,4 @@ distribution.
   tagging.
 - Confirm both native architecture jobs are green and the Draft has exactly
   four product artifacts plus `SHA256SUMS`.
-- Review release notes and checksums before running the publication workflow.
+- Review release notes and checksums before selecting **Publish release** in GitHub.

@@ -513,13 +513,16 @@ def test_packaging_workflows_use_finite_gtk_construction_smoke() -> None:
     assert "packaging/smoke/gtk-smoke.py" in release_gate
 
 
-def test_publish_workflow_scopes_write_permission_to_feature_branch() -> None:
-    workflow = (ROOT / ".github" / "workflows" / "publish-release.yml").read_text(encoding="utf-8")
-    assert "contents: read" in workflow
-    assert "if: github.ref == 'refs/heads/feature'" in workflow
-    job = workflow.split("  validate-and-publish:", 1)[1]
-    assert "permissions:" in job
-    assert "contents: write" in job
+def test_release_pipeline_prepares_a_draft_for_single_manual_publication() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "gh release create" in workflow
+    assert "--draft" in workflow
+    assert "gh release publish" not in workflow
+    assert not (ROOT / ".github" / "workflows" / "publish-release.yml").exists()
+
+    docs = (ROOT / "docs" / "CI-CD.md").read_text(encoding="utf-8")
+    assert "Publish release" in docs
+    assert "GitHub Releases UI" in docs
 
 
 def test_shared_gtk_smoke_constructs_the_complete_application() -> None:
