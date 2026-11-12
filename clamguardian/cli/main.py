@@ -1072,13 +1072,17 @@ def _cmd_intel_upload(args: argparse.Namespace, streams: _Streams) -> int:
         return EXIT_OK, report
 
     try:
-        code, report = asyncio.run(_workflow())
-    except Exception as exc:
-        print(
-            f"error: VirusTotal upload workflow failed ({type(exc).__name__})",
-            file=streams.err,
-        )
-        return EXIT_ENGINE_ERROR
+        try:
+            code, report = asyncio.run(_workflow())
+        except Exception as exc:
+            print(
+                f"error: VirusTotal upload workflow failed ({type(exc).__name__})",
+                file=streams.err,
+            )
+            return EXIT_ENGINE_ERROR
+    finally:
+        with contextlib.suppress(Exception):
+            service.close(timeout=8)
     if report is not None:
         print(json.dumps(report, indent=2), file=streams.out)
     return code

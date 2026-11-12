@@ -1,5 +1,6 @@
 """Security-focused quarantine vault tests."""
 
+import errno
 from pathlib import Path
 
 import pytest
@@ -347,3 +348,218 @@ def test_vault_directory_symlink_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="symbolic link"):
         QuarantineVault(link, QuarantineVault.generate_key())
 
+
+
+def test_restore_refuses_symlink_destination_without_overwriting_target(tmp_path: Path) -> None:
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"quarantined payload")
+    vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
+    entry = vault.quarantine(source)
+
+    protected = tmp_path / "protected.bin"
+    protected.write_bytes(b"must remain unchanged")
+    destination = tmp_path / "restore-link.bin"
+    destination.symlink_to(protected)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        vault.restore(entry.item_id, destination)
+
+    assert protected.read_bytes() == b"must remain unchanged"
+    assert destination.is_symlink()
+    assert vault._path(entry.item_id).exists()
+
+
+def test_restore_refuses_symlink_parent_directory(tmp_path: Path) -> None:
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"quarantined payload")
+    vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
+    entry = vault.quarantine(source)
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    linked_parent = tmp_path / "linked-parent"
+    linked_parent.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        vault.restore(entry.item_id, linked_parent / "restored.bin")
+
+    assert list(outside.iterdir()) == []
+    assert vault._path(entry.item_id).exists()
+
+
+def test_restore_refuses_symlink_replaced_original_path(tmp_path: Path) -> None:
+    original = tmp_path / "original.bin"
+    original.write_bytes(b"quarantined payload")
+    vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
+    entry = vault.quarantine(original)
+
+    protected = tmp_path / "protected.bin"
+    protected.write_bytes(b"must remain unchanged")
+    original.symlink_to(protected)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        vault.restore(entry.item_id)
+
+    assert protected.read_bytes() == b"must remain unchanged"
+    assert original.is_symlink()
+    assert vault._path(entry.item_id).exists()
+
+
+def test_quarantine_rejects_same_size_source_mutation(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "changing.bin"
+    source.write_bytes(b"good")
+    vault = QuarantineVault(
+        tmp_path / "vault", QuarantineVault.generate_key(), chunk_size=4
+    )
+    encrypt_chunk = vault._encrypt_chunk
+    mutated = False
+
+    def mutate_during_encryption(nonce, aad, index, last, chunk):
+        nonlocal mutated
+        encrypted = encrypt_chunk(nonce, aad, index, last, chunk)
+        if not mutated:
+            source.write_bytes(b"evil")
+            mutated = True
+        return encrypted
+
+    monkeypatch.setattr(vault, "_encrypt_chunk", mutate_during_encryption)
+
+    with pytest.raises(ValueError, match="File changed while being quarantined"):
+        vault.quarantine(source)
+
+    assert source.read_bytes() == b"evil"
+    assert list(vault.directory.glob("*.qtn")) == []
+
+
+def test_parse_metadata_rejects_non_object_json() -> None:
+    from clamguardian.core.quarantine import _parse_metadata
+
+    for payload in (b"[]", b"null", b'"text"'):
+        with pytest.raises(ValueError, match="Invalid quarantine metadata"):
+            _parse_metadata(payload, "0123456789abcdef0123456789abcdef")
+
+
+def test_list_entries_skips_corrupt_record_and_keeps_valid_items(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    source = tmp_path / "valid.bin"
+    source.write_bytes(b"valid payload")
+    vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
+    valid_entry = vault.quarantine(source)
+    (vault.directory / f"{'a' * 32}.qtn").write_bytes(b"not a quarantine record")
+
+    entries = vault.list_entries()
+
+    assert [entry.item_id for entry in entries] == [valid_entry.item_id]
+    assert "Skipping invalid quarantine record" in caplog.text
+
+
+
+def test_quarantine_preserves_replacement_racing_with_source_detach(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A pathname replacement immediately before detach is not deleted."""
+    import os
+
+    source = tmp_path / "raced.bin"
+    source.write_bytes(b"original payload")
+    replacement = tmp_path / "replacement.tmp"
+    replacement.write_bytes(b"attacker replacement")
+    vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
+
+    real_rename = os.rename
+    raced = False
+
+    def replace_then_rename(src, dst, *, src_dir_fd=None, dst_dir_fd=None):
+        nonlocal raced
+        if (
+            src == source.name
+            and isinstance(dst, str)
+            and dst.endswith(".clamguardian-pending")
+            and not raced
+        ):
+            raced = True
+            os.replace(replacement, source)
+        return real_rename(
+            src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd
+        )
+
+    monkeypatch.setattr(os, "rename", replace_then_rename)
+
+    with pytest.raises(ValueError, match="Source path changed"):
+        vault.quarantine(source)
+
+    assert raced
+    assert source.read_bytes() == b"attacker replacement"
+    assert list(vault.directory.glob("*.qtn")) == []
+    assert not list(tmp_path.glob("*.clamguardian-pending"))
+
+
+def test_restore_rejects_parent_replaced_by_symlink_after_validation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A parent swapped after path validation cannot redirect restored bytes."""
+    from contextlib import contextmanager
+
+    import clamguardian.core.quarantine as quarantine_module
+
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"quarantined payload")
+    vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
+    entry = vault.quarantine(source)
+
+    parent = tmp_path / "restore-parent"
+    parent.mkdir()
+    moved_parent = tmp_path / "restore-parent-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    real_open_chain = quarantine_module._open_directory_chain
+    swapped = False
+
+    @contextmanager
+    def swap_then_open(path, *, create):
+        nonlocal swapped
+        if Path(path) == parent and not swapped:
+            swapped = True
+            os.rename(parent, moved_parent)
+            parent.symlink_to(outside, target_is_directory=True)
+        try:
+            with real_open_chain(path, create=create) as descriptor:
+                yield descriptor
+        finally:
+            if swapped and parent.is_symlink():
+                parent.unlink()
+                os.rename(moved_parent, parent)
+
+    import os
+
+    monkeypatch.setattr(quarantine_module, "_open_directory_chain", swap_then_open)
+
+    with pytest.raises(OSError) as exc_info:
+        vault.restore(entry.item_id, parent / "restored.bin")
+
+    assert exc_info.value.errno in {errno.ELOOP, errno.ENOTDIR}
+
+    assert swapped
+    assert list(outside.iterdir()) == []
+    assert list(parent.iterdir()) == []
+    assert vault._path(entry.item_id).exists()
+
+def test_restore_rejects_oversized_chunk_geometry_before_reading(tmp_path: Path) -> None:
+    source = tmp_path / "payload.bin"
+    source.write_bytes(b"small payload")
+    vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
+    entry = vault.quarantine(source)
+    record = vault._path(entry.item_id)
+    raw = bytearray(record.read_bytes())
+    aad_length = int.from_bytes(raw[16:20], "big")
+    geometry_offset = 16 + 4 + aad_length
+    raw[geometry_offset : geometry_offset + 4] = (0xFFFFFFFF).to_bytes(4, "big")
+    record.write_bytes(raw)
+
+    with pytest.raises(ValueError, match="record geometry"):
+        vault.restore(entry.item_id, tmp_path / "restored.bin")
+
+    assert not (tmp_path / "restored.bin").exists()
+    assert record.exists()

@@ -402,6 +402,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             self._service_loop: asyncio.AbstractEventLoop | None = None
             self._service_thread: threading.Thread | None = None
             self._service_ready = threading.Event()
+            self._service_runner = None
             self._usb_monitor = None
             self._realtime_service = None
             self._scheduler = None
@@ -483,7 +484,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
         def _sync_background_services(self, settings) -> None:
             """Apply persisted service switches without blocking the GTK loop."""
             loop = self._service_loop
-            if loop is None or loop.is_closed():
+            if loop is None or loop.is_closed() or not loop.is_running():
                 return
             asyncio.run_coroutine_threadsafe(
                 self._configure_background_services(settings), loop
@@ -495,16 +496,23 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             from ..core.usb import USBDeviceScanner, USBMountMonitor
             from ..realtime import RealtimeMonitorService
 
+            runner = self._service_runner
+            if runner is None:
+                logging.getLogger(__name__).error(
+                    "Background services cannot start without the shared scan runner"
+                )
+                return
+
             if self._usb_monitor is None:
                 scanner = USBDeviceScanner(
-                    self._service_runner,
+                    runner,
                     history_store=self._service_history_store,
                 )
                 self._usb_monitor = USBMountMonitor(scanner)
             paths_changed = False
             if self._realtime_service is None:
                 self._realtime_service = RealtimeMonitorService(
-                    self._service_runner,
+                    runner,
                     history_store=self._service_history_store,
                     monitored_paths=settings.realtime_paths,
                     on_status_changed=self._on_realtime_status_changed,
@@ -517,7 +525,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 self._realtime_service.monitored_paths = new_paths
             if self._scheduler is None:
                 self._scheduler = ScheduledScanManager(
-                    self._service_runner,
+                    runner,
                     self._service_settings_store,
                     history_store=self._service_history_store,
                 )
@@ -579,30 +587,54 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             return False
 
         def _on_shutdown(self, _app: Adw.Application) -> None:
-            # Intelligence owns a separate event-loop thread. Its shutdown
-            # must not depend on the optional app-services loop being present.
+            loop = self._service_loop
+            runner = self._service_runner
+            if runner is None and self._window is not None:
+                controller = getattr(self._window, "_scan_controller", None)
+                runner = getattr(controller, "_runner", None)
+
+            if loop is not None and loop.is_running() and not loop.is_closed():
+
+                async def stop_services() -> None:
+                    for service in (
+                        self._usb_monitor,
+                        self._realtime_service,
+                        self._scheduler,
+                    ):
+                        if service is not None:
+                            await service.stop()
+                    # UI scans run on short-lived worker loops, while USB,
+                    # realtime and scheduled scans run on this service loop.
+                    # The shared runner tracks both, so cancel it only after
+                    # the automation services have stopped submitting work.
+                    if runner is not None:
+                        await runner.cancel_all()
+
+                future = asyncio.run_coroutine_threadsafe(stop_services(), loop)
+                try:
+                    future.result(timeout=15)
+                except Exception as error:
+                    logging.getLogger(__name__).error(
+                        "Background service shutdown did not complete cleanly: %s",
+                        error,
+                    )
+                loop.call_soon_threadsafe(loop.stop)
+                if self._service_thread is not None:
+                    self._service_thread.join(timeout=2)
+            elif runner is not None:
+                # The background service loop may never have started, but UI
+                # scans can still be active on their own worker event loops.
+                try:
+                    asyncio.run(runner.cancel_all())
+                except Exception as error:
+                    logging.getLogger(__name__).error(
+                        "Scan shutdown did not complete cleanly: %s", error
+                    )
+
+            # Intelligence owns a separate event-loop thread and must be
+            # closed independently after active scan tasks have been cancelled.
             if self._window is not None:
                 self._window._intelligence_service.close(timeout=8)
-
-            loop = self._service_loop
-            if loop is None or loop.is_closed():
-                return
-
-            async def stop_services() -> None:
-                for service in (self._usb_monitor, self._realtime_service, self._scheduler):
-                    if service is not None:
-                        await service.stop()
-
-            future = asyncio.run_coroutine_threadsafe(stop_services(), loop)
-            try:
-                future.result(timeout=8)
-            except Exception as error:
-                logging.getLogger(__name__).error(
-                    "Background service shutdown did not complete cleanly: %s", error
-                )
-            loop.call_soon_threadsafe(loop.stop)
-            if self._service_thread is not None:
-                self._service_thread.join(timeout=2)
 
         def _on_about_action(self, _action: object, _parameter: object) -> None:
             if self._window is not None:

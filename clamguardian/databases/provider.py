@@ -12,7 +12,7 @@ from .verifier import verify_sha256
 
 class DatabaseProvider(ABC):
     @abstractmethod
-    async def download(self, source: DatabaseSource, destination: Path) -> AsyncIterator[Path]:
+    def download(self, source: DatabaseSource, destination: Path) -> AsyncIterator[Path]:
         raise NotImplementedError
 
 
@@ -54,6 +54,6 @@ class FileDatabaseProvider(DatabaseProvider):
                     verify_sha256(temporary, artifact.sha256)
                     temporary.replace(output)
                     yield output
-                except Exception:
+                except BaseException:
                     temporary.unlink(missing_ok=True)
                     raise

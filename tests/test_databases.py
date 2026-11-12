@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -316,7 +319,7 @@ async def test_rollback_restores_previous_artifact_when_install_fails(
         source_dir = self.parent.name
         if (
             Path(target).parent == database_dir
-            and source_dir.startswith(".thirdparty-")
+            and source_dir.startswith(".clamguardian-db-stage-")
             and "-backup-" not in source_dir
         ):
             raise OSError("simulated install failure")
@@ -348,3 +351,205 @@ async def test_update_enabled_updates_eligible_sources_and_isolates_failures(
     assert sorted(entry.source.id for entry in results) == ["broken", "ok"]
     assert manager.status("ok").status == DatabaseStatus.INSTALLED
     assert manager.status("broken").status == DatabaseStatus.ERROR
+
+
+def test_rejects_unsafe_database_source_identifiers() -> None:
+    digest = hashlib.sha256(b"good").hexdigest()
+    for source_id in ("../outside", "../../tmp/payload", "bad/id", "bad\\id"):
+        with pytest.raises(ValueError, match="safe"):
+            DatabaseSource(
+                source_id,
+                "Unsafe",
+                "Test source",
+                (DatabaseArtifact("safe.cvd", "https://example.invalid/db.cvd", digest),),
+            )
+
+
+def test_rejects_reserved_and_duplicate_artifact_filenames() -> None:
+    digest = hashlib.sha256(b"good").hexdigest()
+    for filename in ("", ".", ".."):
+        with pytest.raises(ValueError, match="Unsafe artifact filename"):
+            DatabaseSource(
+                "unsafe",
+                "Unsafe",
+                "Test source",
+                (DatabaseArtifact(filename, "https://example.invalid/db.cvd", digest),),
+            )
+
+    with pytest.raises(ValueError, match="Duplicate artifact filename"):
+        DatabaseSource(
+            "duplicate",
+            "Duplicate",
+            "Test source",
+            (
+                DatabaseArtifact("same.cvd", "https://example.invalid/one", digest),
+                DatabaseArtifact("same.cvd", "https://example.invalid/two", digest),
+            ),
+        )
+
+
+def test_manager_rejects_artifact_filename_collision(tmp_path: Path) -> None:
+    digest = hashlib.sha256(b"good").hexdigest()
+    manager = DatabaseManager(tmp_path / "db", tmp_path / "state.json", provider=FakeProvider())
+    first = DatabaseSource(
+        "first",
+        "First",
+        "First source",
+        (DatabaseArtifact("shared.cvd", "https://example.invalid/first", digest),),
+    )
+    second = DatabaseSource(
+        "second",
+        "Second",
+        "Second source",
+        (DatabaseArtifact("shared.cvd", "https://example.invalid/second", digest),),
+    )
+
+    manager.add_source(first)
+    with pytest.raises(ValueError, match="already owned"):
+        manager.add_source(second)
+
+    assert [source.id for source in manager.sources] == ["first"]
+
+
+@pytest.mark.asyncio
+async def test_update_creates_missing_database_parent_directory(tmp_path: Path) -> None:
+    base = tmp_path / "not-created-yet"
+    database_dir = base / "databases"
+    state_file = tmp_path / "state.json"
+    manager = DatabaseManager(database_dir, state_file, provider=FakeProvider())
+    manager.add_source(source())
+
+    result = await manager.update("thirdparty")
+
+    assert result.status is DatabaseStatus.INSTALLED
+    assert (database_dir / "thirdparty.cvd").read_bytes() == b"good"
+    assert list(base.glob(".clamguardian-db-*")) == []
+
+
+class _BlockingDownloadResponse(_FakeResponse):
+    def __init__(self, started: asyncio.Event) -> None:
+        super().__init__(b"partial payload")
+        self._started = started
+
+    async def iter_chunked(self, size: int):
+        yield b"partial"
+        self._started.set()
+        await asyncio.Future()
+
+
+class _BlockingDownloadSession(_FakeSession):
+    def __init__(self, started: asyncio.Event) -> None:
+        super().__init__(b"")
+        self._started = started
+
+    def get(self, url: str, allow_redirects: bool = True) -> _BlockingDownloadResponse:
+        return _BlockingDownloadResponse(self._started)
+
+
+@pytest.mark.asyncio
+async def test_provider_removes_partial_file_when_download_is_cancelled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from clamguardian.databases import provider as provider_module
+    from clamguardian.databases.provider import FileDatabaseProvider
+
+    started = asyncio.Event()
+    monkeypatch.setattr(
+        provider_module.aiohttp,
+        "ClientSession",
+        lambda *a, **k: _BlockingDownloadSession(started),
+    )
+    payload = b"expected payload"
+    artifact_source = _artifact_source(payload, hashlib.sha256(payload).hexdigest())
+    destination = tmp_path / "cancelled-download"
+    provider = FileDatabaseProvider()
+
+    async def consume() -> None:
+        async for _ in provider.download(artifact_source, destination):
+            pass
+
+    task = asyncio.create_task(consume())
+    await asyncio.wait_for(started.wait(), timeout=2)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert list(destination.iterdir()) == []
+
+
+class _ConcurrentProvider:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.active = 0
+        self.max_active = 0
+
+    async def download(self, source, destination):
+        with self._lock:
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+        try:
+            await asyncio.sleep(0.1)
+            destination.mkdir(parents=True, exist_ok=True)
+            path = destination / source.artifacts[0].filename
+            path.write_bytes(b"good")
+            yield path
+        finally:
+            with self._lock:
+                self.active -= 1
+
+
+def test_same_source_updates_are_serialized_across_event_loops(tmp_path: Path) -> None:
+    manager = DatabaseManager(
+        tmp_path / "db", tmp_path / "state.json", provider=_ConcurrentProvider()
+    )
+    manager.add_source(source())
+    barrier = threading.Barrier(2)
+
+    def run_update():
+        barrier.wait(timeout=2)
+        return asyncio.run(manager.update("thirdparty"))
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(run_update) for _ in range(2)]
+        results = [future.result(timeout=5) for future in futures]
+
+    assert all(result.status is DatabaseStatus.INSTALLED for result in results)
+    assert manager.provider.max_active == 1
+    assert (tmp_path / "db" / "thirdparty.cvd").read_bytes() == b"good"
+
+
+@pytest.mark.asyncio
+async def test_cancelled_update_rolls_back_and_blocks_source_mutation(tmp_path: Path) -> None:
+    manager = DatabaseManager(
+        tmp_path / "db", tmp_path / "state.json", provider=FakeProvider(b"good")
+    )
+    manager.add_source(source())
+    await manager.update("thirdparty")
+
+    installed_callback_started = asyncio.Event()
+    release_callback = asyncio.Event()
+
+    async def block_after_install(status):
+        if status.status is DatabaseStatus.INSTALLED:
+            installed_callback_started.set()
+            await release_callback.wait()
+
+    manager.provider = FakeProvider(b"replacement")
+    manager.status_callback = block_after_install
+    task = asyncio.create_task(manager.update("thirdparty"))
+    await asyncio.wait_for(installed_callback_started.wait(), timeout=2)
+
+    with pytest.raises(RuntimeError, match="update is in progress"):
+        manager.remove_source("thirdparty")
+    with pytest.raises(RuntimeError, match="update is in progress"):
+        manager.set_enabled("thirdparty", False)
+
+    task.cancel()
+    release_callback.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert (tmp_path / "db" / "thirdparty.cvd").read_bytes() == b"good"
+    assert manager.status("thirdparty").status is DatabaseStatus.INSTALLED
+    assert "thirdparty" not in manager._updating_sources
+    assert list((tmp_path / "db").parent.glob(".clamguardian-db-backup-*")) == []

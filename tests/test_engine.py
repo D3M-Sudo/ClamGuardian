@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from clamguardian.core.base import ScanStatus
+from clamguardian.core.base import ScanResult, ScanStatus
+from clamguardian.core.profiles import DEFAULT_PROFILE
 from clamguardian.engines.clamav import ClamAVEngine
 
 
@@ -356,3 +357,58 @@ async def test_clamd_response_size_is_bounded(
         engine = ClamAVEngine(socket_path=socket_path, command_timeout=5)
         with pytest.raises(ValueError, match="size limit"):
             await engine._scan_socket(target, DEFAULT_PROFILE)
+
+
+def test_finalize_rejects_file_changed_after_path_scan(tmp_path: Path) -> None:
+    target = tmp_path / "changing.bin"
+    target.write_bytes(b"before")
+    initial_stat = target.stat(follow_symlinks=False)
+    target.write_bytes(b"after!")
+    result = ScanResult(
+        target=str(target),
+        clean=True,
+        status=ScanStatus.CLEAN,
+        engine="clamd",
+    )
+
+    finalized = ClamAVEngine._finalize(
+        result, target, DEFAULT_PROFILE, initial_file_stat=initial_stat
+    )
+
+    assert finalized.status is ScanStatus.ERROR
+    assert "changed during scan" in (finalized.error or "")
+    assert "sha256" not in finalized.metadata
+    assert "sha256_unavailable_reason" in finalized.metadata
+
+
+def test_finalize_rejects_file_changed_during_digest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import hashlib
+
+    from clamguardian.engines import clamav as engine_module
+
+    target = tmp_path / "changing-during-hash.bin"
+    target.write_bytes(b"before")
+    initial_stat = target.stat(follow_symlinks=False)
+
+    def hash_then_mutate(path: Path) -> str:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        path.write_bytes(b"changed while hashing")
+        return digest
+
+    monkeypatch.setattr(engine_module, "compute_file_sha256", hash_then_mutate)
+    result = ScanResult(
+        target=str(target),
+        clean=True,
+        status=ScanStatus.CLEAN,
+        engine="clamd",
+    )
+
+    finalized = ClamAVEngine._finalize(
+        result, target, DEFAULT_PROFILE, initial_file_stat=initial_stat
+    )
+
+    assert finalized.status is ScanStatus.ERROR
+    assert "changed during scan" in (finalized.error or "")
+    assert "sha256" not in finalized.metadata

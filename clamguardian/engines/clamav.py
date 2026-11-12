@@ -13,6 +13,7 @@ import stat
 import struct
 import threading
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -150,6 +151,12 @@ class ClamAVEngine(BaseAVEngine):
         else:
             profile.validate()
         started = datetime.now(UTC)
+        try:
+            initial_file_stat = (
+                target.stat(follow_symlinks=False) if target.is_file() else None
+            )
+        except OSError:
+            initial_file_stat = None
         if self.socket_path.exists():
             try:
                 output, exit_code, unsupported = await asyncio.wait_for(
@@ -161,7 +168,7 @@ class ClamAVEngine(BaseAVEngine):
                 # never silently ignored, always reported in metadata.
                 if unsupported:
                     result.metadata["profile_unsupported_clamd"] = ",".join(unsupported)
-                return self._finalize(result, target, profile)
+                return self._finalize(result, target, profile, initial_file_stat)
             except (TimeoutError, OSError, ValueError):
                 pass
         try:
@@ -172,7 +179,7 @@ class ClamAVEngine(BaseAVEngine):
             # out (typically a very large or very slow file).
             return self._annotate_profile(ScanResult.timed_out(str(target), started), profile)
         result = self._result(target, started, output, exit_code, "clamscan")
-        return self._finalize(result, target, profile)
+        return self._finalize(result, target, profile, initial_file_stat)
 
 
     def _reject_unsupported_target(self, target: Path) -> ScanResult | None:
@@ -211,19 +218,62 @@ class ClamAVEngine(BaseAVEngine):
         result.metadata["profile_id"] = profile.id
         return result
 
-    @classmethod
-    def _finalize(cls, result: ScanResult, target: Path, profile: ScanProfile) -> ScanResult:
-        """Annotate *result* with the applied profile and the content digest.
+    @staticmethod
+    def _same_file_identity(first: os.stat_result, second: os.stat_result) -> bool:
+        """Compare identity and mutation-sensitive metadata for a pathname scan."""
+        return (
+            first.st_dev,
+            first.st_ino,
+            first.st_size,
+            first.st_mtime_ns,
+            first.st_ctime_ns,
+        ) == (
+            second.st_dev,
+            second.st_ino,
+            second.st_size,
+            second.st_mtime_ns,
+            second.st_ctime_ns,
+        )
 
-        Both engine paths (clamd over the UNIX socket and the ``clamscan``
-        fallback) go through here, so ``metadata["profile_id"]`` and
-        ``metadata["sha256"]`` are recorded identically whichever backend
-        served the scan. ``compute_file_sha256`` returns ``None`` for
-        directories, special files and unreadable targets, so a directory scan
-        never carries a misleading digest.
+    @classmethod
+    def _finalize(
+        cls,
+        result: ScanResult,
+        target: Path,
+        profile: ScanProfile,
+        initial_file_stat: os.stat_result | None = None,
+    ) -> ScanResult:
+        """Annotate the result and hash only an unchanged single-file target.
+
+        A pathname scan is not bound to an inode. If the file changes or is
+        replaced between the scan and digest calculation, its VirusTotal hash
+        would not describe the object ClamAV inspected. Such a result is
+        therefore marked ERROR and is not enriched with a digest.
         """
         cls._annotate_profile(result, profile)
-        sha256 = compute_file_sha256(target)
+        if initial_file_stat is None:
+            return result
+
+        try:
+            before_hash = os.stat(target, follow_symlinks=False)
+            if not cls._same_file_identity(initial_file_stat, before_hash):
+                raise OSError("target identity or metadata changed during scan")
+            sha256 = compute_file_sha256(target)
+            after_hash = os.stat(target, follow_symlinks=False)
+            if not cls._same_file_identity(initial_file_stat, after_hash):
+                raise OSError("target changed while its digest was calculated")
+        except OSError as exc:
+            metadata = dict(result.metadata)
+            metadata.pop("sha256", None)
+            metadata["sha256_unavailable_reason"] = str(exc)
+            return replace(
+                result,
+                clean=False,
+                status=ScanStatus.ERROR,
+                error=f"Target changed during scan; result is not trustworthy: {exc}",
+                metadata=metadata,
+            )
+
         if sha256 is not None:
             result.metadata["sha256"] = sha256
         return result
