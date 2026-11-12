@@ -979,3 +979,42 @@ def test_native_license_collector_attributes_generated_ca_bundle_to_package_post
     assert package["detection_method"] == "known-generated-postinst-output"
     assert "/var/lib/dpkg/info/ca-certificates.postinst" in package["source_paths"]
     assert "etc/ssl/certs/ca-certificates.crt" in package["artifact_paths"]
+
+
+
+def test_native_curated_components_require_package_and_copyright_provenance(
+    tmp_path: Path,
+) -> None:
+    module_path = ROOT / "packaging" / "appimage" / "verify-sbom.py"
+    spec = importlib.util.spec_from_file_location("appimage_native_component_coverage", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    license_root = tmp_path / "licenses"
+    copyright_path = license_root / "third-party/native/ca-certificates/copyright"
+    copyright_path.parent.mkdir(parents=True)
+    copyright_path.write_text("CA package copyright\\n", encoding="utf-8")
+    appdir_inventory = {
+        "components": [{
+            "id": "native-ca-certificates",
+            "name": "ca-certificates",
+            "detection_method": "native-package-provenance",
+            "artifact_paths": ["etc/ssl/certs/ca-certificates.crt"],
+        }]
+    }
+    native_inventory = {
+        "packages": [{
+            "package": "ca-certificates",
+            "artifact_paths": ["etc/ssl/certs/ca-certificates.crt"],
+            "copyright_artifact_path": "third-party/native/ca-certificates/copyright",
+            "copyright_status": "present",
+        }]
+    }
+
+    module._verify_native_component_coverage(appdir_inventory, native_inventory, license_root)
+
+    native_inventory["packages"][0]["artifact_paths"] = ["etc/ssl/certs/other.crt"]
+    with pytest.raises(ValueError, match="no native package provenance"):
+        module._verify_native_component_coverage(appdir_inventory, native_inventory, license_root)
