@@ -183,7 +183,7 @@ jobs:
           for script in packaging/flatpak/prepare-wheelhouse.sh packaging/appimage/*.sh; do
             bash -n "$script"
           done
-          sh -n packaging/appimage/clamguardian-launcher
+          cc -fsyntax-only -Wall -Wextra -Werror packaging/appimage/clamguardian-launcher.c
       - name: Install AppImage prerequisites
         run: |
           python -m pip install --disable-pip-version-check uv==0.9.5

@@ -437,6 +437,18 @@ def test_appimage_packaging_recipe_and_helpers_exist() -> None:
     assert "{{APT_ARCH}}" in recipe
     assert "$SOURCE_DIR/wheelhouse/" in recipe
 
+    # The former shell launcher was replaced by a native C ELF entrypoint.
+    # Both PR CI and tag-release validation must syntax-check the current source.
+    for workflow_name in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
+        workflow = (ROOT / workflow_name).read_text(encoding="utf-8")
+        assert "packaging/appimage/clamguardian-launcher" not in workflow.replace(
+            "packaging/appimage/clamguardian-launcher.c", ""
+        ), f"{workflow_name} still references the removed shell launcher"
+        assert (
+            "cc -fsyntax-only -Wall -Wextra -Werror "
+            "packaging/appimage/clamguardian-launcher.c"
+        ) in workflow
+
 
 def test_appimage_recipe_bundles_required_gi_typelibs_and_icon() -> None:
     recipe = (ROOT / "packaging" / "appimage" / "AppImageBuilder.yml").read_text(encoding="utf-8")
