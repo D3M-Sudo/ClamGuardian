@@ -4,25 +4,14 @@
 - Add explicit VirusTotal Public and Premium API profiles with independent OS Secret Service credentials.
 - Add persistent profile-aware request pacing, Public daily quota enforcement, and cross-process Retry-After cooldowns.
 - Add hash-first file submission workflow with per-file typed consent, privacy warning, SHA-256 revalidation, upload polling, CLI commands, and GTK profile selection.
-- Add a persistent SHA-256-keyed VirusTotal report cache with a configurable 24-hour default TTL, acquisition-time expiry, and strict Public/Premium cache isolation.
-- Run deduplicated VirusTotal hash lookups on a service-owned asyncio loop, independent of caller-loop cancellation or shutdown; drain and stop the worker during GTK application shutdown. Apply bounded retries for transient transport/server failures and HTTP 429 responses. Synchronize worker readiness with actual loop startup, stop cleanly when shutdown races startup, and always close the intelligence worker even when the app-services loop is unavailable.
-- Store VirusTotal reports independently by SHA-256 and API profile; migrate existing v1 cache databases transactionally while preserving acquisition and expiry timestamps.
-- Serialize provider rate reservations safely across distinct asyncio event loops; bound cross-process quota-lock waits and keep cache reads/writes and rate-state operations out of the worker's default executor.
-- Resolve VirusTotal DNS through a process-bounded daemon-thread resolver with a timeout, so a stuck system DNS/NSS lookup cannot prevent the service-owned event loop from shutting down.
-- Route optional VirusTotal hash enrichment through the shared scan runner for interactive, scheduled, USB and realtime scans using both pathname-based `submit()` and descriptor-based `submit_fd()` execution; descriptor scans have no pathname fallback. Preserve the ClamAV verdict and attach a provenance envelope to scan metadata.
-
-### Fixed
-- Keep VirusTotal cache reads and writes off asyncio caller and service loops using a single bounded daemon worker; cache persistence no longer delays completed lookups.
-- Make service-owned event-loop startup waits cooperative for async callers, and return an independent deep copy of each shared lookup report to prevent cross-caller mutation.
-- Reject VirusTotal file reports whose provider-supplied SHA-256 does not match the requested digest.
 
 ### Security
-- **Realtime descriptor worker admission:** bound active and queued descriptor workers (default limit: 4), reject excess scans explicitly, and retain each admission slot until the worker closes its duplicated descriptor after timeout or cancellation.
-- **Realtime descriptor timeout and cleanup:** classify descriptor-scan timeouts as `TIMEOUT`, preserve the applied scan profile, prevent probe timeouts or cancellation from triggering INSTREAM fallback, and track worker completion through descriptor cleanup.
-- **Realtime filesystem boundary:** pin configured monitoring roots, reject symlink roots/components, open event targets beneath root directory descriptors with `O_NOFOLLOW`, and use descriptor-bound clamd `FILDES` or `INSTREAM` scanning with no pathname fallback.
 - Keep Public API requests blocked until written VirusTotal eligibility authorization is recorded.
 - Remove upstream response bodies and sensitive request details from VirusTotal error logs; never fall back between API profiles.
 - Keep VirusTotal enrichment separate from the local ClamAV verdict.
+
+### Changed
+- Persist VirusTotal hash assessments in a dedicated scan-linked SQLite table, separate from the ClamAV verdict, with a transactional v1-to-v2 schema migration and cascading retention lifecycle.
 
 # Changelog
 
