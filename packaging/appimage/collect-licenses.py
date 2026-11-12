@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import os
 import re
 import subprocess
 import sys
@@ -196,9 +197,18 @@ def collect_package_provenance(
             relative = appdir_path.relative_to(appdir)
         except ValueError:
             continue
-        host_path = "/" + relative.as_posix()
-        for package in owners_by_path.get(host_path, set()):
-            package_paths.setdefault(package, []).append(relative.as_posix())
+        host_paths = {"/" + relative.as_posix()}
+        if appdir_path.is_symlink():
+            link_target = Path(os.readlink(appdir_path))
+            if link_target.is_absolute():
+                target_relative = Path(str(link_target).lstrip("/"))
+            else:
+                target_relative = Path(os.path.normpath(str(relative.parent / link_target)))
+            if target_relative != Path("..") and not str(target_relative).startswith("../"):
+                host_paths.add("/" + target_relative.as_posix())
+        for host_path in host_paths:
+            for package in owners_by_path.get(host_path, set()):
+                package_paths.setdefault(package, []).append(relative.as_posix())
 
     generated_paths_by_package: dict[str, list[str]] = {}
     for host_path, package in GENERATED_FILE_OWNERS.items():
