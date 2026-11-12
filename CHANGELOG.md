@@ -9,6 +9,10 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 ## [Unreleased]
 
 ### Added
+- **Industrial CI/CD release pipeline:** native x86_64/aarch64 Flatpak and AppImage builds, lockfile-hash-verified runtime wheelhouses, per-artifact install/launch gates, Draft GitHub Releases, SHA-256 checksums and one explicit manual publication workflow.
+
+
+### Added
 - **VirusTotal API profiles and file submission:** independent Public/Premium credentials in OS Secret Service, explicit profile selection, hash-first lookup and consent-gated upload with snapshot revalidation and analysis polling.
 - **VirusTotal hash cache:** persistent, profile-isolated hash assessments with shared in-flight lookup deduplication and bounded transient retries.
 - **Shared scan enrichment:** centralize optional VirusTotal enrichment across pathname and descriptor-based scan workflows while preserving the local ClamAV verdict and request-time profile/provenance.

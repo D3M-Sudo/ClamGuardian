@@ -385,3 +385,31 @@ def test_flatpak_finish_args_cover_what_the_code_needs() -> None:
     # quarantine vault, history and database state are written by the app.
     assert "--filesystem=xdg-data/clamguardian:create" in finish_args
     assert "--socket=fallback-x11" in finish_args or "--socket=x11" in finish_args
+
+
+def test_flatpak_manifests_install_the_native_locked_wheelhouse() -> None:
+    """Runtime wheels are selected natively from uv.lock, not hard-coded to x86_64."""
+    for manifest_name in MANIFESTS:
+        module = _clamguardian_module(_manifest(manifest_name))
+        commands = "\n".join(module["build-commands"])
+        assert "./packaging/flatpak/wheelhouse/*.whl" in commands
+        assert "--no-index" in commands
+        assert "--no-deps" in commands
+        runtime_files = [
+            source for source in module["sources"]
+            if source.get("type") == "file"
+            and re.search(r"/(cryptography|cffi|aiohttp)-", source.get("url", ""))
+        ]
+        assert runtime_files == []
+    release = _clamguardian_module(_manifest(f"{APP_ID}.yml"))
+    assert any(
+        source.get("type") == "dir"
+        and source.get("path") == "wheelhouse"
+        and source.get("dest") == "packaging/flatpak/wheelhouse"
+        for source in release["sources"]
+    )
+    local = _clamguardian_module(_manifest(f"{APP_ID}.local.yml"))
+    assert any(
+        source.get("type") == "dir" and source.get("path") == "../.."
+        for source in local["sources"]
+    )

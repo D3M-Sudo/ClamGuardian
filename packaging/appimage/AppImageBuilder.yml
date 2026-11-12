@@ -1,0 +1,38 @@
+version: 1
+script:
+  - mkdir -p "$TARGET_APPDIR/opt/python"
+  - python3 -m pip install --no-index --no-deps --target "$TARGET_APPDIR/opt/python" "$SOURCE_DIR/../wheelhouse/"*.whl
+  - cp -a "$SOURCE_DIR/../../clamguardian" "$TARGET_APPDIR/opt/python/"
+  - install -Dm755 "$SOURCE_DIR/clamguardian-launcher" "$TARGET_APPDIR/usr/bin/clamguardian-launcher"
+  - install -Dm644 "$SOURCE_DIR/../../data/io.github.clamguardian.ClamGuardian.desktop" "$TARGET_APPDIR/io.github.clamguardian.ClamGuardian.desktop"
+  - sed -i 's|^Exec=.*|Exec=AppRun ui|' "$TARGET_APPDIR/io.github.clamguardian.ClamGuardian.desktop"
+  - install -Dm644 "$SOURCE_DIR/../../data/io.github.clamguardian.ClamGuardian.desktop" "$TARGET_APPDIR/usr/share/applications/io.github.clamguardian.ClamGuardian.desktop"
+  - sed -i 's|^Exec=.*|Exec=AppRun ui|' "$TARGET_APPDIR/usr/share/applications/io.github.clamguardian.ClamGuardian.desktop"
+  - install -Dm644 "$SOURCE_DIR/../../data/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg" "$TARGET_APPDIR/usr/share/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg"
+AppDir:
+  path: ./AppDir
+  app_info:
+    id: io.github.clamguardian.ClamGuardian
+    name: ClamGuardian
+    icon: io.github.clamguardian.ClamGuardian
+    version: {{APP_VERSION}}
+    exec: usr/bin/clamguardian-launcher
+    exec_args: $@
+  apt:
+    arch: {{APT_ARCH}}
+    include:
+      - python3
+      - python3-gi
+      - gir1.2-gtk-4.0
+      - gir1.2-adw-1
+      - python3-cairo
+      - libsecret-1-0
+      - ca-certificates
+    exclude:
+      - apt
+      - dpkg
+AppImage:
+  arch: {{APPIMAGE_ARCH}}
+  file_name: 'ClamGuardian-{{APP_VERSION}}-{{APPIMAGE_ARCH}}.AppImage'
+  update-information: None
+  sign-key: None

@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+: "\${APPDIR:?AppImage runtime did not set APPDIR}"
+case "$(uname -m)" in
+  x86_64) multiarch="x86_64-linux-gnu" ;;
+  aarch64) multiarch="aarch64-linux-gnu" ;;
+  *) echo "Unsupported AppImage architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+export PYTHONHOME="$APPDIR/usr"
+export PYTHONPATH="$APPDIR/opt/python:$APPDIR/usr/lib/python3/dist-packages"
+export GI_TYPELIB_PATH="$APPDIR/usr/lib/girepository-1.0:$APPDIR/usr/lib/$multiarch/girepository-1.0"
+export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/lib/$multiarch\${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export GSETTINGS_SCHEMA_DIR="$APPDIR/usr/share/glib-2.0/schemas"
+export XDG_DATA_DIRS="$APPDIR/usr/share\${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
+exec "$APPDIR/usr/bin/python3" -c 'from clamguardian.cli.main import main; raise SystemExit(main())' "$@"
