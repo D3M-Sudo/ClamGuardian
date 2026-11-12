@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Patch appimage-builder 1.1.0 for Debian versions and Ubuntu AppRun layout."""
 from __future__ import annotations
+
 import sys
 from pathlib import Path
 
@@ -18,15 +19,20 @@ REPLACEMENT = '''result = subprocess.run(
                 )
             return result.returncode == 0'''
 
+
 def patch_package_module(path: Path) -> None:
     source = path.read_text(encoding="utf-8")
     if PATCH_MARKER in source:
         return
     if ORIGINAL_IMPORT not in source or ORIGINAL_COMPARISON not in source:
-        raise RuntimeError("Unexpected appimage-builder apt/package.py source; refusing an unreviewed patch.")
+        raise RuntimeError(
+            "Unexpected appimage-builder apt/package.py source; "
+            "refusing an unreviewed patch."
+        )
     source = source.replace(ORIGINAL_IMPORT, "import subprocess", 1)
     source = source.replace(ORIGINAL_COMPARISON, REPLACEMENT, 1)
     path.write_text(source, encoding="utf-8")
+
 
 APPRUN2_SETUP_MARKER = 'compat_linker_folder = self.compat_runtime_path / "lib64"'
 APPRUN2_SETUP_ORIGINAL = """    def setup(self):
@@ -55,30 +61,49 @@ APPRUN2_SETUP_REPLACEMENT = """    def setup(self):
         runtime_env = self._configure_runtime_environment()
 """
 
+
 def patch_apprun2_module(path: Path) -> None:
     source = path.read_text(encoding="utf-8")
     if APPRUN2_SETUP_MARKER in source:
         return
     if APPRUN2_SETUP_ORIGINAL not in source:
-        raise RuntimeError("Unexpected appimage-builder AppRun v2 setup source; refusing an unreviewed patch.")
+        raise RuntimeError(
+            "Unexpected appimage-builder AppRun v2 setup source; "
+            "refusing an unreviewed patch."
+        )
     source = source.replace(APPRUN2_SETUP_ORIGINAL, APPRUN2_SETUP_REPLACEMENT, 1)
     if "import shutil\n" not in source:
         source = source.replace("import string\n", "import string\nimport shutil\n", 1)
     path.write_text(source, encoding="utf-8")
 
+
 def main() -> int:
     if len(sys.argv) != 2:
         raise SystemExit("usage: patch-appimage-builder.py BUILDER_VENV")
     root = Path(sys.argv[1])
-    matches = list(root.glob("lib/python*/site-packages/appimagebuilder/modules/deploy/apt/package.py"))
-    if len(matches) != 1:
-        raise SystemExit(f"expected exactly one appimage-builder apt/package.py under {root}, found {len(matches)}")
-    patch_package_module(matches[0])
-    apprun2_matches = list(root.glob("lib/python*/site-packages/appimagebuilder/modules/setup/apprun_2/apprun2.py"))
-    if len(apprun2_matches) != 1:
-        raise SystemExit(f"expected exactly one AppRun v2 module under {root}, found {len(apprun2_matches)}")
-    patch_apprun2_module(apprun2_matches[0])
+    package_modules = list(
+        root.glob("lib/python*/site-packages/appimagebuilder/modules/deploy/apt/package.py")
+    )
+    if len(package_modules) != 1:
+        raise SystemExit(
+            "expected exactly one appimage-builder apt/package.py under "
+            f"{root}, found {len(package_modules)}"
+        )
+    patch_package_module(package_modules[0])
+    print(f"Patched Debian version comparison in {package_modules[0]}")
+
+    apprun2_modules = list(
+        root.glob("lib/python*/site-packages/appimagebuilder/modules/setup/apprun_2/apprun2.py")
+    )
+    if len(apprun2_modules) != 1:
+        raise SystemExit(
+            f"expected exactly one AppRun v2 module under {root}, "
+            f"found {len(apprun2_modules)}"
+        )
+    patch_apprun2_module(apprun2_modules[0])
+    print(f"Patched Ubuntu compatibility linker path in {apprun2_modules[0]}")
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

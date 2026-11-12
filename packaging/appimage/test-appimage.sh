@@ -32,6 +32,8 @@ mkdir -p "$extract_root"
 )
 extracted_appdir="$extract_root/squashfs-root"
 test -x "$extracted_appdir/AppRun"
+test -x "$extracted_appdir/usr/bin/python3"
+test -f "$extracted_appdir/lib/python3.12/encodings/__init__.py"
 test -s "$extracted_appdir/AppRun.env"
 if [ -d "$extracted_appdir/runtime/compat" ]; then
   test -e "$extracted_appdir/runtime/compat/lib64"
