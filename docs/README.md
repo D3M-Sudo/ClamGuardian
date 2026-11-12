@@ -13,6 +13,8 @@ This directory separates current design/security references from milestone repor
 
 ## Current entry points
 
+- [Changelog](../CHANGELOG.md) — unreleased changes and published version history.
+- [Security policy](../SECURITY.md) — supported versions, reporting process and security boundaries.
 - [Implementation roadmap](ROADMAP.md) — current branch milestone status and release gates.
 - [Project plan](project/PROJECT_PLAN.md) — architecture and subsystem responsibilities.
 - [Threat-intelligence design](design/threat-intelligence.md) — opt-in, profile eligibility, upload consent and shared enrichment.
