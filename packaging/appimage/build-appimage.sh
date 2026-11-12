@@ -48,6 +48,11 @@ mkdir -p \
     "$APPDIR/opt/python" \
     "$APPDIR/usr/share/clamguardian"
 
+"$ROOT/packaging/appimage/collect-runtime-licenses.sh" \
+    "$ROOT/packaging/appimage/licenses/third-party/runtime"
+"$ROOT/packaging/appimage/stage-license-documents.sh" \
+    "$ROOT/packaging/appimage/licenses" "$APPDIR"
+
 # Copy native Ubuntu 24.04 CPython 3.12. PYTHONHOME points to AppDir; the
 # relative lib/python3.12 symlink maps the standard library into /usr/lib.
 install -Dm755 /usr/bin/python3.12 "$APPDIR/usr/bin/python3.12"
@@ -79,6 +84,10 @@ install -Dm755 "$ROOT/packaging/smoke/gtk-smoke.py" \
 
 export APPIMAGE_ARCH
 "$ROOT/packaging/appimage/bundle-runtime.sh" "$APPDIR"
+python3 "$ROOT/packaging/appimage/collect-licenses.py" \
+    --appdir "$APPDIR" \
+    --output-dir "$APPDIR/usr/share/licenses/ClamGuardian" \
+    --architecture "$APPIMAGE_ARCH"
 
 # Validate the AppDir before creating the single-file artifact.
 "$APPDIR/AppRun" version
@@ -93,4 +102,22 @@ rm -f "$output"
 appimagetool "$APPDIR" "$output"
 chmod +x "$output"
 test -s "$output"
+
+# Generate AppDir SBOMs and aggregate whole-artifact SBOMs after packaging so
+# the detached artifact manifest can bind the evidence to the final SHA-256.
+. "$ROOT/packaging/appimage/install-syft.sh"
+sbom_dir="$ROOT/dist/sbom/$APPIMAGE_ARCH"
+python3 "$ROOT/packaging/appimage/generate-sbom.py" \
+    --appdir "$APPDIR" \
+    --runtime-inventory "$ROOT/packaging/appimage/licenses/runtime-type2.json" \
+    --artifact "$output" \
+    --architecture "$APPIMAGE_ARCH" \
+    --syft "$SYFT_INSTALL_DIR/syft" \
+    --native-inventory "$APPDIR/usr/share/licenses/ClamGuardian/native-packages.json" \
+    --output-dir "$sbom_dir"
+. "$ROOT/packaging/appimage/install-sbom-validator.sh"
+python3 "$ROOT/packaging/appimage/validate-sbom.py" \
+    --sbom-dir "$sbom_dir" \
+    --schema-dir "$SBOM_SCHEMA_DIR" \
+    --architecture "$APPIMAGE_ARCH"
 echo "Built native AppImage: $output"
