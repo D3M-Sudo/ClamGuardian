@@ -96,10 +96,13 @@ def _stage_referenced_common_licenses(
     output_dir: Path,
 ) -> list[dict[str, str]]:
     text = content.decode("utf-8", errors="replace")
-    names = sorted(set(re.findall(
-        r"(?:/usr/share/)?common-licenses/([A-Za-z0-9.+_-]+)",
-        text,
-    )))
+    names = sorted({
+        match.rstrip(".")
+        for match in re.findall(
+            r"(?:/usr/share/)?common-licenses/([A-Za-z0-9.+_-]+)",
+            text,
+        )
+    })
     evidence: list[dict[str, str]] = []
     for name in names:
         source = common_licenses_dir / name
