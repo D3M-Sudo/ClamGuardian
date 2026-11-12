@@ -85,3 +85,19 @@ def test_runtime_inventory_matches_embedded_zstd_version_evidence():
     assert zstd["version"] == "1.5.6"
     assert zstd["version_status"] == "verified"
     assert "runtime binary" in zstd["source"].casefold()
+
+
+def test_runtime_source_bundle_is_part_of_appimage_build_and_release_evidence():
+    bundle_script = APPIMAGE / "collect-runtime-source-bundle.sh"
+    build_script = APPIMAGE / "build-appimage.sh"
+    release_script = APPIMAGE / "assemble-release-evidence.sh"
+    assert bundle_script.is_file()
+    bundle = bundle_script.read_text(encoding="utf-8")
+    assert "fuse-3.15.0.tar.xz" in bundle
+    assert "70589cfd5e1cff7ccd6ac91c86c01be340b227285c5e200baa284e401eea2ca0" in bundle
+    assert "dd6cebedcbddde9c82f89b011e8e1d40b6e43868" in bundle
+    assert "mount.c.diff" in bundle
+    assert "mimalloc" in bundle
+    assert "NOT A LEGAL COMPLIANCE CONCLUSION" in bundle
+    assert "collect-runtime-source-bundle.sh" in build_script.read_text(encoding="utf-8")
+    assert "runtime-source-bundle-" in release_script.read_text(encoding="utf-8")
