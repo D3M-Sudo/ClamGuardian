@@ -9,7 +9,7 @@ import json
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -172,7 +172,7 @@ def aggregate_sboms(
     curated_components = runtime_components + native_components
     output_dir.mkdir(parents=True, exist_ok=True)
     digest = _sha256(artifact_path)
-    created = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    created = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
     aggregate_spdx = dict(spdx)
     aggregate_spdx["packages"] = list(spdx["packages"])
