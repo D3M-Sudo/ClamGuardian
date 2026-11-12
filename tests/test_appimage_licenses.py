@@ -1389,3 +1389,91 @@ def test_native_license_collector_fails_closed_for_missing_common_license_text(
             },
             common_licenses_dir=common,
         )
+
+
+def test_native_inventory_preserves_file_level_license_evidence_without_aggregation(
+    tmp_path: Path,
+) -> None:
+    module_path = ROOT / "packaging" / "appimage" / "collect-licenses.py"
+    spec = importlib.util.spec_from_file_location(
+        "appimage_file_level_license_evidence", module_path
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    appdir = tmp_path / "AppDir"
+    info = tmp_path / "dpkg-info"
+    docs = tmp_path / "doc"
+    binary = appdir / "usr/lib/libfoo.so.1"
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(b"fixture binary")
+    info.mkdir()
+    (info / "foo.list").write_text("/usr/lib/libfoo.so.1\n", encoding="utf-8")
+    copyright = docs / "foo/copyright"
+    copyright.parent.mkdir(parents=True)
+    copyright.write_text(
+        "Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n"
+        "\n"
+        "Files: src/mit.c\n"
+        "Copyright: Example\n"
+        "License: MIT\n"
+        " MIT license text.\n"
+        "\n"
+        "Files: src/gpl.c\n"
+        "Copyright: Example\n"
+        "License: GPL-2+\n"
+        " GPL license text.\n",
+        encoding="utf-8",
+    )
+    output = appdir / "usr/share/licenses/ClamGuardian"
+    result = module.collect_package_provenance(
+        appdir,
+        info,
+        docs,
+        output,
+        package_metadata_resolver=lambda package: {
+            "version": "1.0",
+            "source_package": "foo",
+            "source_version": "1.0",
+        },
+    )
+    package = next(item for item in result["packages"] if item["package"] == "foo")
+    assert package["license"] == "NOASSERTION"
+    assert package["license_status"] == "unknown"
+    assert "multiple" in package["license_resolution_reason"]
+    assert [item["license_declaration"] for item in package["license_evidence"]] == [
+        "MIT",
+        "GPL-2+",
+    ]
+    assert package["license_evidence"][0]["file_patterns"] == ["src/mit.c"]
+    assert package["license_evidence"][1]["file_patterns"] == ["src/gpl.c"]
+    assert all(
+        item["license_text_kind"] == "embedded"
+        for item in package["license_evidence"]
+    )
+
+
+def test_debian_non_spdx_license_identifiers_remain_unasserted() -> None:
+    module_path = ROOT / "packaging" / "appimage" / "collect-licenses.py"
+    spec = importlib.util.spec_from_file_location(
+        "appimage_non_spdx_license_identifiers", module_path
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    for identifier in ("BSD-3-snowball", "Hylafax"):
+        content = (
+            "Files: src/example.c\n"
+            f"License: {identifier}\n"
+            " Full license text.\n"
+        ).encode()
+        assert module._debian_license_expression(content) == (
+            "NOASSERTION",
+            "unknown",
+        )
+    assert module._debian_license_expression(
+        b"Files: src/example.c\nLicense: X11\n"
+    ) == ("X11", "verified")

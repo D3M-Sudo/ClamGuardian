@@ -227,6 +227,55 @@ def _debian_license_expression(content: bytes) -> tuple[str, str]:
     return normalized[0], "verified"
 
 
+
+def _debian_license_evidence(
+    content: bytes, copyright_artifact_path: str
+) -> list[dict[str, Any]]:
+    """Preserve DEP-5 file-level license declarations without package aggregation."""
+    text = content.decode("utf-8", errors="replace")
+    evidence: list[dict[str, Any]] = []
+    current: dict[str, str] = {}
+
+    def flush() -> None:
+        if "License" not in current:
+            return
+        license_lines = current["License"].splitlines()
+        declaration = license_lines[0].strip()
+        license_text = "\n".join(license_lines[1:]).strip()
+        file_patterns = [
+            pattern
+            for line in current.get("Files", "").splitlines()
+            for pattern in line.split()
+        ]
+        item: dict[str, Any] = {
+            "file_patterns": file_patterns,
+            "license_declaration": declaration,
+            "license_text_kind": (
+                "embedded" if license_text else "reference-or-not-provided"
+            ),
+            "copyright_artifact_path": copyright_artifact_path,
+        }
+        if license_text:
+            item["license_text_sha256"] = hashlib.sha256(
+                license_text.encode("utf-8")
+            ).hexdigest()
+        evidence.append(item)
+
+    for line in text.splitlines() + [""]:
+        if not line.strip():
+            flush()
+            current = {}
+            continue
+        if line[:1].isspace() and current:
+            key = next(reversed(current))
+            current[key] += "\n" + line.strip()
+            continue
+        if ":" in line:
+            key, value = line.split(":", 1)
+            current[key.strip()] = value.strip()
+    return evidence
+
+
 def _libmpdec_evidence(content: bytes) -> tuple[bool, str, str]:
     text = content.decode("utf-8", errors="replace")
     matching_stanzas = []
@@ -381,6 +430,23 @@ def collect_package_provenance(
             if content is not None
             else ("NOASSERTION", "unknown")
         )
+        license_evidence = (
+            _debian_license_evidence(content, destination_relative)
+            if content is not None else []
+        )
+        if license_status == "verified":
+            license_resolution_reason = (
+                "All parsed copyright license declarations resolve to one canonical "
+                "SPDX expression."
+            )
+        elif content is None:
+            license_resolution_reason = "No readable package copyright document was available."
+        else:
+            license_resolution_reason = (
+                "The copyright document is preserved, but its file-level declarations "
+                "are multiple, custom, non-SPDX, or otherwise ambiguous; no package-level "
+                "license expression is inferred."
+            )
         referenced_common_licenses: list[dict[str, str]] = []
         if content is not None:
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -462,6 +528,8 @@ def collect_package_provenance(
             "copyright_artifact_path": destination_relative if content is not None else None,
             "license": license_expression,
             "license_status": license_status,
+            "license_resolution_reason": license_resolution_reason,
+            "license_evidence": license_evidence,
         })
 
     embedded_components: list[dict[str, Any]] = []
