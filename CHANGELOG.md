@@ -23,6 +23,10 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - **ClamUI Benchmark Evaluation:** comprehensive evaluation matrix (`docs/reports/CLAMUI-BENCHMARK-EVALUATION.md`) detailing adopted, improved, rejected, and deferred capabilities.
 - **Engineering Handoff:** comprehensive technical documentation in `docs/engineering/CLAMGUARDIAN-AUTONOMOUS-COMPLETION-HANDOFF.md`.
 
+### Changed
+
+- **GitHub Actions runtime compatibility:** replace all seven deprecated `upload-artifact` v4 references across CI, Release Gate and tagged-release workflows with the immutable Node.js 24-compatible v7.0.2 release pin.
+
 ### Fixed
 
 - **AppImage runtime packaging:** replace appimage-builder and its source patcher with a native AppDir assembled around a custom AppRun and SHA-256-pinned linuxdeploy/appimagetool. Bundle GTK4, Libadwaita, GI typelibs, Python runtime modules, GSettings resources and CA certificates explicitly; validate ELF dependencies and run a finite full-window smoke test.
