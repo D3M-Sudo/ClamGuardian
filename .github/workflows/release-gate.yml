@@ -291,6 +291,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Collect evidence
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+          WORKFLOW_REF_TYPE: ${{ github.ref_type }}
         run: |
           gate_failed=0
           check () {  # $1 = needs.<job>.result, $2 = label
@@ -315,7 +318,7 @@ jobs:
             check "${{ needs.clamav.result }}" "5. ClamAV reale (clamscan + clamdscan, pulito + EICAR)"
             check "${{ needs.gtk-smoke.result }}" "6. GTK smoke (UI: tutte le pagine, impostazioni, stylesheet, About)"
             echo ""
-            echo "Ref corrente:  ${{ github.ref }} (${{ github.ref_type }})"
+            echo "Ref corrente:  ${WORKFLOW_REF} (${WORKFLOW_REF_TYPE})"
             echo "Flatpak build manifest di release (job flatpak-release): ${{ needs.flatpak-release.result }}"
             echo ""
             echo "Punti 8–10: in attesa di autorizzazione esplicita."
