@@ -484,7 +484,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
         def _sync_background_services(self, settings) -> None:
             """Apply persisted service switches without blocking the GTK loop."""
             loop = self._service_loop
-            if loop is None or loop.is_closed():
+            if loop is None or loop.is_closed() or not loop.is_running():
                 return
             asyncio.run_coroutine_threadsafe(
                 self._configure_background_services(settings), loop
@@ -496,16 +496,23 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             from ..core.usb import USBDeviceScanner, USBMountMonitor
             from ..realtime import RealtimeMonitorService
 
+            runner = self._service_runner
+            if runner is None:
+                logging.getLogger(__name__).error(
+                    "Background services cannot start without the shared scan runner"
+                )
+                return
+
             if self._usb_monitor is None:
                 scanner = USBDeviceScanner(
-                    self._service_runner,
+                    runner,
                     history_store=self._service_history_store,
                 )
                 self._usb_monitor = USBMountMonitor(scanner)
             paths_changed = False
             if self._realtime_service is None:
                 self._realtime_service = RealtimeMonitorService(
-                    self._service_runner,
+                    runner,
                     history_store=self._service_history_store,
                     monitored_paths=settings.realtime_paths,
                     on_status_changed=self._on_realtime_status_changed,
@@ -518,7 +525,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 self._realtime_service.monitored_paths = new_paths
             if self._scheduler is None:
                 self._scheduler = ScheduledScanManager(
-                    self._service_runner,
+                    runner,
                     self._service_settings_store,
                     history_store=self._service_history_store,
                 )
