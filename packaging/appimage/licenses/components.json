@@ -298,7 +298,8 @@
       "source": "Native package ownership, exact installed version and copied copyright evidence are recorded in the build-generated native-packages.json manifest",
       "source_package": null,
       "artifact_paths": [
-        "usr/lib/*/liblzo2.so.2"
+        "usr/lib/*/liblzo2.so.2",
+        "usr/lib/liblzo2.so.2"
       ],
       "evidence_paths": [
         "usr/share/licenses/ClamGuardian/native-packages.json"
