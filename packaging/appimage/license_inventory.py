@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from functools import lru_cache
-import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from license_expression import load_catalog, normalize_expression
