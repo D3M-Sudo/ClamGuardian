@@ -1067,7 +1067,9 @@ def test_native_license_collector_attributes_flattened_elf_by_unique_soname_file
     tmp_path: Path,
 ) -> None:
     module_path = ROOT / "packaging" / "appimage" / "collect-licenses.py"
-    spec = importlib.util.spec_from_file_location("appimage_flattened_library_provenance", module_path)
+    spec = importlib.util.spec_from_file_location(
+        "appimage_flattened_library_provenance", module_path
+    )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
