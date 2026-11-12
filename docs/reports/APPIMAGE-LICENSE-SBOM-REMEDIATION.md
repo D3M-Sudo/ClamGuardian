@@ -1,10 +1,10 @@
 # AppImage License & SBOM Remediation — Execution Report
 
-**Status: IMPLEMENTED ON PR / NATIVE CI GREEN / NOT RELEASE-READY**  
+**Status: IMPLEMENTED ON PR / CI GREEN / NOT RELEASE-READY**  
 **Target:** PR #38, branch `ci/node24-actions` → `feature`  
-**Verified PR head:** `0e31cd3bd6b89c9028fb4dc6d01ab4de496d51cd`  
-**CI:** [run 43285081892](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43285081892) — **success**  
-**Release Gate:** [run 43285081896](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43285081896) — **success**
+**Verified PR head:** `7b858222dd60c5fc2bb2a952f0c6fd53cd247cbb`  
+**CI:** [run 43287780117](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43287780117) — **success**  
+**Release Gate:** [run 43287780155](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43287780155) — **success**
 
 ## Implementation delivered
 
@@ -14,10 +14,10 @@ The remediation is committed to the remote PR branch. The implementation include
 - Curated AppDir and Type 2 runtime component inventories.
 - Deterministic license staging and runtime license retrieval with pinned upstream Git blob verification.
 - Native Debian package provenance collection based on files actually present in the AppDir, installed package/source versions and copied copyright documents.
-- Explicit provenance for the generated `ca-certificates.crt` output through the `ca-certificates.postinst` hook.
+- Generated CA-bundle provenance: when `ca-certificates.crt` is not dpkg-listed, the collector requires the actual `ca-certificates.postinst` file, verifies that it invokes `update-ca-certificates`, and records the maintainer-script SHA-256 in `native-packages.json`.
 - Provenance matching for ELF libraries flattened by linuxdeploy into `AppDir/usr/lib/`; matching is restricted to unique system multiarch dpkg paths so unrelated copies shipped by browser packages are not misattributed.
-- Embedded `_decimal`/libmpdec evidence gate. Its version remains unknown because the available package copyright evidence does not establish a separate embedded library version.
 - Syft-generated AppDir SPDX 2.3 and CycloneDX 1.6 SBOMs, aggregate SBOMs with Type 2 runtime components, and detached artifact SHA-256 manifests.
+- Curated Python wheel license declarations aligned with the expressions detected by Syft. Explicit CycloneDX name aliases for two Syft `LicenseRef` entries and normalization of redundant outer parentheses are covered by tests and checked against both SBOM formats.
 - Official SPDX 2.3 and CycloneDX 1.6 schema validation using pinned upstream schema refs and Git blob IDs.
 - Extracted-AppImage verification for architecture, CLI, GTK construction, license tree, native/runtime provenance, SBOM contents and final artifact digest.
 - CI and release-gate integration, artifact upload, README, CHANGELOG and this evidence report.
@@ -28,9 +28,9 @@ The remediation is committed to the remote PR branch. The implementation include
 |---|---|
 | Ruff `ruff check .` | **Passed** |
 | Mypy `mypy clamguardian` | **Passed** |
-| Pytest, Python 3.11 | **557 passed, 9 skipped** |
-| Pytest, Python 3.12 | **557 passed, 9 skipped** |
-| Pytest, Python 3.13 | **557 passed, 9 skipped** |
+| Pytest, Python 3.11 | **559 passed, 9 skipped** |
+| Pytest, Python 3.12 | **559 passed, 9 skipped** |
+| Pytest, Python 3.13 | **559 passed, 9 skipped** |
 | Runtime Python 3.14 headless check | **Passed** |
 | Pinned dependency audit | **Passed** |
 | Native Flatpak x86_64 | **Passed** |
@@ -39,20 +39,28 @@ The remediation is committed to the remote PR branch. The implementation include
 | Native AppImage aarch64 | **Passed** |
 | Release Gate: preflight, GTK smoke, AppStream, Flatpak local build, real ClamAV scan | **Passed** |
 
-The nine pytest skips in each Python matrix are existing headless/optional-dependency skips; the build-time AppImage pipeline separately installs and exercises the GTK runtime and validates the official SBOM schemas.
+The nine pytest skips in each Python matrix are existing headless/optional-dependency skips. The build-time AppImage pipeline separately installs and exercises the GTK runtime and validates the official SBOM schemas.
 
 ### Native AppImage evidence
 
 Both native architectures completed the extracted-artifact test successfully:
 
-- **x86_64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents validated against official schemas; GTK smoke passed; final artifact digest verified as `bfc31444b0ebeed3a5b4d5203cb0e606f2d0b7c80a9cfc6579dfd92b2679f7ac`.
-- **aarch64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents validated against official schemas; GTK smoke passed; final artifact digest verified as `c6e35ed0cc08fb031501e0fbdada3f7f0d1172da9db1d6a66930968f58d197bc`.
+- **x86_64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents validated against official schemas; GTK smoke passed; final artifact digest verified as `7c5f8357ff2f936bb80eb3ad471fd3884d422be519245653eda547ea627c769e`.
+- **aarch64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents validated against official schemas; GTK smoke passed; final artifact digest verified as `9d7af605d98266c1e64bfa7996d75e6e506381d49d56c49eb3d5e3f5f73ecd8d`.
 
-The artifact test reports passed architecture, runtime, licenses, SBOM, CLI and GTK construction checks for both builds. This verifies native CI packaging and extraction on both architectures; it is not a substitute for a separate independent review of the resulting evidence.
+The artifact test reports passed architecture, runtime, licenses, SBOM, CLI and GTK construction checks for both builds.
+
+## SBOM license coverage — remaining limitation
+
+The actual x86_64 and aarch64 aggregate SPDX SBOMs each contain **142 package records; 108 have `licenseDeclared: NOASSERTION`**. This is a real coverage gap, not a schema-validation failure.
+
+The 13 Python wheel entries are no longer left as `NOASSERTION` in the curated inventory: their declared expressions are now aligned with Syft's extracted wheel metadata and reconciled against SPDX and CycloneDX. These are metadata-derived declarations, not independent legal determinations.
+
+The remaining 108 unknown declarations include many native/system package records. Their copyright documents are present in the AppImage, but the collector deliberately does not invent a single package-level SPDX expression when the Debian copyright data is absent, ambiguous, multi-stanza or outside its supported normalization rules. Those records need a separate evidence-backed classification pass before complete package-level license coverage can be claimed.
 
 ## Remaining release-readiness blockers
 
-1. **Python wheel license classification:** 13 curated Python wheel entries still use `NOASSERTION` / unknown license status. Reconcile the wheel metadata and notices against the generated Syft records before making a complete license-coverage claim.
+1. **Native/system license expressions:** resolve the 108 package-level SPDX `NOASSERTION` declarations from authoritative per-package/per-file license evidence, or retain them explicitly as unresolved. Copyright-file presence alone does not establish a single package-level expression.
 2. **Type 2 runtime versions:** musl, zstd, zlib and mimalloc candidate versions are marked `declared` from Alpine 3.21 APKBUILD evidence. The runtime build did not retain the exact installed APK database, so these are not verified installed versions.
 3. **libmpdec version:** the embedded library version remains unknown. The copyright evidence establishes the relevant `_decimal`/libmpdec notice, not an independently versioned libmpdec component.
 4. **LGPL-2.1 / libfuse:** the static-linking implications, including source and relinkability obligations, still require engineering/legal review. Including the license text is not itself proof that every applicable obligation is met.
