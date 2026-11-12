@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import importlib.util
+import json
 import subprocess
 import sys
 import tarfile
