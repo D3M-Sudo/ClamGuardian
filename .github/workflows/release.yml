@@ -195,20 +195,19 @@ jobs:
             test "$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l)" -eq 1
             cp "$matches" release/
           done
-          required_evidence=(
-            "aggregate-${arch}.spdx.json"
-            "aggregate-${arch}.cdx.json"
-            "appdir.spdx.json"
-            "appdir.cdx.json"
-            "artifact-${arch}.json"
-            "schema-validation-${arch}.json"
-            "native-packages.json"
-            "license-evidence-${arch}.tar.gz"
-          )
           for arch in x86_64 aarch64; do
+            required_evidence=(
+              "aggregate-${arch}.spdx.json"
+              "aggregate-${arch}.cdx.json"
+              "appdir.spdx.json"
+              "appdir.cdx.json"
+              "artifact-${arch}.json"
+              "schema-validation-${arch}.json"
+              "native-packages.json"
+              "license-evidence-${arch}.tar.gz"
+            )
             mkdir -p "release/sbom-${arch}"
             for evidence in "${required_evidence[@]}"; do
-              evidence="${evidence//\${arch}/$arch}"
               matches="$(find release-assets -type f -path "*/sbom/${arch}/${evidence}" -print)"
               test "$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l)" -eq 1
               cp "$matches" "release/sbom-${arch}/"
