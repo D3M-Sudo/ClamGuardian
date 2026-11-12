@@ -348,3 +348,76 @@ async def test_update_enabled_updates_eligible_sources_and_isolates_failures(
     assert sorted(entry.source.id for entry in results) == ["broken", "ok"]
     assert manager.status("ok").status == DatabaseStatus.INSTALLED
     assert manager.status("broken").status == DatabaseStatus.ERROR
+
+
+def test_rejects_unsafe_database_source_identifiers() -> None:
+    digest = hashlib.sha256(b"good").hexdigest()
+    for source_id in ("../outside", "../../tmp/payload", "bad/id", "bad\\id", ""):
+        with pytest.raises(ValueError, match="safe"):
+            DatabaseSource(
+                source_id,
+                "Unsafe",
+                "Test source",
+                (DatabaseArtifact("safe.cvd", "https://example.invalid/db.cvd", digest),),
+            )
+
+
+def test_rejects_reserved_and_duplicate_artifact_filenames() -> None:
+    digest = hashlib.sha256(b"good").hexdigest()
+    for filename in ("", ".", ".."):
+        with pytest.raises(ValueError, match="Unsafe artifact filename"):
+            DatabaseSource(
+                "unsafe",
+                "Unsafe",
+                "Test source",
+                (DatabaseArtifact(filename, "https://example.invalid/db.cvd", digest),),
+            )
+
+    with pytest.raises(ValueError, match="Duplicate artifact filename"):
+        DatabaseSource(
+            "duplicate",
+            "Duplicate",
+            "Test source",
+            (
+                DatabaseArtifact("same.cvd", "https://example.invalid/one", digest),
+                DatabaseArtifact("same.cvd", "https://example.invalid/two", digest),
+            ),
+        )
+
+
+def test_manager_rejects_artifact_filename_collision(tmp_path: Path) -> None:
+    digest = hashlib.sha256(b"good").hexdigest()
+    manager = DatabaseManager(tmp_path / "db", tmp_path / "state.json", provider=FakeProvider())
+    first = DatabaseSource(
+        "first",
+        "First",
+        "First source",
+        (DatabaseArtifact("shared.cvd", "https://example.invalid/first", digest),),
+    )
+    second = DatabaseSource(
+        "second",
+        "Second",
+        "Second source",
+        (DatabaseArtifact("shared.cvd", "https://example.invalid/second", digest),),
+    )
+
+    manager.add_source(first)
+    with pytest.raises(ValueError, match="already owned"):
+        manager.add_source(second)
+
+    assert [source.id for source in manager.sources] == ["first"]
+
+
+@pytest.mark.asyncio
+async def test_update_creates_missing_database_parent_directory(tmp_path: Path) -> None:
+    base = tmp_path / "not-created-yet"
+    database_dir = base / "databases"
+    state_file = tmp_path / "state.json"
+    manager = DatabaseManager(database_dir, state_file, provider=FakeProvider())
+    manager.add_source(source())
+
+    result = await manager.update("thirdparty")
+
+    assert result.status is DatabaseStatus.INSTALLED
+    assert (database_dir / "thirdparty.cvd").read_bytes() == b"good"
+    assert list(base.glob(".clamguardian-db-*")) == []
