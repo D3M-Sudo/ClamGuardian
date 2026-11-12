@@ -38,12 +38,9 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - **Autostart:** reject unsupported host XDG autostart writes from inside Flatpak rather than silently claiming that host autostart was installed.
 
 
-## [1.0.1] — release candidate (tag cut after the manual desktop validation)
+## [1.0.1] — 2026-10-24
 
-Security and desktop update. Prepared on 2026-10-20; the `v1.0.1` tag is created
-from `main` only after the desktop validation recorded in
-`docs/validation/DESKTOP-TEST-D4-2026-10-19.md` and the promotion PRs
-(`feature → testing → development → main`). Release checklist:
+Security and desktop update. Published on GitHub on 2026-10-24 from tag `v1.0.1` (tagged commit `32c9ca62b7b64854e89fbab29ae6311b3678cbf4`). The release description states that the tag followed desktop validation and branch promotion. The checked-in D4 session record remains pending, so the repository does not currently retain the corresponding manual-test evidence. Release checklist:
 [`docs/reports/RELEASE-1.0.1.md`](docs/reports/RELEASE-1.0.1.md).
 
 ### Security
