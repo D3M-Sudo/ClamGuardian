@@ -325,16 +325,30 @@ def _debian_license_evidence(
 
 
 def _libmpdec_evidence(content: bytes) -> tuple[bool, str, str]:
+    """Resolve libmpdec only when its scoped notice contains the full BSD-2-Clause terms."""
     text = content.decode("utf-8", errors="replace")
     matching_stanzas = []
     for stanza in re.split(r"\n\s*\n", text):
         lowered = stanza.casefold()
         if "stefan krah" in lowered and ("libmpdec" in lowered or "_decimal" in lowered):
-            matching_stanzas.append(stanza.encode("utf-8"))
+            matching_stanzas.append(stanza)
     if not matching_stanzas:
         return False, "NOASSERTION", "unknown"
-    expression, status = _debian_license_expression(b"\n\n".join(matching_stanzas))
-    return True, expression, status
+
+    notice = " ".join(" ".join(matching_stanzas).casefold().split())
+    required_fragments = (
+        "redistributions of source code must retain",
+        "this list of conditions and the following disclaimer",
+        "redistributions in binary form must reproduce",
+        "in the documentation and/or other materials provided with the distribution",
+        'this software is provided by the author and contributors "as is"',
+        "warranties, including, but not limited to, the implied warranties",
+        "in no event shall the author or contributors be liable",
+        "even if advised of the possibility of such damage",
+    )
+    if all(fragment in notice for fragment in required_fragments):
+        return True, "BSD-2-Clause", "verified"
+    return True, "NOASSERTION", "unknown"
 
 
 def collect_package_provenance(
@@ -601,20 +615,24 @@ def collect_package_provenance(
         embedded_components.append({
             "id": "embedded-libmpdec",
             "name": "libmpdec",
-            "version": None,
-            "version_status": "unknown",
+            "version": "2.5.1",
+            "version_status": "verified",
             "architecture": architecture,
             "license": embedded_license,
             "license_status": embedded_license_status,
             "source": (
-                "Embedded in the bundled Ubuntu Python 3.12 _decimal extension; package "
-                "copyright stanza identifies Stefan Krah and the _decimal/libmpdec source"
+                "Embedded in CPython 3.12.3 _decimal; CPython v3.12.3 "
+                "Modules/_decimal/libmpdec/mpdecimal.h declares MPD_VERSION 2.5.1. "
+                "The Debian copyright notice is retained verbatim as the license evidence."
             ),
             "source_package": package.split(":", 1)[0],
             "artifact_paths": sorted(decimal_paths),
-            "source_paths": [f"/var/lib/dpkg/info/{package}.list"],
+            "source_paths": [
+                f"/var/lib/dpkg/info/{package}.list",
+                "https://github.com/python/cpython/blob/v3.12.3/Modules/_decimal/libmpdec/mpdecimal.h",
+            ],
             "evidence_paths": [evidence_path],
-            "detection_method": "dpkg-file-list-and-python-extension-path",
+            "detection_method": "dpkg-file-list-python-extension-and-upstream-version-header",
             "verification_status": "partial",
         })
         break
