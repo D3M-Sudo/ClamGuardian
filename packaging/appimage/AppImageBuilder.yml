@@ -17,11 +17,11 @@ AppDir:
     id: io.github.clamguardian.ClamGuardian
     name: ClamGuardian
     icon: io.github.clamguardian.ClamGuardian
-    version: {{APP_VERSION}}
+    version: '{{APP_VERSION}}'
     exec: usr/bin/clamguardian-launcher
     exec_args: $@
   apt:
-    arch: {{APT_ARCH}}
+    arch: '{{APT_ARCH}}'
     include:
       - python3
       - python3-gi
@@ -38,7 +38,7 @@ AppDir:
       - apt
       - dpkg
 AppImage:
-  arch: {{APPIMAGE_ARCH}}
+  arch: '{{APPIMAGE_ARCH}}'
   file_name: 'ClamGuardian-{{APP_VERSION}}-{{APPIMAGE_ARCH}}.AppImage'
   update-information: None
   sign-key: None

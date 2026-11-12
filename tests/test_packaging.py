@@ -435,6 +435,10 @@ def test_appimage_packaging_recipe_and_helpers_exist() -> None:
 
 def test_appimage_recipe_bundles_required_gi_typelibs_and_icon() -> None:
     recipe = (ROOT / "packaging" / "appimage" / "AppImageBuilder.yml").read_text(encoding="utf-8")
+    parsed = yaml.safe_load(recipe)
+    assert parsed["AppDir"]["app_info"]["version"] == "{{APP_VERSION}}"
+    assert parsed["AppDir"]["apt"]["arch"] == "{{APT_ARCH}}"
+    assert parsed["AppImage"]["arch"] == "{{APPIMAGE_ARCH}}"
     assert "gir1.2-secret-1" in recipe
     assert "adwaita-icon-theme" in recipe
     assert "rsvg-convert" in recipe
