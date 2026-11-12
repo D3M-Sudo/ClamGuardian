@@ -83,3 +83,8 @@ def test_virustotal_controls_reflect_settings_and_credentials_ui(tmp_path: Path)
     assert page._intel_profile_row.get_selected() == 1
     assert set(page._credential_rows) == {"public", "premium"}
     assert page._intel_upload_button.get_sensitive() is True
+
+
+def test_automation_preferences_title_escapes_markup_ampersand() -> None:
+    source = Path(settings_page_module.__file__).read_text(encoding="utf-8")
+    assert 'title="Automation &amp; Protection"' in source

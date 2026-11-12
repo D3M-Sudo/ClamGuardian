@@ -8,6 +8,14 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## [Unreleased]
 
+### Fixed
+- **AppImage runtime packaging:** replace appimage-builder and its source patcher with a native AppDir assembled around a custom AppRun and SHA-256-pinned linuxdeploy/appimagetool. Bundle GTK4, Libadwaita, GI typelibs, Python runtime modules, GSettings resources and CA certificates explicitly; validate ELF dependencies and run a finite full-window smoke test.
+- **GTK Scan controls:** use standard `Gtk.Button` widgets inside `Adw.PreferencesGroup`, avoiding unsupported Libadwaita preference-row parentage.
+
+### Added
+- **Industrial CI/CD release pipeline:** native x86_64/aarch64 Flatpak and AppImage builds, lockfile-hash-verified runtime wheelhouses, per-artifact install/launch gates, Draft GitHub Releases, SHA-256 checksums and one explicit manual publication workflow.
+
+
 ### Added
 - **VirusTotal API profiles and file submission:** independent Public/Premium credentials in OS Secret Service, explicit profile selection, hash-first lookup and consent-gated upload with snapshot revalidation and analysis polling.
 - **VirusTotal hash cache:** persistent, profile-isolated hash assessments with shared in-flight lookup deduplication and bounded transient retries.

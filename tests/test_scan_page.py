@@ -61,6 +61,53 @@ def test_module_exposes_boolean_gtk_flag() -> None:
     assert isinstance(scan_page_module.GTK_AVAILABLE, bool)
 
 
+@pytest.mark.skipif(
+    not scan_page_module.GTK_AVAILABLE,
+    reason="requires PyGObject; no display is needed for the button API contract",
+)
+def test_scan_button_uses_gtk_button_not_preferences_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ForbiddenPreferencesRow:
+        def __init__(self, **kwargs: object) -> None:
+            raise AssertionError("Adw preferences rows require a Gtk.ListBox parent")
+
+    class FakeButton:
+        def __init__(self) -> None:
+            self.child: object | None = None
+
+        def set_child(self, child: object) -> None:
+            self.child = child
+
+    class FakeBox:
+        def __init__(self, *, orientation: object, spacing: int) -> None:
+            self.children: list[object] = []
+
+        def append(self, child: object) -> None:
+            self.children.append(child)
+
+    class FakeImage:
+        def __init__(self, *, icon_name: str) -> None:
+            self.icon_name = icon_name
+
+    class FakeLabel:
+        def __init__(self, *, label: str) -> None:
+            self.label = label
+
+    monkeypatch.setattr(scan_page_module.Adw, "ButtonRow", ForbiddenPreferencesRow, raising=False)
+    monkeypatch.setattr(scan_page_module.Adw, "ActionRow", ForbiddenPreferencesRow, raising=False)
+    monkeypatch.setattr(scan_page_module.Gtk, "Button", FakeButton, raising=False)
+    monkeypatch.setattr(scan_page_module.Gtk, "Box", FakeBox, raising=False)
+    monkeypatch.setattr(scan_page_module.Gtk, "Image", FakeImage, raising=False)
+    monkeypatch.setattr(scan_page_module.Gtk, "Label", FakeLabel, raising=False)
+
+    button = scan_page_module._icon_button("Scan", "system-run-symbolic")
+    assert isinstance(button, FakeButton)
+    assert isinstance(button.child, FakeBox)
+    assert button.child.children[0].icon_name == "system-run-symbolic"
+    assert button.child.children[1].label == "Scan"
+
+
 def test_parse_detection_splits_path_and_signature() -> None:
     path, signature = scan_page_module.parse_detection(
         "/tmp/eicar.com.txt: Eicar-Test-Signature FOUND"

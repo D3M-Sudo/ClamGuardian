@@ -106,20 +106,19 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 return
             container.remove(child)
 
-    def _button_row(title: str, icon_name: str) -> Gtk.Widget:
-        """Build an activatable button row across Libadwaita versions.
+    def _icon_button(title: str, icon_name: str) -> Gtk.Button:
+        """Build a GTK button with a leading icon and visible label.
 
-        ``Adw.ButtonRow`` landed in Libadwaita 1.6; older runtimes (e.g. the
-        Libadwaita 1.5 shipped by Ubuntu 24.04) fall back to an activatable
-        ``Adw.ActionRow`` with a prefix icon. Both expose ``activated``.
+        Libadwaita preference rows require a ``Gtk.ListBox`` parent, while
+        ``Adw.PreferencesGroup.add()`` places children in a ``GtkBox``.
+        A regular ``Gtk.Button`` is the supported widget for these controls.
         """
-        if hasattr(Adw, "ButtonRow"):
-            row = Adw.ButtonRow(title=title)
-            row.set_icon_name(icon_name)
-            return row
-        row = Adw.ActionRow(title=title, activatable=True)
-        row.add_prefix(Gtk.Image(icon_name=icon_name))
-        return row
+        button = Gtk.Button()
+        content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        content.append(Gtk.Image(icon_name=icon_name))
+        content.append(Gtk.Label(label=title))
+        button.set_child(content)
+        return button
 
     class _LabelRow:
         """Two-line label row across Libadwaita versions.
@@ -237,17 +236,17 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
         # -- internals -----------------------------------------------------
 
         def _build_scan_button(self, group: Adw.PreferencesGroup) -> Gtk.Widget:
-            button = _button_row("Scan", "system-run-symbolic")
+            button = _icon_button("Scan", "system-run-symbolic")
             button.add_css_class("suggested-action")
             button.add_css_class("cg-scan-button")
-            button.connect("activated", self._on_scan_clicked)
+            button.connect("clicked", self._on_scan_clicked)
             group.add(button)
             return button
 
         def _build_cancel_button(self) -> Gtk.Widget:
-            button = _button_row("Cancel", "process-stop-symbolic")
+            button = _icon_button("Cancel", "process-stop-symbolic")
             button.set_visible(False)
-            button.connect("activated", self._on_cancel_clicked)
+            button.connect("clicked", self._on_cancel_clicked)
             return button
 
         def _build_target_row(self) -> Adw.EntryRow:

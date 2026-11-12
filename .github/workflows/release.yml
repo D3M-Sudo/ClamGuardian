@@ -1,0 +1,178 @@
+name: Release candidate
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-tag:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Python for YAML validation
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Install YAML parser
+        run: python -m pip install --disable-pip-version-check pyyaml==6.0.3
+      - name: Verify tag, package version and Flatpak pin agree
+        env:
+          RELEASE_REF: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import pathlib, tomllib, yaml, os
+          root = pathlib.Path(".")
+          version = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
+          tag = os.environ["RELEASE_REF"]
+          if tag != f"v{version}":
+              raise SystemExit(f"tag {tag} does not match pyproject version v{version}")
+          manifest = yaml.safe_load((root / "packaging/flatpak/io.github.clamguardian.ClamGuardian.yml").read_text())
+          source = next(s for m in manifest["modules"] for s in m.get("sources", []) if s.get("type") == "git")
+          if source.get("tag") != tag:
+              raise SystemExit(f"Flatpak source tag {source.get('tag')} does not match {tag}")
+          PY
+
+  flatpak:
+    name: Flatpak native build/install (${{ matrix.arch }})
+    needs: validate-tag
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+      - name: Install build tools
+        run: |
+          python -m pip install --disable-pip-version-check uv==0.9.5
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder xvfb xauth dbus-x11
+      - run: packaging/flatpak/prepare-wheelhouse.sh
+      - name: Install GNOME 51 runtime and SDK
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user flathub org.gnome.Platform//51 -y
+          flatpak install --user flathub org.gnome.Sdk//51 -y
+      - run: flatpak-builder --force-clean --repo=flatpak-repo build-dir packaging/flatpak/io.github.clamguardian.ClamGuardian.yml
+      - name: Bundle
+        run: flatpak build-bundle flatpak-repo "ClamGuardian-${GITHUB_REF_NAME#v}-linux-${{ matrix.arch }}.flatpak" io.github.clamguardian.ClamGuardian
+      - name: Install and verify metadata and CLI
+        run: |
+          flatpak install --user --bundle "ClamGuardian-${GITHUB_REF_NAME#v}-linux-${{ matrix.arch }}.flatpak" -y
+          test "$(flatpak info --show-ref io.github.clamguardian.ClamGuardian)" = "app/io.github.clamguardian.ClamGuardian/${{ matrix.arch }}/master"
+          flatpak run io.github.clamguardian.ClamGuardian version
+          flatpak run io.github.clamguardian.ClamGuardian profiles
+      - name: Construct complete GTK UI in installed Flatpak runtime
+        env:
+          GTK_A11Y: none
+        run: xvfb-run -a dbus-run-session -- flatpak run --command=python3 io.github.clamguardian.ClamGuardian /app/share/clamguardian/gtk-smoke.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-flatpak-${{ matrix.arch }}
+          path: ClamGuardian-*-linux-${{ matrix.arch }}.flatpak
+          if-no-files-found: error
+          retention-days: 30
+
+  appimage:
+    name: AppImage native build/launch (${{ matrix.arch }})
+    needs: validate-tag
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Validate packaging shell syntax
+        run: |
+          for script in packaging/flatpak/prepare-wheelhouse.sh packaging/appimage/*.sh; do
+            bash -n "$script"
+          done
+          sh -n packaging/appimage/AppRun
+          python -m py_compile packaging/smoke/gtk-smoke.py
+      - name: Install AppImage build dependencies
+        run: |
+          python -m pip install --disable-pip-version-check uv==0.9.5
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth dbus-x11 file
+      - run: packaging/appimage/prepare-wheelhouse.sh
+      - name: Build AppImage
+        env:
+          APPIMAGE_ARCH: ${{ matrix.arch }}
+        run: |
+          export APP_VERSION="${GITHUB_REF_NAME#v}"
+          packaging/appimage/build-appimage.sh
+      - name: Verify AppImage deployment and launch
+        env:
+          APPIMAGE_ARCH: ${{ matrix.arch }}
+        run: |
+          export APP_VERSION="${GITHUB_REF_NAME#v}"
+          packaging/appimage/test-appimage.sh "dist/ClamGuardian-${GITHUB_REF_NAME#v}-${{ matrix.arch }}.AppImage"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-appimage-${{ matrix.arch }}
+          path: dist/ClamGuardian-*-${{ matrix.arch }}.AppImage
+          if-no-files-found: error
+          retention-days: 30
+
+  create-draft:
+    name: Assemble four verified artifacts into Draft
+    needs: [validate-tag, flatpak, appimage]
+    permissions:
+      actions: read
+      contents: write
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Download this run's build artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release-assets
+          gh run download "$GITHUB_RUN_ID" --dir release-assets
+      - name: Verify payload and checksums
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p release
+          expected=("ClamGuardian-${version}-linux-x86_64.flatpak" "ClamGuardian-${version}-linux-aarch64.flatpak" "ClamGuardian-${version}-x86_64.AppImage" "ClamGuardian-${version}-aarch64.AppImage")
+          for file in "${expected[@]}"; do
+            matches="$(find release-assets -type f -name "$file" -print)"
+            test "$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l)" -eq 1
+            cp "$matches" release/
+          done
+          (cd release && sha256sum "${expected[@]}" > SHA256SUMS && sha256sum --check SHA256SUMS)
+      - name: Create GitHub Release as Draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "::error::Release already exists; refusing overwrite"
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" release/* --draft --title "ClamGuardian ${GITHUB_REF_NAME}" --generate-notes

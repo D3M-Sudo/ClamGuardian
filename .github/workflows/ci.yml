@@ -95,3 +95,111 @@ jobs:
         env:
           GTK_A11Y: none
         run: pytest -vv -o faulthandler_timeout=60
+
+  native-packaging:
+    name: Native Flatpak packaging (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Python 3.14 (GNOME 51 runtime)
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+      - name: Install uv and Flatpak tooling
+        run: |
+          python -m pip install --disable-pip-version-check uv==0.9.5
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder xvfb xauth dbus-x11
+      - name: Prepare native, lockfile-verified runtime wheelhouse
+        run: packaging/flatpak/prepare-wheelhouse.sh
+      - name: Install GNOME 51 runtime and SDK
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user flathub org.gnome.Platform//51 -y
+          flatpak install --user flathub org.gnome.Sdk//51 -y
+      - name: Build local Flatpak
+        run: flatpak-builder --force-clean --repo=flatpak-repo build-dir packaging/flatpak/io.github.clamguardian.ClamGuardian.local.yml
+      - name: Create installable bundle
+        run: flatpak build-bundle flatpak-repo "ClamGuardian-ci-linux-${{ matrix.arch }}.flatpak" io.github.clamguardian.ClamGuardian
+      - name: Install bundle and verify metadata and CLI
+        run: |
+          flatpak install --user --bundle "ClamGuardian-ci-linux-${{ matrix.arch }}.flatpak" -y
+          test "$(flatpak info --show-ref io.github.clamguardian.ClamGuardian)" = "app/io.github.clamguardian.ClamGuardian/${{ matrix.arch }}/master"
+          flatpak run io.github.clamguardian.ClamGuardian version
+          flatpak run io.github.clamguardian.ClamGuardian profiles
+      - name: Construct complete GTK UI in installed Flatpak runtime
+        env:
+          GTK_A11Y: none
+        run: xvfb-run -a dbus-run-session -- flatpak run --command=python3 io.github.clamguardian.ClamGuardian /app/share/clamguardian/gtk-smoke.py
+      - name: Upload tested Flatpak
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ClamGuardian-ci-linux-${{ matrix.arch }}
+          path: ClamGuardian-ci-linux-${{ matrix.arch }}.flatpak
+          retention-days: 14
+
+  native-appimage:
+    name: Native AppImage packaging (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Validate packaging shell syntax
+        run: |
+          for script in packaging/flatpak/prepare-wheelhouse.sh packaging/appimage/*.sh; do
+            bash -n "$script"
+          done
+          sh -n packaging/appimage/AppRun
+          python -m py_compile packaging/smoke/gtk-smoke.py
+      - name: Install AppImage prerequisites
+        run: |
+          python -m pip install --disable-pip-version-check uv==0.9.5
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth dbus-x11 file
+      - name: Prepare native locked runtime wheelhouse
+        run: packaging/appimage/prepare-wheelhouse.sh
+      - name: Read package version
+        id: package-version
+        run: echo "version=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')" >> "$GITHUB_OUTPUT"
+      - name: Build AppImage
+        env:
+          APPIMAGE_ARCH: ${{ matrix.arch }}
+        run: |
+          APP_VERSION="${{ steps.package-version.outputs.version }}"
+          export APP_VERSION
+          packaging/appimage/build-appimage.sh
+      - name: Verify CLI, runtime and GTK startup
+        env:
+          APPIMAGE_ARCH: ${{ matrix.arch }}
+          APP_VERSION: ${{ steps.package-version.outputs.version }}
+        run: packaging/appimage/test-appimage.sh "dist/ClamGuardian-$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')-${{ matrix.arch }}.AppImage"
+      - name: Upload tested AppImage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ClamGuardian-ci-appimage-${{ matrix.arch }}
+          path: dist/ClamGuardian-*-${{ matrix.arch }}.AppImage
+          if-no-files-found: error
+          retention-days: 14

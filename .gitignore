@@ -41,3 +41,7 @@ ENV/
 
 # Local quarantine/test data
 .quarantine/
+
+# Generated architecture-native packaging inputs
+/packaging/flatpak/wheelhouse/
+/packaging/appimage/wheelhouse/
