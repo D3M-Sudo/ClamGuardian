@@ -1505,14 +1505,14 @@ def test_release_workflow_requires_architecture_sbom_evidence_archives() -> None
         encoding="utf-8"
     )
     for evidence in (
-        "aggregate-${arch}.spdx.json",
-        "aggregate-${arch}.cdx.json",
+        "aggregate-${architecture}.spdx.json",
+        "aggregate-${architecture}.cdx.json",
         "appdir.spdx.json",
         "appdir.cdx.json",
-        "artifact-${arch}.json",
-        "schema-validation-${arch}.json",
+        "artifact-${architecture}.json",
+        "schema-validation-${architecture}.json",
         "native-packages.json",
-        "license-evidence-${arch}.tar.gz",
+        "license-evidence-${architecture}.tar.gz",
     ):
         assert evidence in assembler
     assert "ClamGuardian-${version}-sbom-${architecture}.tar.gz" in assembler
