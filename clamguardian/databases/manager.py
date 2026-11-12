@@ -30,20 +30,15 @@ StatusCallback = Callable[[InstalledDatabase], Awaitable[None] | None]
 @asynccontextmanager
 async def _async_thread_lock(lock: LockType) -> AsyncIterator[None]:
     """Acquire a process-wide lock without blocking or binding to one event loop."""
-    if not lock.acquire(blocking=False):
-        acquisition = asyncio.create_task(asyncio.to_thread(lock.acquire))
-        try:
-            await asyncio.shield(acquisition)
-        except asyncio.CancelledError:
-            # The executor thread cannot be cancelled. Wait until it acquires
-            # the lock, then release it here instead of leaking the lock.
-            await asyncio.shield(acquisition)
-            lock.release()
-            raise
+    acquired = False
     try:
+        while not lock.acquire(blocking=False):
+            await asyncio.sleep(0.01)
+        acquired = True
         yield
     finally:
-        lock.release()
+        if acquired:
+            lock.release()
 
 
 class DatabaseManager:
