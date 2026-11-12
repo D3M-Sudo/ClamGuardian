@@ -9,9 +9,9 @@ import json
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable
 
 
 def query_package_metadata(package: str) -> dict[str, str | None]:
