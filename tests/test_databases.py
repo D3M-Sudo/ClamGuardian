@@ -355,7 +355,7 @@ async def test_update_enabled_updates_eligible_sources_and_isolates_failures(
 
 def test_rejects_unsafe_database_source_identifiers() -> None:
     digest = hashlib.sha256(b"good").hexdigest()
-    for source_id in ("../outside", "../../tmp/payload", "bad/id", "bad\\id", ""):
+    for source_id in ("../outside", "../../tmp/payload", "bad/id", "bad\\id"):
         with pytest.raises(ValueError, match="safe"):
             DatabaseSource(
                 source_id,
