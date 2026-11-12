@@ -451,12 +451,10 @@ def _open_directory_chain(path: Path, *, create: bool) -> Iterator[int]:
             except FileNotFoundError:
                 if not create:
                     raise
-                try:
+                with contextlib.suppress(FileExistsError):
+                    # If another process created the component, the following
+                    # O_DIRECTORY | O_NOFOLLOW open validates it before use.
                     os.mkdir(component, mode=0o700, dir_fd=descriptor)
-                except FileExistsError:
-                    # Another process created the component; open it with
-                    # O_DIRECTORY | O_NOFOLLOW below before proceeding.
-                    pass
                 next_descriptor = os.open(component, flags, dir_fd=descriptor)
             os.close(descriptor)
             descriptor = next_descriptor
