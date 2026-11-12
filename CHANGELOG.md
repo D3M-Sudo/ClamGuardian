@@ -22,6 +22,7 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - **User-Session Autostart:** optional autostart manager (`clamguardian/core/autostart.py`) installing user-session desktop entries in `~/.config/autostart`, disabled by default, exposed via GTK Settings and CLI (`clamguardian autostart status/enable/disable`).
 - **ClamUI Benchmark Evaluation:** comprehensive evaluation matrix (`docs/reports/CLAMUI-BENCHMARK-EVALUATION.md`) detailing adopted, improved, rejected, and deferred capabilities.
 - **Engineering Handoff:** comprehensive technical documentation in `docs/engineering/CLAMGUARDIAN-AUTONOMOUS-COMPLETION-HANDOFF.md`.
+- **AppImage license and SBOM evidence:** stage the complete project GPL license, collect copyright documents for Debian packages that own bundled AppDir files, generate Syft SPDX 2.3 and CycloneDX 1.6 AppDir inventories, and publish aggregate SBOMs that also represent the AppImage Type 2 runtime. Bind the evidence to the final artifact SHA-256 and verify it during native CI.
 
 ### Changed
 
