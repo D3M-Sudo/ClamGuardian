@@ -1078,14 +1078,14 @@ def test_native_license_collector_attributes_flattened_elf_by_unique_soname_file
     docs = tmp_path / "doc"
     flattened_library = appdir / "usr/lib/libexample.so.2"
     flattened_library.parent.mkdir(parents=True)
-    flattened_library.write_bytes(b"\\x7fELF" + b"fixture")
+    flattened_library.write_bytes(b"\x7fELF" + b"fixture")
     info.mkdir()
     (info / "libexample1:amd64.list").write_text(
-        "/usr/lib/x86_64-linux-gnu/libexample.so.2.0.0\\n", encoding="utf-8"
+        "/usr/lib/x86_64-linux-gnu/libexample.so.2.0.0\n", encoding="utf-8"
     )
     (docs / "libexample1").mkdir(parents=True)
     (docs / "libexample1/copyright").write_text(
-        "Files: *\\nLicense: MIT\\n", encoding="utf-8"
+        "Files: *\nLicense: MIT\n", encoding="utf-8"
     )
 
     result = module.collect_package_provenance(
