@@ -449,7 +449,10 @@ def test_appimage_packaging_recipe_and_helpers_exist() -> None:
     assert "appimagetool-x86_64.AppImage" in installer
     assert "sha256sum --check" in installer
     assert "1.9.1" in installer
-    assert "APPIMAGE_EXTRACT_AND_RUN" not in installer
+    assert "export APPIMAGE_EXTRACT_AND_RUN=1" in installer
+    assert "sed -i" not in installer
+    assert "--appimage-extract" not in installer
+    assert 'ln -sfn "$APPIMAGETOOL_DIR/$asset" "$APPIMAGETOOL_DIR/appimagetool"' in installer
     assert 'export PATH="$APPIMAGETOOL_DIR:$PATH"' in installer
     assert 'appimagetool --version' in installer
 

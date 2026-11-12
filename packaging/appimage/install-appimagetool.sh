@@ -29,15 +29,10 @@ printf '%s  %s\n' "$expected_sha256" "$APPIMAGETOOL_DIR/$asset" | sha256sum --ch
 
 chmod +x "$APPIMAGETOOL_DIR/$asset"
 
-# Extract the AppImage rather than relying on host FUSE availability.
-# This is the upstream-documented workaround for running appimagetool in CI.
-sed -i 's|AI\x02|\x00\x00\x00|' "$APPIMAGETOOL_DIR/$asset"
-(
-  cd "$APPIMAGETOOL_DIR"
-  "./$asset" --appimage-extract
-)
-test -x "$APPIMAGETOOL_DIR/squashfs-root/AppRun"
-ln -sfn "$APPIMAGETOOL_DIR/squashfs-root/AppRun" "$APPIMAGETOOL_DIR/appimagetool"
+# Let the AppImage runtime extract itself to a temporary directory.
+# This avoids FUSE mounts and does not mutate the downloaded binary.
+ln -sfn "$APPIMAGETOOL_DIR/$asset" "$APPIMAGETOOL_DIR/appimagetool"
+export APPIMAGE_EXTRACT_AND_RUN=1
 export PATH="$APPIMAGETOOL_DIR:$PATH"
 command -v appimagetool
 appimagetool --version
