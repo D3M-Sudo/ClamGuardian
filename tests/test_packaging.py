@@ -463,6 +463,18 @@ def test_appimage_packaging_recipe_and_helpers_exist() -> None:
     assert 'export PATH="$APPIMAGETOOL_DIR:$PATH"' in installer
     assert 'appimagetool --version' in installer
 
+    builder_patch = (appimage / "patch-appimage-builder.py").read_text(encoding="utf-8")
+    assert "APPRUN2_SETUP_MARKER" in builder_patch
+    assert 'compat_linker_folder = self.compat_runtime_path / "lib64"' in builder_patch
+    assert '"*/*-linux-gnu*/ld-linux*.so*"' in builder_patch
+    assert "compat_linker_folder.symlink_to(symlink_target)" in builder_patch
+    assert "Patched Ubuntu compatibility linker path" in builder_patch
+
+    appimage_test = (appimage / "test-appimage.sh").read_text(encoding="utf-8")
+    assert "--appimage-extract" in appimage_test
+    assert 'test -x "$extracted_appdir/AppRun"' in appimage_test
+    assert 'test -e "$extracted_appdir/runtime/compat/lib64"' in appimage_test
+
     # The former shell launcher was replaced by a native C ELF entrypoint.
     # Both PR CI and tag-release validation must syntax-check the current source.
     for workflow_name in (".github/workflows/ci.yml", ".github/workflows/release.yml"):

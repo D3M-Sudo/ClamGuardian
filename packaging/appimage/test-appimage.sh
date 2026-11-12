@@ -21,6 +21,24 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 deployed="$tmpdir/ClamGuardian.AppImage"
 install -m755 "$APPIMAGE" "$deployed"
+
+# Inspect the filesystem before executing it. This catches a missing AppRun
+# entrypoint or the Ubuntu compat-runtime linker symlink with a direct error.
+extract_root="$tmpdir/extracted"
+mkdir -p "$extract_root"
+(
+  cd "$extract_root"
+  "$deployed" --appimage-extract >/dev/null
+)
+extracted_appdir="$extract_root/squashfs-root"
+test -x "$extracted_appdir/AppRun"
+test -s "$extracted_appdir/AppRun.env"
+if [ -d "$extracted_appdir/runtime/compat" ]; then
+  test -e "$extracted_appdir/runtime/compat/lib64"
+  find "$extracted_appdir/runtime/compat/lib64" -maxdepth 1 \\
+    -type f -name 'ld-linux*.so*' -print -quit | grep -q .
+fi
+
 version_output="$(APPIMAGE_EXTRACT_AND_RUN=1 "$deployed" version)"
 printf '%s\n' "$version_output"
 if [ -n "${APP_VERSION:-}" ] && ! grep -Fq "$APP_VERSION" <<<"$version_output"; then

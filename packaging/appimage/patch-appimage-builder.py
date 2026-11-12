@@ -40,6 +40,55 @@ def patch_package_module(path: Path) -> None:
     path.write_text(source, encoding="utf-8")
 
 
+
+APPRUN2_SETUP_MARKER = 'compat_linker_folder = self.compat_runtime_path / "lib64"'
+APPRUN2_SETUP_ORIGINAL = """    def setup(self):
+        self.move_glibc_to_compat_runtime()
+        runtime_env = self._configure_runtime_environment()
+"""
+APPRUN2_SETUP_REPLACEMENT = """    def setup(self):
+        self.move_glibc_to_compat_runtime()
+
+        # AppRun v2 expects Ubuntu's dynamic linker under runtime/compat/lib64.
+        # Ubuntu packages it below usr/lib/<multiarch>, so recreate the
+        # relative symlink after moving glibc into compat/.
+        compat_linker_folder = self.compat_runtime_path / "lib64"
+        if compat_linker_folder.is_symlink() or compat_linker_folder.is_file():
+            compat_linker_folder.unlink()
+        elif compat_linker_folder.is_dir():
+            shutil.rmtree(compat_linker_folder)
+
+        linker = self.finder.find_one(
+            "*/*-linux-gnu*/ld-linux*.so*",
+            [Finder.is_file, Finder.is_elf_shared_lib],
+        )
+        if linker is None:
+            raise RuntimeError(
+                "Unable to find the dynamic linker under a *-linux-gnu* "
+                f"directory in {self.appdir_path}"
+            )
+        linker_folder = linker.parent
+        symlink_target = linker_folder.relative_to(compat_linker_folder.parent)
+        compat_linker_folder.symlink_to(symlink_target)
+
+        runtime_env = self._configure_runtime_environment()
+"""
+
+
+def patch_apprun2_module(path: Path) -> None:
+    source = path.read_text(encoding="utf-8")
+    if APPRUN2_SETUP_MARKER in source:
+        return
+    if APPRUN2_SETUP_ORIGINAL not in source:
+        raise RuntimeError(
+            "Unexpected appimage-builder AppRun v2 setup source; refusing an "
+            "unreviewed patch. Check the pinned appimage-builder version."
+        )
+    source = source.replace(APPRUN2_SETUP_ORIGINAL, APPRUN2_SETUP_REPLACEMENT, 1)
+    source = source.replace("import string\\n", "import string\\nimport shutil\\n", 1)
+    path.write_text(source, encoding="utf-8")
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         raise SystemExit("usage: patch-appimage-builder.py BUILDER_VENV")
@@ -54,6 +103,17 @@ def main() -> int:
         )
     patch_package_module(matches[0])
     print(f"Patched Debian version comparison in {matches[0]}")
+
+    apprun2_matches = list(
+        root.glob("lib/python*/site-packages/appimagebuilder/modules/setup/apprun_2/apprun2.py")
+    )
+    if len(apprun2_matches) != 1:
+        raise SystemExit(
+            f"expected exactly one AppRun v2 module under {root}, "
+            f"found {len(apprun2_matches)}"
+        )
+    patch_apprun2_module(apprun2_matches[0])
+    print(f"Patched Ubuntu compatibility linker path in {apprun2_matches[0]}")
     return 0
 
 
