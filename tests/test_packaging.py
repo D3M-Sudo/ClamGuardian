@@ -420,7 +420,13 @@ def test_appimage_packaging_recipe_and_helpers_exist() -> None:
     appimage = ROOT / "packaging" / "appimage"
     recipe = (appimage / "AppImageBuilder.yml").read_text(encoding="utf-8")
     launcher = appimage / "clamguardian-launcher.c"
-    for script in ("build-appimage.sh", "prepare-wheelhouse.sh", "test-appimage.sh", "install-appimagetool.sh"):
+    scripts = (
+        "build-appimage.sh",
+        "prepare-wheelhouse.sh",
+        "test-appimage.sh",
+        "install-appimagetool.sh",
+    )
+    for script in scripts:
         path = appimage / script
         assert path.is_file()
         assert path.stat().st_mode & 0o111, f"{script} must be executable"
