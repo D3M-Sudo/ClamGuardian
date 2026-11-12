@@ -3,6 +3,10 @@ script:
   - mkdir -p "$TARGET_APPDIR/opt/python"
   - python3 -m pip install --no-index --no-deps --target "$TARGET_APPDIR/opt/python" "$SOURCE_DIR/wheelhouse/"*.whl
   - cp -a "$SOURCE_DIR/../../clamguardian" "$TARGET_APPDIR/opt/python/"
+  - mkdir -p "$TARGET_APPDIR/lib"
+  - test -d "$TARGET_APPDIR/usr/lib/python3.12/encodings"
+  - ln -sfn ../usr/lib/python3.12 "$TARGET_APPDIR/lib/python3.12"
+  - test -f "$TARGET_APPDIR/lib/python3.12/encodings/__init__.py"
   - mkdir -p "$TARGET_APPDIR/usr/bin"
   - cc -O2 -Wall -Wextra -Werror "$SOURCE_DIR/clamguardian-launcher.c" -o "$TARGET_APPDIR/usr/bin/clamguardian-launcher"
   - install -Dm644 "$SOURCE_DIR/../../data/io.github.clamguardian.ClamGuardian.desktop" "$TARGET_APPDIR/io.github.clamguardian.ClamGuardian.desktop"

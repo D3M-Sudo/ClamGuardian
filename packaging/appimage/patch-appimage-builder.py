@@ -1,19 +1,12 @@
 #!/usr/bin/env python3
-"""Patch appimage-builder 1.0.0 to compare Debian package versions correctly.
-
-The upstream apt deploy module parses Debian versions with PEP 440. Ubuntu
-versions such as 1.22.6ubuntu6 are valid dpkg versions but invalid PEP 440.
-Use dpkg's native comparator instead; do not normalize or discard version data.
-"""
+"""Patch appimage-builder 1.1.0 for Debian versions and Ubuntu AppRun layout."""
 from __future__ import annotations
-
 import sys
 from pathlib import Path
 
 ORIGINAL_IMPORT = "from packaging import version"
 ORIGINAL_COMPARISON = "return version.parse(self.version) > version.parse(other.version)"
 PATCH_MARKER = '["dpkg", "--compare-versions", self.version, "gt", other.version]'
-
 REPLACEMENT = '''result = subprocess.run(
                 ["dpkg", "--compare-versions", self.version, "gt", other.version],
                 check=False,
@@ -25,21 +18,15 @@ REPLACEMENT = '''result = subprocess.run(
                 )
             return result.returncode == 0'''
 
-
 def patch_package_module(path: Path) -> None:
     source = path.read_text(encoding="utf-8")
     if PATCH_MARKER in source:
         return
     if ORIGINAL_IMPORT not in source or ORIGINAL_COMPARISON not in source:
-        raise RuntimeError(
-            "Unexpected appimage-builder apt/package.py source; refusing an "
-            "unreviewed patch. Check the pinned appimage-builder version."
-        )
+        raise RuntimeError("Unexpected appimage-builder apt/package.py source; refusing an unreviewed patch.")
     source = source.replace(ORIGINAL_IMPORT, "import subprocess", 1)
     source = source.replace(ORIGINAL_COMPARISON, REPLACEMENT, 1)
     path.write_text(source, encoding="utf-8")
-
-
 
 APPRUN2_SETUP_MARKER = 'compat_linker_folder = self.compat_runtime_path / "lib64"'
 APPRUN2_SETUP_ORIGINAL = """    def setup(self):
@@ -48,16 +35,11 @@ APPRUN2_SETUP_ORIGINAL = """    def setup(self):
 """
 APPRUN2_SETUP_REPLACEMENT = """    def setup(self):
         self.move_glibc_to_compat_runtime()
-
-        # AppRun v2 expects Ubuntu's dynamic linker under runtime/compat/lib64.
-        # Ubuntu packages it below usr/lib/<multiarch>, so recreate the
-        # relative symlink after moving glibc into compat/.
         compat_linker_folder = self.compat_runtime_path / "lib64"
         if compat_linker_folder.is_symlink() or compat_linker_folder.is_file():
             compat_linker_folder.unlink()
         elif compat_linker_folder.is_dir():
             shutil.rmtree(compat_linker_folder)
-
         linker = self.finder.find_one(
             "*/*-linux-gnu*/ld-linux*.so*",
             [Finder.is_file, Finder.is_elf_shared_lib],
@@ -70,53 +52,33 @@ APPRUN2_SETUP_REPLACEMENT = """    def setup(self):
         linker_folder = linker.parent
         symlink_target = linker_folder.relative_to(compat_linker_folder.parent)
         compat_linker_folder.symlink_to(symlink_target)
-
         runtime_env = self._configure_runtime_environment()
 """
-
 
 def patch_apprun2_module(path: Path) -> None:
     source = path.read_text(encoding="utf-8")
     if APPRUN2_SETUP_MARKER in source:
         return
     if APPRUN2_SETUP_ORIGINAL not in source:
-        raise RuntimeError(
-            "Unexpected appimage-builder AppRun v2 setup source; refusing an "
-            "unreviewed patch. Check the pinned appimage-builder version."
-        )
+        raise RuntimeError("Unexpected appimage-builder AppRun v2 setup source; refusing an unreviewed patch.")
     source = source.replace(APPRUN2_SETUP_ORIGINAL, APPRUN2_SETUP_REPLACEMENT, 1)
-    if "import shutil\\n" not in source:
-        source = source.replace("import string\\n", "import string\\nimport shutil\\n", 1)
+    if "import shutil\n" not in source:
+        source = source.replace("import string\n", "import string\nimport shutil\n", 1)
     path.write_text(source, encoding="utf-8")
-
 
 def main() -> int:
     if len(sys.argv) != 2:
         raise SystemExit("usage: patch-appimage-builder.py BUILDER_VENV")
     root = Path(sys.argv[1])
-    matches = list(
-        root.glob("lib/python*/site-packages/appimagebuilder/modules/deploy/apt/package.py")
-    )
+    matches = list(root.glob("lib/python*/site-packages/appimagebuilder/modules/deploy/apt/package.py"))
     if len(matches) != 1:
-        raise SystemExit(
-            f"expected exactly one appimage-builder apt/package.py under {root}, "
-            f"found {len(matches)}"
-        )
+        raise SystemExit(f"expected exactly one appimage-builder apt/package.py under {root}, found {len(matches)}")
     patch_package_module(matches[0])
-    print(f"Patched Debian version comparison in {matches[0]}")
-
-    apprun2_matches = list(
-        root.glob("lib/python*/site-packages/appimagebuilder/modules/setup/apprun_2/apprun2.py")
-    )
+    apprun2_matches = list(root.glob("lib/python*/site-packages/appimagebuilder/modules/setup/apprun_2/apprun2.py"))
     if len(apprun2_matches) != 1:
-        raise SystemExit(
-            f"expected exactly one AppRun v2 module under {root}, "
-            f"found {len(apprun2_matches)}"
-        )
+        raise SystemExit(f"expected exactly one AppRun v2 module under {root}, found {len(apprun2_matches)}")
     patch_apprun2_module(apprun2_matches[0])
-    print(f"Patched Ubuntu compatibility linker path in {apprun2_matches[0]}")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
