@@ -75,6 +75,8 @@ install -Dm644 /etc/ssl/certs/ca-certificates.crt \
 . "$ROOT/packaging/appimage/install-linuxdeploy.sh"
 
 args=(--appdir "$APPDIR"
+      --desktop-file "$APPDIR/usr/share/applications/io.github.clamguardian.ClamGuardian.desktop"
+      --custom-apprun "$ROOT/packaging/appimage/AppRun"
       --executable "$APPDIR/usr/bin/python3.12"
       --executable "$APPDIR/usr/bin/gdk-pixbuf-query-loaders")
 

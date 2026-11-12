@@ -36,7 +36,7 @@ sudo apt-get install -y \
 
 SYSTEM_PYTHON=/usr/bin/python3.12
 test "$("$SYSTEM_PYTHON" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')" = "3.12"
-"$SYSTEM_PYTHON" -c 'import gi, cairo; from gi.repository import Gtk, Adw, Secret; print("System GTK/GI runtime OK")'
+"$SYSTEM_PYTHON" -c 'import gi, cairo; gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1"); gi.require_version("Secret", "1"); from gi.repository import Gtk, Adw, Secret; print("System GTK/GI runtime OK")'
 test -d /usr/lib/python3.12/encodings
 
 APPDIR="$ROOT/build/appimage/AppDir"

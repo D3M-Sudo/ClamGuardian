@@ -30,6 +30,7 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 ### Fixed
 
 - **AppImage runtime packaging:** replace appimage-builder and its source patcher with a native AppDir assembled around a custom AppRun and SHA-256-pinned linuxdeploy/appimagetool. Bundle GTK4, Libadwaita, GI typelibs, Python runtime modules, GSettings resources and CA certificates explicitly; validate ELF dependencies and run a finite full-window smoke test.
+- **GTK and AppImage warning remediation:** escape the Settings group ampersand for Pango markup, declare Gtk/Adw/Secret GI versions before the system runtime probe imports them, and pass the known desktop file and custom AppRun explicitly to linuxdeploy.
 - **GTK Scan controls:** use standard `Gtk.Button` widgets inside `Adw.PreferencesGroup`, avoiding unsupported Libadwaita preference-row parentage.
 - **Quarantine race and restore hardening (PR #30):** encrypt a stable regular-file snapshot, detach only the verified inode through a pinned directory descriptor, preserve concurrent pathname replacements, and restore through component-pinned no-follow directory descriptors. Bound authenticated record geometry and payload sizes, reject malformed metadata, and skip corrupt records during listing.
 - **Quarantine key integrity (PR #30):** distinguish a missing Secret Service key from a malformed stored key; fail closed on corruption rather than silently rotating the key, and log the owner-only key-file fallback.
