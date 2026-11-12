@@ -24,7 +24,7 @@ _APACHE_ALIASES = {
 
 def _verify_catalog_blob(path: Path, expected_sha: str) -> bytes:
     content = path.read_bytes()
-    header = f"blob {len(content)}\\0".encode("utf-8")
+    header = f"blob {len(content)}\0".encode("utf-8")
     actual_sha = hashlib.sha1(header + content).hexdigest()
     if actual_sha != expected_sha:
         raise ValueError(f"pinned SPDX catalog hash mismatch for {path.name}")
