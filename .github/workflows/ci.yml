@@ -178,7 +178,9 @@ jobs:
           python-version: "3.12"
       - name: Validate packaging shell syntax
         run: |
-          bash -n packaging/flatpak/prepare-wheelhouse.sh packaging/appimage/*.sh
+          for script in packaging/flatpak/prepare-wheelhouse.sh packaging/appimage/*.sh; do
+            bash -n "$script"
+          done
           sh -n packaging/appimage/clamguardian-launcher
       - name: Install AppImage prerequisites
         run: |
