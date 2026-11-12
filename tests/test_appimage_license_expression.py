@@ -184,3 +184,20 @@ def test_cyclonedx_custom_license_requires_actual_text() -> None:
     assert valid["components"][0]["licenses"][0]["license"]["text"]["content"] == (
         "Hylafax license full text"
     )
+
+
+def test_spdx_catalog_rejects_modified_pinned_data(tmp_path: Path) -> None:
+    module = _module()
+    license_source = ROOT / "packaging/appimage/licenses/spdx-3.29.0-licenses.json"
+    exception_source = ROOT / "packaging/appimage/licenses/spdx-3.29.0-exceptions.json"
+    altered = tmp_path / "spdx-3.29.0-licenses.json"
+    altered.write_text(
+        license_source.read_text(encoding="utf-8").replace(
+            '"licenseListVersion": "3.29.0"',
+            '"licenseListVersion": "3.29.0-altered"',
+            1,
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="pinned SPDX catalog hash mismatch"):
+        module.load_catalog(altered, exception_source)

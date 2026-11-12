@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -21,11 +22,26 @@ _APACHE_ALIASES = {
 }
 
 
+def _verify_catalog_blob(path: Path, expected_sha: str) -> bytes:
+    content = path.read_bytes()
+    header = f"blob {len(content)}\\0".encode("utf-8")
+    actual_sha = hashlib.sha1(header + content).hexdigest()
+    if actual_sha != expected_sha:
+        raise ValueError(f"pinned SPDX catalog hash mismatch for {path.name}")
+    return content
+
+
 def load_catalog(
     licenses_path: Path, exceptions_path: Path
 ) -> tuple[set[str], set[str]]:
-    licenses_data = json.loads(licenses_path.read_text(encoding="utf-8"))
-    exceptions_data = json.loads(exceptions_path.read_text(encoding="utf-8"))
+    license_bytes = _verify_catalog_blob(
+        licenses_path, "79ca1b1f6792d599d4fc680782e1f81f5923b636"
+    )
+    exception_bytes = _verify_catalog_blob(
+        exceptions_path, "ff15183baf7105f9b5747539950018bec7e43ada"
+    )
+    licenses_data = json.loads(license_bytes)
+    exceptions_data = json.loads(exception_bytes)
     if (
         licenses_data.get("licenseListVersion") != "3.29.0"
         or exceptions_data.get("licenseListVersion") != "3.29.0"
