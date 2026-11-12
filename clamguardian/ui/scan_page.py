@@ -106,17 +106,14 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 return
             container.remove(child)
 
-    def _button_row(title: str, icon_name: str) -> Gtk.Widget:
-        """Build an activatable button row across Libadwaita versions.
+    def _button_row(title: str, icon_name: str) -> Adw.ActionRow:
+        """Build an activatable preferences row with a leading icon.
 
-        ``Adw.ButtonRow`` landed in Libadwaita 1.6; older runtimes (e.g. the
-        Libadwaita 1.5 shipped by Ubuntu 24.04) fall back to an activatable
-        ``Adw.ActionRow`` with a prefix icon. Both expose ``activated``.
+        ``Adw.ButtonRow`` is restricted to ``Gtk.ListBox`` parents and
+        cannot be placed in the ``GtkBox`` used internally by
+        ``Adw.PreferencesGroup``. ``Adw.ActionRow`` is supported by both
+        the Ubuntu 24.04 and GNOME 51 runtimes and is valid in this group.
         """
-        if hasattr(Adw, "ButtonRow"):
-            row = Adw.ButtonRow(title=title)
-            row.set_start_icon_name(icon_name)
-            return row
         row = Adw.ActionRow(title=title, activatable=True)
         row.add_prefix(Gtk.Image(icon_name=icon_name))
         return row
