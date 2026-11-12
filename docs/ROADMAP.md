@@ -1,6 +1,6 @@
 # ClamGuardian Implementation Roadmap
 
-*Last updated: 2026-11-09 — PR #18 is under P1/P2 remediation following an independent audit. The existing CI/Release Gate baseline was green at the pre-remediation head; the new remediation commits still require full CI and release-gate validation. USB, VirusTotal and realtime phases must not be treated as release-complete until the updated gates pass. VirusTotal network access remains administratively blocked pending maintainer review of applicable Public API terms and product eligibility. Future versions are planning targets, not promised releases or dates.*
+*Last updated: 2026-11-12 — PR #18 and subsequent remediation/integration PRs are merged into `feature`. USB, VirusTotal, realtime monitoring, scheduled scans, autostart and scan-linked VirusTotal evidence are implemented on this branch. This is implementation status, not a claim of release promotion or real-host validation. VirusTotal Public API requests remain administratively blocked pending written eligibility authorization. PR #30 (final feature hardening) is a separate, still-open PR and is not part of this branch snapshot. Future versions are planning targets, not promised releases or dates.*
 
 This document outlines the authoritative development roadmap for ClamGuardian, tracking completed milestones, in-progress targets, and future architectural phases.
 
@@ -28,9 +28,10 @@ Phase 9: 1.0 Release Gate [COMPLETED 2026-10-16 — tag v1.0.0 @ 8ee8a56, instal
     ↓
 Desktop Application (GTK4/Libadwaita) [D1..D4 IMPLEMENTED 2026-10-19 on `feature` — manual desktop validation pending]
     ↓
-Phase 10: 1.1 USB Auto-Scan [REMEDIATION IN PROGRESS — PR #18]
-Phase 11: Threat Intelligence Integration [BLOCKED — terms eligibility review required]
-Phase 12: 2.x-A Event-Driven Monitoring [REMEDIATION IN PROGRESS — PR #18]
+Phase 10: 1.1 USB Auto-Scan [IMPLEMENTED ON feature — host validation / release promotion remain separate]
+Phase 11: Threat Intelligence Integration [IMPLEMENTED — Public API use administratively gated; Premium entitlement required]
+Phase 12: 2.x-A Event-Driven Monitoring [IMPLEMENTED ON feature — host validation / release promotion remain separate]
+Phase 13: Shared scan enrichment + scan-linked VT evidence [IMPLEMENTED — PRs #25, #28, #29]
     ↓
 2.x-B / 2.x-C [DEFERRED]
 ```
@@ -44,12 +45,12 @@ Future versions are planning targets, not implemented releases or promised dates
 | Status | Milestone | Exit criterion |
 |---|---|---|
 | **Completed** | `v1.0.0` | Green release gate, bundle produced, promotions documented |
-| **Current** | `1.0.x` | Coherent documentation; recorded manual desktop test; Flatpak restore verified — `v1.0.1` prepared, tag blocked on the manual validation (`reports/RELEASE-1.0.1.md`) |
+| **Current** | `1.0.x` | Release engineering and manual desktop validation tracked separately; `v1.0.1` is the release-manifest source pin. Do not infer a published release from the manifest pin alone (`reports/RELEASE-1.0.1.md`). |
 | **Implemented** | Desktop App — Phases D1 + D2 + D3 + D4 | Foundations + diagnostics, Scan page, History, Quarantine, Databases, Diagnostics and Settings; window chrome, About, opt-in notifications, accent stylesheet, default-profile settings, quarantine ingest from scan results — committed on `feature`, CI smoke covers every page |
 | **Next** | Manual desktop validation | Recorded on-desktop click-through of the D4 pages (`docs/validation/DESKTOP-TEST-1.0.md`) and Flatpak restore verification |
-| **Blocked** | `v1.1.0` | Actual mount validation, cancellation/lifecycle fixes, integration tests and dedicated gate |
-| **Blocked** | `v1.2.0` | VirusTotal SHA-256 lookup, explicit opt-in, 4/minute Public API limit, Secret Service and documented terms eligibility review |
-| **Blocked** | `v2.0.0` | Reliable realtime after P1 remediation, watch coverage and independent audit |
+| **Implemented / validation pending** | `v1.1.0` | USB mount identity checks, lifecycle cancellation and CLI/GTK integration are present on `feature`; record real-host validation before promotion. |
+| **Implemented / policy-gated** | `v1.2.0` | Public/Premium profiles, Secret Service, hash lookup, consent-gated file upload and persisted scan-linked evidence are implemented. Public API calls remain blocked pending written eligibility authorization; Premium requires entitlement. |
+| **Implemented / validation pending** | `v2.0.0` | Realtime inotify monitoring, bounded orchestration, descriptor-based scanning and lifecycle integration are on `feature`; final hardening and real-host validation remain separate gates. |
 | **2.x extension** | `v2.1.x` | `fanotify`/`clamonacc` access-prevention evaluation, privileges and threat model |
 | **2.x extension** | `v2.2.x` | Privileged service/IPC/Polkit only if justified by a use case |
 
