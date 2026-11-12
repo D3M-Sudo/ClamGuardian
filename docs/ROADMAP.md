@@ -1,6 +1,6 @@
 # ClamGuardian Implementation Roadmap
 
-*Last updated: 2026-11-12 — PR #18 and subsequent remediation/integration PRs are merged into `feature`. USB, VirusTotal, realtime monitoring, scheduled scans, autostart and scan-linked VirusTotal evidence are implemented on this branch. This is implementation status, not a claim of release promotion or real-host validation. VirusTotal Public API requests remain administratively blocked pending written eligibility authorization. PR #30 (final feature hardening) is a separate, still-open PR and is not part of this branch snapshot. Future versions are planning targets, not promised releases or dates.*
+*Last updated: 2026-11-12 — PR #18 and subsequent remediation/integration PRs are merged into `feature`. USB, VirusTotal, realtime monitoring, scheduled scans, autostart and scan-linked VirusTotal evidence are implemented on this branch. This is implementation status, not a claim of release promotion or real-host validation. VirusTotal Public API requests remain administratively blocked pending written eligibility authorization. PR #30 (final feature hardening) was merged into this branch on 2026-11-12. Future versions are planning targets, not promised releases or dates.*
 
 This document outlines the authoritative development roadmap for ClamGuardian, tracking completed milestones, in-progress targets, and future architectural phases.
 
