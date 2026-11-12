@@ -1,0 +1,55 @@
+name: Publish approved Draft release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact vX.Y.Z tag whose Draft release is approved for publication
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  validate-and-publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate tag and Draft assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
+          gh release view "$RELEASE_TAG" --json isDraft,tagName,assets > release.json
+          python3 - <<'PY'
+          import json, os
+          data=json.load(open("release.json"))
+          tag=os.environ["RELEASE_TAG"]
+          if not data["isDraft"] or data["tagName"] != tag:
+              raise SystemExit("Requested release is not the matching Draft")
+          version=tag[1:]
+          expected={f"ClamGuardian-{version}-linux-x86_64.flatpak",f"ClamGuardian-{version}-linux-aarch64.flatpak",f"ClamGuardian-{version}-x86_64.AppImage",f"ClamGuardian-{version}-aarch64.AppImage","SHA256SUMS"}
+          actual={asset["name"] for asset in data["assets"]}
+          if actual != expected:
+              raise SystemExit(f"Asset mismatch: missing={sorted(expected-actual)}, unexpected={sorted(actual-expected)}")
+          PY
+      - name: Download and verify every asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          mkdir -p release-assets
+          gh release download "$RELEASE_TAG" --dir release-assets
+          cd release-assets
+          sha256sum --check SHA256SUMS
+      - name: Publish Draft (single manual approval)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: gh release edit "$RELEASE_TAG" --draft=false

@@ -1,7 +1,7 @@
 version: 1
 script:
   - mkdir -p "$TARGET_APPDIR/opt/python"
-  - python3 -m pip install --no-index --no-deps --target "$TARGET_APPDIR/opt/python" "$SOURCE_DIR/../wheelhouse/"*.whl
+  - python3 -m pip install --no-index --no-deps --target "$TARGET_APPDIR/opt/python" "$SOURCE_DIR/wheelhouse/"*.whl
   - cp -a "$SOURCE_DIR/../../clamguardian" "$TARGET_APPDIR/opt/python/"
   - install -Dm755 "$SOURCE_DIR/clamguardian-launcher" "$TARGET_APPDIR/usr/bin/clamguardian-launcher"
   - install -Dm644 "$SOURCE_DIR/../../data/io.github.clamguardian.ClamGuardian.desktop" "$TARGET_APPDIR/io.github.clamguardian.ClamGuardian.desktop"
@@ -9,6 +9,8 @@ script:
   - install -Dm644 "$SOURCE_DIR/../../data/io.github.clamguardian.ClamGuardian.desktop" "$TARGET_APPDIR/usr/share/applications/io.github.clamguardian.ClamGuardian.desktop"
   - sed -i 's|^Exec=.*|Exec=AppRun ui|' "$TARGET_APPDIR/usr/share/applications/io.github.clamguardian.ClamGuardian.desktop"
   - install -Dm644 "$SOURCE_DIR/../../data/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg" "$TARGET_APPDIR/usr/share/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg"
+  - install -Dm644 "$SOURCE_DIR/../../data/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg" "$TARGET_APPDIR/io.github.clamguardian.ClamGuardian.svg"
+  - ln -sf usr/share/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg "$TARGET_APPDIR/.DirIcon"
 AppDir:
   path: ./AppDir
   app_info:
