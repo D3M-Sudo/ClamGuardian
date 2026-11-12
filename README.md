@@ -8,16 +8,17 @@
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
 [![Code style: ruff](https://img.shields.io/badge/lint-ruff-261230.svg)](https://github.com/astral-sh/ruff)
 
-> **v1.0.0 released** (2026-10-16, tag `v1.0.0` @ `8ee8a56`): the release gate is
-> closed — both Flatpak manifests build offline against `org.gnome.Platform//51`,
-> AppStream validates, and real ClamAV scans plus the GTK smoke test pass in CI.
-> Evidence: `docs/reports/RELEASE-GATE-1.0.md`.
+> **Latest published release: v1.0.1** (2026-10-24, tag `v1.0.1`). The GitHub
+> release includes a Flatpak artifact. The release description states that
+> desktop validation preceded publication; however, the checked-in D4 session
+> record remains `PENDING`, so this repository does not retain that manual-test
+> evidence. See [`docs/reports/RELEASE-1.0.1.md`](docs/reports/RELEASE-1.0.1.md).
 >
 > **Security note:** `v1.0.0` is affected by AUD-01 — a directory scan served by
 > `clamd` could report `clean` for a directory that contains an infected file.
-> The fix is merged on `feature` and ships in `v1.0.1`, whose tag is cut after the
-> manual desktop validation (`docs/reports/RELEASE-1.0.1.md`). Details and
-> reporting process: [`SECURITY.md`](SECURITY.md).
+> The fix is included in published `v1.0.1`. Later USB, realtime and VirusTotal
+> integration changes on `feature` are not implied to be part of that release.
+> Details and reporting process: [`SECURITY.md`](SECURITY.md).
 
 ## Contents
 
