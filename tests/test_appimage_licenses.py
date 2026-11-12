@@ -989,7 +989,7 @@ def test_native_license_collector_attributes_generated_ca_bundle_to_build_comman
     assert "packaging/appimage/bundle-runtime.sh" in package["source_paths"]
     provenance = package["generated_output_provenance"][0]
     assert provenance["artifact_path"] == "etc/ssl/certs/ca-certificates.crt"
-    assert provenance["generation_command"] == "update-ca-certificates --fresh"
+    assert provenance["generation_command"] == "sudo update-ca-certificates --fresh"
     assert provenance["generation_script"] == "packaging/appimage/bundle-runtime.sh"
     assert provenance["generated_sha256"] == hashlib.sha256(
         ca_bundle.read_bytes()

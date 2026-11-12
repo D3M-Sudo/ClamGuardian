@@ -494,7 +494,7 @@ def collect_package_provenance(
                     )
                 generated_output_provenance.append({
                     "artifact_path": generated_path.lstrip("/"),
-                    "generation_command": "update-ca-certificates --fresh",
+                    "generation_command": "sudo update-ca-certificates --fresh",
                     "generation_script": "packaging/appimage/bundle-runtime.sh",
                     "generation_marker": (
                         "usr/share/licenses/ClamGuardian/" + marker_relative

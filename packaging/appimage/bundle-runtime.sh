@@ -69,7 +69,7 @@ if ! command -v update-ca-certificates >/dev/null 2>&1; then
     echo "update-ca-certificates is required to generate the AppImage CA bundle" >&2
     exit 1
 fi
-update-ca-certificates --fresh
+sudo update-ca-certificates --fresh
 test -s /etc/ssl/certs/ca-certificates.crt
 install -Dm644 /etc/ssl/certs/ca-certificates.crt \
     "$APPDIR/etc/ssl/certs/ca-certificates.crt"
