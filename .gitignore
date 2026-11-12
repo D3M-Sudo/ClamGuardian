@@ -45,3 +45,4 @@ ENV/
 # Generated architecture-native packaging inputs
 /packaging/flatpak/wheelhouse/
 /packaging/appimage/wheelhouse/
+/packaging/appimage/licenses/third-party/runtime/
