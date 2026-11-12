@@ -4,8 +4,8 @@
 
 | Version | Supported | Notes |
 |---|---|---|
-| `1.0.1` (release candidate) | ✅ after the tag is cut | Fixes AUD-01, AUD-02, AUD-03, AUD-04 and the P3 findings closed by PR #13 |
-| `1.0.0` | ⚠️ upgrade recommended | **Affected by AUD-01**: a `clamd` directory scan could report `clean` for a directory that contains an infected file |
+| `1.0.1` (published 2026-10-24) | ✅ latest published release | Contains the security fixes and GTK desktop application documented in the `[1.0.1]` changelog section; later USB, realtime and VirusTotal integration work on `feature` is not part of this release. |
+| `1.0.0` | ⚠️ upgrade strongly recommended | **Affected by AUD-01**: a `clamd` directory scan could report `clean` for a directory that contains an infected file; use published `1.0.1` or later. |
 | `< 1.0.0` | ❌ | Pre-release development builds, no support |
 
 The full finding history and remediation state live in
@@ -48,5 +48,4 @@ Out of scope:
 - AES-256-GCM quarantine with a per-record nonce and AAD-sealed metadata;
   `0700` vault directories, `0600` records.
 - No shell execution; process groups isolated with `start_new_session=True`.
-- Threat intelligence is frozen and unwired in 1.x: no file or hash leaves the
-  machine.
+- Optional VirusTotal intelligence is implemented on the current development branch, not in the published `v1.0.1` release. It is opt-in and uses OS Secret Service credentials. Public API requests remain blocked until written eligibility authorization is recorded; Premium requires the user's valid entitlement. Hash lookup sends a SHA-256 digest only. Full-file upload is a separate operation requiring fresh per-file consent, an absent-hash lookup and post-consent digest revalidation. Remote assessments are supplemental and never replace the local ClamAV verdict.

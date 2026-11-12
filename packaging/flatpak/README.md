@@ -4,14 +4,12 @@ Two manifests are kept side by side on purpose:
 
 | File | Source | Use |
 |---|---|---|
-| `io.github.clamguardian.ClamGuardian.yml` | wheel sources (offline build) + `type: git` pinned to the `v1.0.0` tag | Release and Flathub submission: reproducible, no moving branch |
+| `io.github.clamguardian.ClamGuardian.yml` | wheel sources (offline build) + `type: git` pinned to the `v1.0.1` tag | Release and Flathub submission: reproducible, no moving branch |
 | `io.github.clamguardian.ClamGuardian.local.yml` | wheel sources (offline build) + `type: dir`, `path: ../..` | Development: builds the current working tree |
 
 Both manifests target `org.gnome.Platform//51` (runtime target concordato per Flathub; GNOME 46 è EOL). `org.gnome.Sdk//51` è disponibile su Flathub e viene installato dal workflow di release gate.
 
-The `v1.0.0` tag referenced by the release manifest is created by the 1.0 release
-gate (`docs/ROADMAP.md`, Phase 9). When a new release is cut, update `tag` and
-add the resulting `commit` so that a moved tag cannot silently change the build.
+The release manifest currently pins source to `v1.0.1` (see the manifest itself). This is a source-build pin, not by itself proof that a GitHub Release was published or that manual desktop validation was completed. When a new release is cut, update `tag` and add the resulting `commit` so that a moved tag cannot silently change the build.
 
 ## What the module installs
 
@@ -68,10 +66,10 @@ the lock check; they only need a re-pin when hatchling itself is bumped.
 ## 4. Post-verification status (2026-10-16)
 
 Three items from §4 were closed by the Release Gate CI (final tag run `38977065253`,
-`v1.0.0` @ `8ee8a56`); one residual stays open:
+`v1.0.0` @ `8ee8a56`); the remaining host-side validation items are tracked separately:
 
 1. `appstreamcli validate` on the metainfo — **CLOSED** (job green in CI).
-2. **Build offline — CLOSED**: i manifest usano ora wheel vendute (`hatchling`,
+2. **Build offline — CLOSED**: the manifests use vendored wheels (`hatchling`,
    `cryptography`, `aiohttp` + transitive) con `sha256` pinned, installate con
    `pip3 install --no-index --no-build-isolation` via `PYTHONPATH=.pep517-build`;
    nessun download da PyPI avviene durante i `build-commands`. Entrambi i

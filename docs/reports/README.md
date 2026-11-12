@@ -1,8 +1,6 @@
 # Gate reports (milestone and quality evidence)
 
-Read-only closing documents for each completed gate. Each file records the gate
-criteria, the evidence collected and the verdict — the historical record of *why*
-a milestone is marked COMPLETED in `../ROADMAP.md`.
+Historical, read-only closing documents for milestone gates and audits. Each file records the criteria, evidence and verdict at the time it was written. Later PRs may remediate findings or supersede status statements; use `../ROADMAP.md` and the current source/workflow state for present status.
 
 | File | Purpose |
 |---|---|
@@ -11,4 +9,7 @@ a milestone is marked COMPLETED in `../ROADMAP.md`.
 | `M6-CI-GATE-REPORT.md` | Phase 7: CI and dependency-audit quality gate |
 | `M7-PACKAGING-REPORT.md` | Phase 8: packaging metadata, Flatpak manifests, wheel verification |
 | `RELEASE-GATE-1.0.md` | Phase 9: the 1.0 release-gate checklist, per-gate evidence and tag procedure |
-| `INDEPENDENT-AUDIT-2026-10-19.md` | Independent technical audit: code, packaging, runtime, findings P1–P3 and remediation |
+| `INDEPENDENT-AUDIT-2026-10-19.md` | Independent technical audit: code, packaging, runtime, findings P1–P3 and remediation (historical snapshot) |
+| `RELEASE-1.0.1.md` | 1.0.1 release preparation checklist and remaining manual validation gates |
+| `UI-UX-AUDIT-1.0.md` | Desktop UI/UX audit and recommendations |
+| `CLAMUI-BENCHMARK-EVALUATION.md` | Comparative capability evaluation: adopted, modified, rejected and deferred ideas |

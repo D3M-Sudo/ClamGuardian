@@ -5,18 +5,18 @@
 **Target Branch:** `feature`
 **Baseline HEAD Commit:** `27346d1821f6bc728c4100822c5da251f473359d`
 **Execution Mode:** Full autonomy
-**Status:** **SUPERSEDED / REMEDIATION IN PROGRESS** — The prior completion declaration was premature. Independent audit CG-01–CG-14 found integration, lifecycle, security and validation gaps in PR #18. This handoff is retained as an inventory of implemented components, not as evidence that all roadmap milestones are release-ready. The remediation commits require fresh CI, Release Gate and host validation.
+**Status:** **HISTORICAL SNAPSHOT — SUPERSEDED (2026-11-12)** — This handoff records the implementation and remediation state observed on 2026-11-09. PR #18 and later integration/remediation PRs have since been merged to `feature`, including VirusTotal dual profiles, shared scan enrichment, descriptor-based realtime enrichment and scan-linked evidence persistence. The status tables and test counts below are historical evidence and must not be read as the current branch state. Use `docs/ROADMAP.md` for the current implementation/release distinction.
 
 ---
 
-### Audit and remediation status (2026-11-09)
+### Audit and remediation status snapshot (2026-11-09; historical)
 
 - PR #18 is the active remediation vehicle. The original green CI/Release Gate results apply only to the pre-remediation head; all new commits require fresh validation.
 - VirusTotal outbound calls are administratively blocked until the maintainer completes the applicable Public API terms and product-eligibility review. Selecting the provider does not establish legal eligibility.
 - USB auto-scan now requires a real mount point and tracks cancellation; realtime startup fails closed when a configured watch cannot be installed; scheduler state persists the last successful daily run.
-- GTK background services are wired to a dedicated asyncio loop, but the resulting behavior has not yet been validated on a real desktop or in Flatpak.
+- GTK background-service behavior still requires explicit real-host validation; CI smoke coverage is not equivalent to manual desktop validation.
 - Flatpak autostart via direct host XDG autostart writes is explicitly unsupported and rejected; a supported Background portal integration remains a separate implementation requirement.
-- No release, promotion or merge is implied by this handoff.
+- This historical handoff does not itself imply release promotion or a published release.
 
 ## 1. Project Status Summary
 

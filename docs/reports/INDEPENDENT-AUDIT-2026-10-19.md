@@ -1,5 +1,7 @@
 # Audit tecnico indipendente — ClamGuardian
 
+> **Historical baseline:** this report assesses the 2026-10-19 commit named below, not the current `feature` branch. Subsequent remediation and integration landed in PRs #13, #18, #25, #28 and #29. The finding tables and verdict below are preserved as evidence of the original audit; consult `CHANGELOG.md`, `docs/ROADMAP.md` and current source for present implementation status. PR #30 subsequently merged the final quarantine, database-lifecycle and shutdown hardening into `feature` on 2026-11-12;
+
 **Data:** 2026-10-19
 **Oggetto:** commit `7ab9891dfc3377903979b2a7c78f81df66cacc8e` (branch `feature`, 30 commit avanti a `v1.0.0`)
 **Tag di riferimento:** `v1.0.0` → commit `8ee8a56ccbdcaa4bae964bcc57cd1b301b530be7` (tag annotato, verificato via GitHub API)

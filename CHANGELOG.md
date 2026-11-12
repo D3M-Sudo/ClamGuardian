@@ -1,18 +1,3 @@
-## Unreleased
-
-### Added
-- Add explicit VirusTotal Public and Premium API profiles with independent OS Secret Service credentials.
-- Add persistent profile-aware request pacing, Public daily quota enforcement, and cross-process Retry-After cooldowns.
-- Add hash-first file submission workflow with per-file typed consent, privacy warning, SHA-256 revalidation, upload polling, CLI commands, and GTK profile selection.
-
-### Security
-- Keep Public API requests blocked until written VirusTotal eligibility authorization is recorded.
-- Remove upstream response bodies and sensitive request details from VirusTotal error logs; never fall back between API profiles.
-- Keep VirusTotal enrichment separate from the local ClamAV verdict.
-
-### Changed
-- Persist VirusTotal hash assessments in a dedicated scan-linked SQLite table, separate from the ClamAV verdict, with a transactional v1-to-v2 schema migration and cascading retention lifecycle.
-
 # Changelog
 
 All notable changes to ClamGuardian are documented here.
@@ -23,16 +8,12 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## [Unreleased]
 
-### Fixed
-- **USB lifecycle and mount validation:** require an actual mount backed by removable/USB block-device identity beneath an allowed root; track background scan tasks, cancel them on unmount/shutdown, and prevent ordinary directories from being treated as removable devices.
-- **Realtime lifecycle:** recreate the scan orchestrator on each start, fail startup when configured directories or recursive watches cannot be registered, and expose watch-registration failures instead of reporting incomplete monitoring as active.
-- **Scheduled scans:** persist the last successful daily run across restarts and retry failed scans rather than recording a failed attempt as completed.
-- **Background service integration:** start and stop USB, realtime and scheduler services from the GTK application lifecycle using the application's shared scan runner and history store; apply realtime path changes.
-- **VirusTotal safety:** enforce opt-in in the CLI, cache the provider for a service lifetime, apply a shared, cross-process 15.1-second minimum request interval, add hidden-input Secret Service key setup, and keep all network lookups blocked until maintainer review confirms applicable Public API terms and product eligibility.
-- **Flatpak credentials:** grant the Secret Service D-Bus name in both manifests; Secret Service availability checks now exercise the D-Bus operation and remain fail-closed.
-- **Autostart:** reject unsupported host XDG autostart writes from inside Flatpak rather than silently claiming that host autostart was installed.
-
 ### Added
+- **VirusTotal API profiles and file submission:** independent Public/Premium credentials in OS Secret Service, explicit profile selection, hash-first lookup and consent-gated upload with snapshot revalidation and analysis polling.
+- **VirusTotal hash cache:** persistent, profile-isolated hash assessments with shared in-flight lookup deduplication and bounded transient retries.
+- **Shared scan enrichment:** centralize optional VirusTotal enrichment across pathname and descriptor-based scan workflows while preserving the local ClamAV verdict and request-time profile/provenance.
+- **Persistent intelligence evidence:** store normalized VirusTotal assessments in a scan-linked SQLite table with schema migration and retention lifecycle; expose retrieval through the HistoryStore interface.
+
 - **USB Auto-Scan (1.1)**: Removable media mount monitoring (`clamguardian/core/usb.py`), target safety validation, symlink traversal prevention, duplicate event suppression, and device disappearance handling. Integrated into GTK Settings and CLI (`clamguardian usb status/enable/disable/scan`).
 - **Threat Intelligence (1.2)**: Opt-in VirusTotal v3 SHA-256 hash lookup integration with rate limiting, strict separation between local ClamAV verdicts and remote verdicts, OS Secret Service integration (`libsecret`), fail-closed security policy without plaintext fallback, and CLI commands (`clamguardian intel set-key/status/enable/disable/lookup`).
 - **Realtime Event-Driven Monitoring (2.x-A)**: Native Linux `InotifyMonitor` using libc syscalls, `RealtimeScanOrchestrator` enforcing queue bound `pending + dispatched + active <= max_queue_depth`, trailing-edge push debouncing, same-path coalescing, dirty/retrigger active scan tracking, recursive watch tracking and cleanup, explicit `IN_Q_OVERFLOW` detection, and CLI subcommands (`clamguardian monitor status/enable/disable/add/remove`).
@@ -41,12 +22,30 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - **ClamUI Benchmark Evaluation**: Comprehensive evaluation matrix (`docs/reports/CLAMUI-BENCHMARK-EVALUATION.md`) detailing adopted, improved, rejected, and deferred capabilities.
 - **Engineering Handoff**: Comprehensive technical documentation in `docs/engineering/CLAMGUARDIAN-AUTONOMOUS-COMPLETION-HANDOFF.md`.
 
-## [1.0.1] — release candidate (tag cut after the manual desktop validation)
+### Tests
+- **Realtime descriptor round-trip:** cover inotify-to-descriptor scanning through enrichment and scan-linked evidence persistence, without pathname fallback.
 
-Security and desktop update. Prepared on 2026-10-20; the `v1.0.1` tag is created
-from `main` only after the desktop validation recorded in
-`docs/validation/DESKTOP-TEST-D4-2026-10-19.md` and the promotion PRs
-(`feature → testing → development → main`). Release checklist:
+### Security
+- **VirusTotal request isolation:** enforce profile-specific authorization, shared rate/quota controls, bounded retries and cooldowns; reject mismatched report digests and avoid exposing provider response bodies or credentials in logs.
+- **Evidence separation:** keep remote intelligence metadata distinct from the authoritative ClamAV scan verdict.
+
+### Fixed
+- **Quarantine race and restore hardening (PR #30):** encrypt a stable regular-file snapshot, detach only the verified inode through a pinned directory descriptor, preserve concurrent pathname replacements, and restore through component-pinned no-follow directory descriptors. Bound authenticated record geometry and payload sizes, reject malformed metadata, and skip corrupt records during listing.
+- **Quarantine key integrity (PR #30):** distinguish a missing Secret Service key from a malformed stored key; fail closed on corruption rather than silently rotating the key, and log the owner-only key-file fallback.
+- **Third-party database lifecycle (PR #30):** validate source IDs and artifact names, prevent cross-source filename collisions, serialize updates across event loops, block source mutation during updates, roll back cancelled updates, preserve recovery backups on rollback failure, and remove partial downloads.
+- **Shutdown cleanup (PR #30):** cancel tracked scans safely across stopped worker loops and always close the CLI VirusTotal upload service.
+- **USB lifecycle and mount validation:** require an actual mount backed by removable/USB block-device identity beneath an allowed root; track background scan tasks, cancel them on unmount/shutdown, and prevent ordinary directories from being treated as removable devices.
+- **Realtime lifecycle and filesystem confinement:** recreate the scan orchestrator on each start, fail startup when configured directories or recursive watches cannot be registered, and expose watch-registration failures instead of reporting incomplete monitoring as active. Pin configured roots, open event targets relative to root descriptors, reject symlink/path traversal and special files, scan through descriptor-preserving clamd transports, and detect file mutation without pathname fallback.
+- **Scheduled scans:** persist the last successful daily run across restarts and retry failed scans rather than recording a failed attempt as completed.
+- **Background service integration:** start and stop USB, realtime and scheduler services from the GTK application lifecycle using the application's shared scan runner and history store; apply realtime path changes.
+- **VirusTotal safety and concurrency:** enforce opt-in in the CLI, preserve request-time API profile/provenance across scan workflows, cache the provider for a service lifetime, coordinate shared lookups and cache I/O across event loops/processes, bound retries and resolver shutdown, apply profile-specific request pacing (15.1 seconds for Public), and keep Public network lookups blocked until written terms/product eligibility authorization is recorded.
+- **Flatpak credentials:** grant the Secret Service D-Bus name in both manifests; Secret Service availability checks now exercise the D-Bus operation and remain fail-closed.
+- **Autostart:** reject unsupported host XDG autostart writes from inside Flatpak rather than silently claiming that host autostart was installed.
+
+
+## [1.0.1] — 2026-10-24
+
+Security and desktop update. Published on GitHub on 2026-10-24 from tag `v1.0.1` (tagged commit `32c9ca62b7b64854e89fbab29ae6311b3678cbf4`). The release description states that the tag followed desktop validation and branch promotion. The checked-in D4 session record remains pending, so the repository does not currently retain the corresponding manual-test evidence. Release checklist:
 [`docs/reports/RELEASE-1.0.1.md`](docs/reports/RELEASE-1.0.1.md).
 
 ### Security

@@ -1,7 +1,6 @@
 # Manual validation (checklists and evidence)
 
-Templates and recorded evidence for validation that happens on a real host,
-outside CI.
+Templates and recorded evidence for validation that happens on a real host, outside CI. A pending checklist is not evidence of a completed test; CI GTK smoke coverage does not replace a real desktop session.
 
 | File | Purpose |
 |---|---|

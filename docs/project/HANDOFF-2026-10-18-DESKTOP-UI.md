@@ -2,9 +2,7 @@
 
 ## 1. Date & Purpose
 
-2026-10-18. This handoff freezes the agreed plan for the **complete GTK4/Libadwaita
-desktop application** (Phases 1–4), approved by the maintainer but **not yet
-implemented**. Implementation starts next session from this document.
+**Historical handoff — superseded.** Created 2026-10-18 before implementation of the GTK4/Libadwaita desktop phases. Phases 1–4 were subsequently implemented and merged to `feature`; this file is retained as a record of the original requirements and implementation history, not as current repository status. For current milestones use [`../ROADMAP.md`](../ROADMAP.md); for current code use the modules referenced there.
 
 The historical M4-era handoff (`archive/CLAMGUARDIAN_HANDOFF.md`) remains as archive.
 
@@ -46,8 +44,7 @@ Findings from the 2026-10-18 session audit:
   (`ShieldTaskController`) plus their import-safety shims.
 - **The `.desktop` launcher is fixed**: `Exec=clamguardian ui` now launches the
   GTK app shell (diagnostics dialog auto-presented when critical dependencies
-  are missing). The README's "Desktop app (GTK4)" section still needs to be
-  corrected to describe the real pages (Phase D4).
+  are missing). The README was subsequently updated to describe the completed desktop pages; this statement is historical.
 - **Reference app**: `clamui` (linx-systems) — its `src/ui/components_view.py`
   (per-component status rows + per-distro install guides in expanders) and
   `src/ui/database_missing_dialog.py` (`Adw.Window` modal, Libadwaita <1.5
@@ -68,7 +65,7 @@ Findings from the 2026-10-18 session audit:
 | Scan history (async SQLite) | `history/backend.py` (`record_scan`/`list_scans`/`get_scan`/`purge`/`count_scans`) | ready |
 | Encrypted quarantine vault | `core/quarantine.py` | library only — **no persistent key management exists anywhere** (CLI has no `quarantine` subcommand either) |
 | Third-party signature databases + GTK pages | `databases/` + `ui/database_pages.py` | page exists; needs embedding in the shell |
-| VirusTotal client | `intelligence/` (~56 lines) | embryonic; out of scope for MVP |
+| VirusTotal client | `intelligence/` | embryonic at handoff time; subsequently expanded and integrated — see current roadmap and `docs/security/virustotal-evidence-storage.md` |
 | Thread→GTK marshalling + headless shim pattern | `ui/database_pages.py` (`run_async`, `_GtkNotAvailable`, `GTK_AVAILABLE`) | reuse everywhere |
 
 Known gaps:
@@ -76,8 +73,7 @@ Known gaps:
 - Engine emits **no incremental progress** (`ScanProgress` model exists in
   `core/base.py` but no callback is wired). MVP shows indeterminate state +
   timer + threat counter; wiring a progress signal is optional Phase 2 scope.
-- Quarantine key persistence must be designed (Secret Service/libsecret with a
-  `0600` file fallback in app-data), including inside the Flatpak sandbox.
+- Quarantine key persistence was implemented after this handoff; consult `clamguardian/core/quarantine.py` and the current security documentation.
 
 ## 5. Approved Plan — Phases 1–4
 
@@ -184,8 +180,7 @@ Gate per phase: ruff + mypy + pytest green, CI smoke green, commit to `feature`
 
 ## 7. Next Session Procedure
 
-Phases 1–4 are **COMPLETED** on the D4 working branch (see `git log`; D4 is
-committed on top of `a097265`).
+Phases 1–4 were completed historically and merged into `feature`; the SHAs and test counts below are historical snapshots, not current branch identifiers.
 
 1. Verify baseline (branch, SHAs of all tips, clean tree, CI green).
 2. Re-read this handoff and `docs/ROADMAP.md` (Desktop UI phase).
