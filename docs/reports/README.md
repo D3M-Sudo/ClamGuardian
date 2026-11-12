@@ -1,8 +1,6 @@
 # Gate reports (milestone and quality evidence)
 
-Read-only closing documents for each completed gate. Each file records the gate
-criteria, the evidence collected and the verdict — the historical record of *why*
-a milestone is marked COMPLETED in `../ROADMAP.md`.
+Historical, read-only closing documents for milestone gates and audits. Each file records the criteria, evidence and verdict at the time it was written. Later PRs may remediate findings or supersede status statements; use `../ROADMAP.md` and the current source/workflow state for present status.
 
 | File | Purpose |
 |---|---|
