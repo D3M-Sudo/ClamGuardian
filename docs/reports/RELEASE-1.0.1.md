@@ -1,7 +1,6 @@
 # Release 1.0.1 — plan and checklist
 
-Status: **release candidate prepared, tag NOT cut**. The remaining blocker is the
-manual desktop validation of Phase D4, which requires the maintainer's local host.
+Status: **HISTORICAL PRE-RELEASE CHECKLIST — v1.0.1 WAS PUBLISHED 2026-10-24**. GitHub records tag `v1.0.1` at commit `32c9ca62b7b64854e89fbab29ae6311b3678cbf4` and a published release with a Flatpak asset (SHA-256 `4ccf8cf53a229b4dd358da7a838f2dd70e775b3235314e1b0ccbde685cbf8ee7`). The checkboxes below preserve the state captured before release; they are not a current release checklist. The checked-in D4 session record still says `PENDING` and contains no completed outcomes, so the repository does not preserve evidence for the manual validation referenced by the release description. Do not infer a PASS from the existence of the release.
 
 Baseline for this release: `feature` @ `4a3d165` plus the release-engineering
 changes listed in §2. `feature` is 24 commits ahead of `main` (`ca887aa`, tag
@@ -33,9 +32,9 @@ places in the `1.0.x` line.
 | `docs/project/D4-RELEASE-GATE.md` | records that the D4 workflow patch is applied |
 | `README.md`, `docs/ROADMAP.md` | security note for `v1.0.0`, protection model corrected, release state |
 
-## 3. Checklist
+## 3. Historical pre-release checklist (snapshot; not current status)
 
-### Done in this branch
+### Reported complete before publication (historical)
 
 - [x] Version bumped in `pyproject.toml` and `clamguardian/__init__.py`.
 - [x] AppStream release entry added.
@@ -46,7 +45,7 @@ places in the `1.0.x` line.
 - [x] Packaging guard test added.
 - [x] No tag, no promotion, no merge: `main`, `testing`, `development` untouched.
 
-### Blocked — maintainer only
+### Unresolved in the checked-in evidence at review time
 
 - [ ] **Desktop validation** (`DESKTOP-TEST-D4-2026-10-19.md`, 14 steps) on the
       real host with ClamAV installed.
@@ -55,7 +54,7 @@ places in the `1.0.x` line.
       instead of widening permissions.
 - [ ] Record the commit under test and the outcomes in both validation files.
 
-### After the validation is recorded
+### Release steps recorded as completed by GitHub release metadata
 
 - [ ] `ruff check .` — green.
 - [ ] `mypy clamguardian` — green.
@@ -74,7 +73,7 @@ places in the `1.0.x` line.
       `docs/ROADMAP.md` release table, `docs/reports/RELEASE-GATE-1.0.md` pointer.
 - [ ] Delete the release-engineering branch after the merge.
 
-## 4. Acceptance criteria
+## 4. Release metadata and evidence reconciliation
 
 | Criterion | Evidence |
 |---|---|
@@ -85,7 +84,7 @@ places in the `1.0.x` line.
 | Desktop behaviour verified by a human | validation records with PASS/FAIL and evidence |
 | Package metadata valid | AppStream job green on the tag |
 
-## 5. Out of scope
+## 5. Original release scope (historical)
 
 USB Auto-Scan (`v1.1.0`), Threat Intelligence (`v1.2.0`), realtime monitoring
 (`v2.0.0`) and the residual AUD-14 hygiene items. Nothing in this release changes
