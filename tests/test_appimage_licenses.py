@@ -1516,7 +1516,7 @@ def test_release_workflow_requires_architecture_sbom_evidence_archives() -> None
     ):
         assert evidence in assembler
     assert "ClamGuardian-${version}-sbom-${architecture}.tar.gz" in assembler
-    assert "sha256sum --check SHA256SUMS" in workflow
+    assert "sha256sum --check SHA256SUMS" in assembler
     assert "assemble-release-evidence.sh release-assets release" in workflow
 
 

@@ -47,7 +47,7 @@ for architecture in x86_64 aarch64; do
         fi
         cp -- "${matches[0]}" "$staging/$evidence"
     done
-    tar -C "$staging" -czf "$release_dir/ClamGuardian-${version}-sbom-${architecture}.tar.gz" .
+    tar -C "$staging" -czf "$release_dir/ClamGuardian-${version}-sbom-${architecture}.tar.gz" "${required_evidence[@]}"
     rm -rf -- "$staging"
     trap - EXIT
 done
