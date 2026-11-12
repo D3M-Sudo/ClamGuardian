@@ -38,7 +38,7 @@ chmod +x "$APPIMAGETOOL_DIR/$asset"
 # AppImageKit runtime downloaded by appimage-builder cannot read this format.
 runtime_url="https://github.com/AppImage/type2-runtime/releases/download/20251108/$runtime_asset"
 curl --fail --location --retry 3 "$runtime_url" --output "$APPIMAGETOOL_DIR/$runtime_asset"
-printf '%s  %s\\n' "$runtime_sha256" "$APPIMAGETOOL_DIR/$runtime_asset" | sha256sum --check -
+printf '%s  %s\n' "$expected_sha256" "$APPIMAGETOOL_DIR/$asset" | sha256sum --check -
 chmod +x "$APPIMAGETOOL_DIR/$runtime_asset"
 
 # appimage-builder passes its own legacy --runtime-file. Replace it with the
