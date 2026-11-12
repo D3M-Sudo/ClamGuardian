@@ -965,7 +965,7 @@ def test_native_license_collector_attributes_generated_ca_bundle_to_build_comman
     info.mkdir()
     marker = appdir / "usr/share/licenses/ClamGuardian/ca-certificates-generation.sha256"
     marker.parent.mkdir(parents=True)
-    marker.write_text(hashlib.sha256(ca_bundle.read_bytes()).hexdigest() + "\\n", encoding="utf-8")
+    marker.write_text(hashlib.sha256(ca_bundle.read_bytes()).hexdigest() + "\n", encoding="utf-8")
     (docs / "ca-certificates").mkdir(parents=True)
     (docs / "ca-certificates/copyright").write_text(
         "CA certificate package copyright\n", encoding="utf-8"
