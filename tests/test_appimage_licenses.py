@@ -1309,11 +1309,11 @@ def test_native_license_collector_uses_pinned_gfdl_12_when_system_copy_is_missin
     (appdir / "usr/lib/libexample.so").write_bytes(b"ELF fixture")
     info.mkdir()
     (info / "libexample1:amd64.list").write_text(
-        "/usr/lib/libexample.so\\n", encoding="utf-8"
+        "/usr/lib/libexample.so\n", encoding="utf-8"
     )
     (docs / "libexample1").mkdir(parents=True)
     (docs / "libexample1/copyright").write_text(
-        "Files: *\\nLicense: GPL-2+\\n"
+        "Files: *\nLicense: GPL-2+\n"
         "Full text: /usr/share/common-licenses/GFDL-1.2.\n",
         encoding="utf-8",
     )
