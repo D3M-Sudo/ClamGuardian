@@ -1159,3 +1159,39 @@ def test_native_license_collector_rejects_generated_ca_bundle_without_postinst(
                 "source_version": "20260816ubuntu0.24.04.2",
             },
         )
+
+
+def test_sbom_reconciler_accepts_explicit_syft_license_ref_names() -> None:
+    module_path = ROOT / "packaging" / "appimage" / "verify-sbom.py"
+    spec = importlib.util.spec_from_file_location("appimage_license_ref_reconciliation", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    expected = [
+        {"name": "aiosignal", "version": "1.4.0", "license": "LicenseRef-Apache-2.0"},
+        {
+            "name": "multidict",
+            "version": "6.9.1",
+            "license": "LicenseRef-Apache-License-2.0",
+        },
+    ]
+    spdx = [
+        {"name": "aiosignal", "versionInfo": "1.4.0", "licenseDeclared": "LicenseRef-Apache-2.0"},
+        {
+            "name": "multidict",
+            "versionInfo": "6.9.1",
+            "licenseDeclared": "LicenseRef-Apache-License-2.0",
+        },
+    ]
+    cyclonedx = [
+        {"name": "aiosignal", "version": "1.4.0", "licenses": [{"license": {"name": "Apache 2.0"}}]},
+        {
+            "name": "multidict",
+            "version": "6.9.1",
+            "licenses": [{"license": {"name": "Apache License 2.0"}}],
+        },
+    ]
+
+    module._verify_component_records(expected, spdx, cyclonedx, "AppDir")
