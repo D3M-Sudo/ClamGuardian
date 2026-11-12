@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import array
 import asyncio
-from dataclasses import replace
 import contextlib
 import hashlib
 import os
@@ -14,6 +13,7 @@ import stat
 import struct
 import threading
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -179,7 +179,7 @@ class ClamAVEngine(BaseAVEngine):
             # out (typically a very large or very slow file).
             return self._annotate_profile(ScanResult.timed_out(str(target), started), profile)
         result = self._result(target, started, output, exit_code, "clamscan")
-        return self._finalize(result, target, profile)
+        return self._finalize(result, target, profile, initial_file_stat)
 
 
     def _reject_unsupported_target(self, target: Path) -> ScanResult | None:
