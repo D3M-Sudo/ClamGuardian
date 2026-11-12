@@ -151,3 +151,20 @@ async def test_descriptor_scan_fails_closed_without_engine_support(tmp_path) -> 
     runner = ScanTaskRunner(StubEngine())
     with pytest.raises(RuntimeError, match="does not support descriptor"):
         await runner.submit_fd(17, tmp_path / "missing.bin")
+
+
+@pytest.mark.asyncio
+async def test_cancel_all_does_not_wait_on_a_stopped_event_loop() -> None:
+    runner = ScanTaskRunner(StubEngine())
+    stopped_loop = asyncio.new_event_loop()
+    task = stopped_loop.create_task(asyncio.sleep(60))
+    runner._track_task(task, stopped_loop)
+
+    await asyncio.wait_for(runner.cancel_all(), timeout=1)
+
+    assert not task.done()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        stopped_loop.run_until_complete(task)
+    stopped_loop.close()
+    assert runner.active_count == 0
