@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from .base import BaseAVEngine, ScanResult
 from .profiles import ScanProfile
+
+logger = logging.getLogger(__name__)
 
 
 class ScanTaskRunner:
@@ -23,6 +26,9 @@ class ScanTaskRunner:
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be positive")
         self.engine = engine
+        self._result_enricher: (
+            Callable[[ScanResult], Awaitable[None]] | None
+        ) = None
         self._semaphore = threading.BoundedSemaphore(max_concurrency)
         self._tasks: dict[
             asyncio.Task[ScanResult], tuple[asyncio.AbstractEventLoop, threading.Event]
@@ -43,6 +49,27 @@ class ScanTaskRunner:
             tracked = self._tasks.pop(task, None)
         if tracked is not None:
             tracked[1].set()
+
+    def set_result_enricher(
+        self, enricher: Callable[[ScanResult], Awaitable[None]] | None
+    ) -> None:
+        """Set the optional best-effort post-scan enrichment callback."""
+        self._result_enricher = enricher
+
+    async def _enrich_result(self, result: ScanResult) -> ScanResult:
+        enricher = self._result_enricher
+        if enricher is None:
+            return result
+        try:
+            await enricher(result)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                "Optional scan-result enrichment failed (%s); preserving AV result",
+                type(exc).__name__,
+            )
+        return result
 
     async def submit(
         self,
@@ -69,12 +96,45 @@ class ScanTaskRunner:
             acquired = True
             if on_start is not None:
                 on_start()
-            return await self.engine.scan(
+            result = await self.engine.scan(
                 Path(target), recursive=recursive, profile=profile
             )
         finally:
             if acquired:
                 self._semaphore.release()
+
+        # Remote enrichment must not occupy an AV-engine concurrency slot.
+        return await self._enrich_result(result)
+
+    async def submit_fd(
+        self,
+        fd: int,
+        target: Path,
+        *,
+        profile: ScanProfile | None = None,
+    ) -> ScanResult:
+        """Scan an already-open descriptor and apply the same enrichment.
+
+        Descriptor support is supplied by the engine implementation. This
+        method deliberately has no pathname fallback: unsupported engines
+        fail closed rather than scanning a different filesystem object.
+        """
+        scan_fd = getattr(self.engine, "scan_fd", None)
+        if not callable(scan_fd):
+            raise RuntimeError("engine does not support descriptor-based scanning")
+        task = asyncio.current_task()
+        if task is not None:
+            self._track_task(task, asyncio.get_running_loop())
+        acquired = False
+        try:
+            while not self._semaphore.acquire(blocking=False):
+                await asyncio.sleep(0.01)
+            acquired = True
+            result = await scan_fd(fd, target=Path(target), profile=profile)
+        finally:
+            if acquired:
+                self._semaphore.release()
+        return await self._enrich_result(result)
 
     def create_task(
         self,
@@ -90,30 +150,6 @@ class ScanTaskRunner:
                 target, recursive=recursive, profile=profile, on_start=on_start
             )
         )
-
-    async def submit_fd(
-        self,
-        fd: int,
-        target: Path,
-        *,
-        profile: ScanProfile | None = None,
-    ) -> ScanResult:
-        """Scan an already-open descriptor; never fall back to a pathname."""
-        scan_fd = getattr(self.engine, "scan_fd", None)
-        if not callable(scan_fd):
-            raise RuntimeError("engine does not support descriptor-based scanning")
-        task = asyncio.current_task()
-        if task is not None:
-            self._track_task(task, asyncio.get_running_loop())
-        acquired = False
-        try:
-            while not self._semaphore.acquire(blocking=False):
-                await asyncio.sleep(0.01)
-            acquired = True
-            return await scan_fd(fd, target=Path(target), profile=profile)
-        finally:
-            if acquired:
-                self._semaphore.release()
 
     async def cancel_all(self) -> None:
         """Cancel and await all tracked scans, including scans on other loops."""

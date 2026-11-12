@@ -44,6 +44,27 @@ size, SHA-256 and privacy warning before consent. A private upload snapshot is
 created only after consent and revalidated against the approved digest. Remote
 verdicts remain supplemental metadata and never replace the local ClamAV result.
 
+## Shared scan-result enrichment
+
+Interactive, scheduled, USB and realtime scans use the same `ScanTaskRunner`
+enrichment hook. Both pathname-based and descriptor-based realtime execution
+are covered; descriptor scans enrich the result returned by `submit_fd`. It runs after the local ClamAV scan and
+before the result is returned to the caller or persisted in scan history.
+The hook performs only the opt-in SHA-256 lookup; it never submits file
+contents and never initiates an upload.
+
+The remote assessment is serialized as a JSON evidence envelope in the
+scan's supplemental metadata. It records the provider, selected API profile,
+SHA-256, observation timestamp, lookup provenance, normalized response and
+one of `found`, `not_found` or `error`. The local scan status, threats and
+ClamAV engine identity remain authoritative and are not rewritten by the
+remote response. A lookup/network failure is best-effort: it is logged
+and the original ClamAV result is retained.
+
+The observation timestamp identifies when this scan consumed the remote
+assessment; it is not the VirusTotal analysis timestamp. Descriptor-based realtime scans invoke the same enrichment hook after the
+opened descriptor has been scanned and before the result is persisted.
+
 ## Operational gates
 
 - explicit opt-in is required before lookup;

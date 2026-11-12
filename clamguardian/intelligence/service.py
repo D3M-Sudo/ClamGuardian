@@ -248,26 +248,40 @@ class ThreatIntelligenceService:
         return APIProfile.parse(self.settings_store.load().intelligence_profile)
 
     def get_provider(self) -> VirusTotalProvider | None:
+        """Return the provider for the currently selected API profile."""
+        if not self.is_enabled():
+            return None
+        return self._get_provider_for_profile(self.selected_profile())
+
+    def _get_provider_for_profile(
+        self, profile: APIProfile
+    ) -> VirusTotalProvider | None:
+        """Resolve a provider for an explicitly captured API profile.
+
+        Scan lookups use this method after capturing their profile at request
+        time. A settings change while a cache read is pending must not silently
+        switch the provider used by that in-flight lookup.
+        """
         with self._provider_lock:
             if not self.is_enabled():
                 return None
-            profile = self.selected_profile()
             if (
                 profile is APIProfile.PUBLIC
                 and not VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED
             ):
                 return None
+            if self._custom_provider is not None:
+                return self._custom_provider
             if (
                 self._provider_initialized
-                and self._custom_provider is None
                 and self._provider is not None
-                and getattr(self._provider, "profile", profile) is not profile
+                and getattr(self._provider, "profile", profile) is profile
             ):
-                self._provider = None
-                self._provider_initialized = False
-                self._upload_lookup = None
-            if self._provider_initialized:
                 return self._provider
+
+            self._provider = None
+            self._provider_initialized = False
+            self._upload_lookup = None
             try:
                 credential = self.secret_store.get_credential(profile)
                 if not credential:
@@ -401,7 +415,7 @@ class ThreatIntelligenceService:
                 self._publish_shared_result(key, shared, cached)
                 return
 
-            provider = self.get_provider()
+            provider = self._get_provider_for_profile(selected_profile)
             if provider is None or (
                 self._custom_provider is None
                 and getattr(provider, "profile", selected_profile) is not selected_profile
@@ -444,23 +458,33 @@ class ThreatIntelligenceService:
                 if self._inflight.get(key) is shared and shared.done():
                     self._lookup_tasks.pop(key, None)
 
-    async def lookup_scan_result(self, result: ScanResult) -> dict[str, Any] | None:
+    async def lookup_scan_result(
+        self, result: ScanResult
+    ) -> dict[str, Any] | None:
+        """Return the raw provider report without adding application metadata."""
+        report, _profile = await self.lookup_scan_result_with_profile(result)
+        return report
+
+    async def lookup_scan_result_with_profile(
+        self, result: ScanResult
+    ) -> tuple[dict[str, Any] | None, APIProfile | None]:
+        """Return the raw report and the API profile captured for this lookup."""
         if not self.is_enabled():
-            return None
+            return None, None
         sha256 = result.metadata.get("sha256")
         if (
             not isinstance(sha256, str)
             or len(sha256) != 64
             or any(ch not in "0123456789abcdefABCDEF" for ch in sha256)
         ):
-            return None
+            return None, None
         digest = sha256.lower()
         selected_profile = self.selected_profile()
         if (
             selected_profile is APIProfile.PUBLIC
             and not VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED
         ):
-            return None
+            return None, None
         profile = selected_profile.value
         key = (digest, profile)
 
@@ -504,10 +528,10 @@ class ThreatIntelligenceService:
                     if not shared.done() and self._inflight.get(key) is shared:
                         self._lookup_tasks[key] = task
 
-        # Each waiter receives its own mutable report object. Cancelling one
+        # Waiters receive independent report copies; cancellation of one
         # waiter cannot cancel the service-owned shared lookup.
         report = await asyncio.shield(asyncio.wrap_future(shared))
-        return copy.deepcopy(report)
+        return copy.deepcopy(report), selected_profile
 
     def preview_file_upload(self, path):
         self._upload_lookup = None
