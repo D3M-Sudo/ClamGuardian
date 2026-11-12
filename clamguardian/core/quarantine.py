@@ -184,8 +184,10 @@ class QuarantineVault:
                     if not stat.S_ISREG(staged.st_mode) or not _same_file_snapshot(
                         before, staged
                     ):
-                        _restore_staged_entry(parent_fd, staged_name, source.name)
-                        destination.unlink(missing_ok=True)
+                        try:
+                            _restore_staged_entry(parent_fd, staged_name, source.name)
+                        finally:
+                            destination.unlink(missing_ok=True)
                         raise ValueError(
                             "Source path changed while being quarantined; "
                             "the replacement was preserved"
