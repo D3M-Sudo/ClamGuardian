@@ -431,3 +431,12 @@ def test_appimage_packaging_recipe_and_helpers_exist() -> None:
     assert "{{APPIMAGE_ARCH}}" in recipe
     assert "{{APT_ARCH}}" in recipe
     assert "$SOURCE_DIR/wheelhouse/" in recipe
+
+
+def test_appimage_recipe_bundles_required_gi_typelibs_and_icon() -> None:
+    recipe = (ROOT / "packaging" / "appimage" / "AppImageBuilder.yml").read_text(encoding="utf-8")
+    assert "gir1.2-secret-1" in recipe
+    assert "adwaita-icon-theme" in recipe
+    assert "rsvg-convert" in recipe
+    assert "$TARGET_APPDIR/.DirIcon" in recipe
+    assert "wheelhouse/" in recipe

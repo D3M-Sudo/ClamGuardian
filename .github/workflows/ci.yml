@@ -191,6 +191,8 @@ jobs:
           export APP_VERSION
           packaging/appimage/build-appimage.sh
       - name: Verify CLI, runtime and GTK startup
+        env:
+          APPIMAGE_ARCH: ${{ matrix.arch }}
         run: packaging/appimage/test-appimage.sh "dist/ClamGuardian-$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')-${{ matrix.arch }}.AppImage"
       - name: Upload tested AppImage
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -10,7 +10,7 @@ script:
   - sed -i 's|^Exec=.*|Exec=AppRun ui|' "$TARGET_APPDIR/usr/share/applications/io.github.clamguardian.ClamGuardian.desktop"
   - install -Dm644 "$SOURCE_DIR/../../data/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg" "$TARGET_APPDIR/usr/share/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg"
   - install -Dm644 "$SOURCE_DIR/../../data/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg" "$TARGET_APPDIR/io.github.clamguardian.ClamGuardian.svg"
-  - ln -sf usr/share/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg "$TARGET_APPDIR/.DirIcon"
+  - rsvg-convert -w 256 -h 256 -o "$TARGET_APPDIR/.DirIcon" "$SOURCE_DIR/../../data/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg"
 AppDir:
   path: ./AppDir
   app_info:
@@ -27,6 +27,10 @@ AppDir:
       - python3-gi
       - gir1.2-gtk-4.0
       - gir1.2-adw-1
+      - gir1.2-secret-1
+      - adwaita-icon-theme
+      - hicolor-icon-theme
+      - gsettings-desktop-schemas
       - python3-cairo
       - libsecret-1-0
       - ca-certificates

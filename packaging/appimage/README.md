@@ -19,3 +19,12 @@ tested on a native runner.
 The AppImage includes userspace libraries but relies on the host kernel,
 graphics drivers, display/DBus session and ClamAV installation. Hardware
 drivers and host ClamAV executables are intentionally not bundled.
+
+
+## Compatibility baseline
+
+The native AppImages are built on Ubuntu 24.04 and therefore use its glibc
+baseline. CI proves execution on the matching Ubuntu 24.04 architecture, not
+compatibility with older glibc distributions. Older distributions require
+separate runtime validation before being listed as supported. Host graphics
+drivers, kernel, display server, D-Bus and ClamAV remain host-provided.
