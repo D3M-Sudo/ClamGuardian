@@ -1529,13 +1529,13 @@ def test_native_license_evidence_ignores_empty_license_fields() -> None:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     content = (
-        "Files: src/empty.c\n"
-        "License:\n"
-        "\n"
-        "Files: src/mit.c\n"
-        "License: MIT\n"
-        " MIT license text.\n"
-    ).encode()
+        b"Files: src/empty.c\n"
+        b"License:\n"
+        b"\n"
+        b"Files: src/mit.c\n"
+        b"License: MIT\n"
+        b" MIT license text.\n"
+    )
     evidence = module._debian_license_evidence(content, "native/foo/copyright")
     assert len(evidence) == 1
     assert evidence[0]["license_declaration"] == "MIT"
