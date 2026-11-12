@@ -8,10 +8,6 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## [Unreleased]
 
-### Changed
-
-- **AppImage Debian copyright parsing:** distinguish DEP-5 package-level header declarations from file-scoped `Files` declarations and stand-alone license-text paragraphs; retain `NOASSERTION` for partial coverage or mixed file-level licenses.
-
 ### Added
 
 - **Industrial CI/CD release pipeline:** native x86_64/aarch64 Flatpak and AppImage builds, lockfile-hash-verified runtime wheelhouses, per-artifact install/launch gates, Draft GitHub Releases, SHA-256 checksums and one explicit manual publication workflow.
@@ -32,6 +28,7 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ### Changed
 
+- **AppImage Debian copyright parsing:** distinguish DEP-5 package-level header declarations from file-scoped `Files` declarations and stand-alone license-text paragraphs; retain `NOASSERTION` for partial coverage or mixed file-level licenses.
 - **GitHub Actions runtime compatibility:** replace all seven `actions/upload-artifact` v4 references that targeted deprecated Node.js 20 across CI, Release Gate and tagged-release workflows with the immutable Node.js 24-compatible v7.0.2 release pin.
 
 ### Fixed
