@@ -39,7 +39,7 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ### Security
 
-- **VirusTotal request isolation:** enforce profile-specific authorization, shared rate/quota controls, bounded retries and cooldowns; reject mismatched report digests and avoid exposing provider response bodies or credentials in logs.
+- **VirusTotal request isolation:** enforce profile-specific authorization, shared rate/quota controls, bounded retries and cooldowns; reject mismatched report digests and avoid exposing provider response bodies or credentials in logs. Preserve request-time API profile/provenance across scan workflows, coordinate shared lookups and cache I/O across event loops/processes, bound resolver shutdown, apply Public-profile pacing (15.1 seconds), and keep Public network lookups blocked until written terms/product-eligibility authorization is recorded.
 - **Evidence separation:** keep remote intelligence metadata distinct from the authoritative ClamAV scan verdict.
 - **Flatpak credentials:** grant the Secret Service D-Bus name in both manifests; Secret Service availability checks now exercise the D-Bus operation and remain fail-closed.
 
@@ -58,7 +58,7 @@ Security and desktop update. Published on GitHub on 2026-10-24 from tag `v1.0.1`
 - **AUD-03:** the quarantine key is written atomically (`mkstemp` + `fchmod`
   `0600` + `fsync` + `os.replace`) and a corrupt key fails closed instead of
   being silently rotated.
-- **AUD-04:** scan targets containing NUL, `\\n` or `\\r` are rejected before the
+- **AUD-04:** scan targets containing NUL, `\n` or `\r` are rejected before the
   `clamd` socket is written, closing protocol injection.
 - **AUD-08/AUD-09:** quarantine restore is confined to absolute paths without
   `..`, and symlinks are rejected on ingest and restore.
