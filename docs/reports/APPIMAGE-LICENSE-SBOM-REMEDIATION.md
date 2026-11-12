@@ -2,9 +2,9 @@
 
 **Status: IMPLEMENTED ON PR / CI AND RELEASE GATE GREEN / NOT RELEASE-READY**  
 **Target:** PR #38, branch `ci/node24-actions` → `feature`  
-**CI-verified implementation and test head:** `5e6ee6bf6ade371f4c1e234945e5d853aa399a12`.  
-**CI:** [run 43317428151](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43317428151) — **success** (9/9 jobs).  
-**Release Gate:** [run 43317427999](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43317427999) — **success**; all applicable checks passed.
+**CI-verified implementation and test head:** `cf2211542cbb9081fc8777c403e45a64ecbefa8f`.  
+**CI:** [run 43318778488](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43318778488) — **success** (9/9 jobs).  
+**Release Gate:** [run 43318778337](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43318778337) — **success**; all applicable checks passed.
 
 ## Implementation delivered
 
@@ -18,7 +18,7 @@ The remediation is committed to the remote PR branch. The implementation include
 - Provenance matching for ELF libraries flattened by linuxdeploy into `AppDir/usr/lib/`; matching is restricted to unique system multiarch dpkg paths so unrelated copies shipped by browser packages are not misattributed.
 - Syft-generated AppDir SPDX 2.3 and CycloneDX 1.6 SBOMs, aggregate SBOMs with Type 2 runtime components, and detached artifact SHA-256 manifests.
 - Curated Python wheel license declarations aligned with the expressions detected by Syft. Explicit CycloneDX name aliases for two Syft `LicenseRef` entries and normalization of redundant outer parentheses are covered by tests and checked against both SBOM formats.
-- Semantic SPDX license-expression validation against the pinned SPDX License List, including exception identifiers, LicenseRef extracted-text requirements, and the rule that `NONE`/`NOASSERTION` cannot be combined with `OR` or `WITH` (while `AND` remains allowed).
+- Semantic SPDX license-expression validation against the pinned SPDX License List, including exception identifiers, LicenseRef extracted-text requirements, and the rule that `NONE`/`NOASSERTION` cannot be combined with `OR` or `WITH` (while `AND` remains allowed), and valid `LicenseRef` use as a `WITH` left operand.
 - Official SPDX 2.3 and CycloneDX 1.6 JSON-schema validation using pinned upstream schema refs and Git blob IDs.
 - A tested release assembler that fails closed on missing/duplicate artifacts, packages per-architecture SBOM/license evidence archives, and verifies release-level SHA-256 checksums.
 - Extracted-AppImage verification for architecture, CLI, GTK construction, license tree, native/runtime provenance, SBOM contents, semantic-validation report and final artifact digest.
@@ -31,7 +31,7 @@ The remediation is committed to the remote PR branch. The implementation include
 |---|---|
 | Ruff `ruff check .` | **Passed** |
 | Mypy `mypy clamguardian` | **Passed** |
-| Pytest, Python 3.11 | **586 passed, 9 skipped** |
+| Pytest, Python 3.11 | **587 passed, 9 skipped** |
 | Pytest, Python 3.12 | **585 passed, 9 skipped** |
 | Pytest, Python 3.13 | **585 passed, 9 skipped** |
 | Runtime Python 3.14 headless check | **Passed** |
@@ -48,8 +48,8 @@ The nine pytest skips in each Python matrix are existing headless/optional-depen
 
 Both native architectures completed the extracted-artifact test successfully:
 
-- **x86_64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents passed SPDX/CycloneDX semantic and JSON-schema validation; GTK smoke passed; final artifact digest verified as `df75c6c92a49d8bccdce724ef56e06d569ae8079d464284fe18219da76041b3d`.
-- **aarch64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents passed SPDX/CycloneDX semantic and JSON-schema validation; GTK smoke passed; final artifact digest verified as `938ba5ac315dc7654ebb808991d5b7c4fad89e281e00c737a62635130cece6fb`.
+- **x86_64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents passed SPDX/CycloneDX semantic and JSON-schema validation; GTK smoke passed; final artifact digest verified as `d94ba52e9b2f1b159d23a650839fda20c0dbc3ec1180398073d886eb2f78d3fb`.
+- **aarch64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents passed SPDX/CycloneDX semantic and JSON-schema validation; GTK smoke passed; final artifact digest verified as `c228f2072c7302d72af0048b12b6041f482fca491641996488cef45f46cf8d36`.
 
 The artifact test reports passed architecture, runtime, licenses, SBOM, CLI and GTK construction checks for both builds.
 
