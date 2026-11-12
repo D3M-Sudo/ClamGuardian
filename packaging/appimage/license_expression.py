@@ -144,7 +144,7 @@ class _ExpressionParser:
         value = self.atom()
         if self.peek() == "WITH":
             self.take()
-            if value.startswith("(") or value in _SPECIAL or _is_license_ref(value):
+            if value.startswith("(") or value in _SPECIAL:
                 raise ValueError("SPDX WITH requires a simple SPDX license identifier")
             exception = _canonical_identifier(
                 self.take(), self.exceptions, "license exception"
