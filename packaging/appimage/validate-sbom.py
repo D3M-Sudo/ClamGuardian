@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from license_expression import load_catalog, normalize_spdx_document
+
 
 def validate_documents(sbom_dir: Path, schema_dir: Path, architecture: str) -> dict[str, Any]:
     try:
@@ -16,6 +18,14 @@ def validate_documents(sbom_dir: Path, schema_dir: Path, architecture: str) -> d
     except ImportError as exc:  # pragma: no cover - CI installs the pinned validator
         raise RuntimeError("jsonschema==4.26.0 is required for SBOM schema validation") from exc
 
+    catalog_dir = Path(__file__).resolve().parent / "licenses"
+    licenses, exceptions = load_catalog(
+        catalog_dir / "spdx-3.29.0-licenses.json",
+        catalog_dir / "spdx-3.29.0-exceptions.json",
+    )
+    licenses_data = json.loads(
+        (catalog_dir / "spdx-3.29.0-licenses.json").read_text(encoding="utf-8")
+    )
     schemas = {
         "spdx": json.loads((schema_dir / "spdx-schema-2.3.json").read_text(encoding="utf-8")),
         "cyclonedx": json.loads(
@@ -40,6 +50,9 @@ def validate_documents(sbom_dir: Path, schema_dir: Path, architecture: str) -> d
             document = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise ValueError(f"cannot read {label} document {path}: {exc}") from exc
+        if label.endswith("-spdx"):
+            normalize_spdx_document(document, licenses, exceptions, licenses_data)
+            path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         validator = jsonschema.Draft7Validator(schema, format_checker=jsonschema.FormatChecker())
         errors = sorted(
             validator.iter_errors(document),

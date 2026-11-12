@@ -10,6 +10,11 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from functools import lru_cache
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from license_expression import load_catalog, normalize_expression
 
 _COMPONENT_FIELDS = {
     "id",
@@ -42,6 +47,12 @@ class ValidationIssue:
     component_id: str | None = None
 
 
+@lru_cache(maxsize=1)
+def _spdx_catalog() -> tuple[set[str], set[str]]:
+    base = Path(__file__).resolve().parent / "licenses"
+    return load_catalog(base / "spdx-3.29.0-licenses.json", base / "spdx-3.29.0-exceptions.json")
+
+
 def _valid_license_expression(value: Any) -> bool:
     if not isinstance(value, str) or not value.strip():
         return False
@@ -50,10 +61,17 @@ def _valid_license_expression(value: Any) -> bool:
     if value.lower() in {"unknown", "unclassified", "n/a", "tbd"}:
         return False
     tokens = value.replace("(", " ( ").replace(")", " ) ").split()
-    return bool(tokens) and all(
+    if not tokens or not all(
         token in _SPDX_OPERATORS or _SPDX_TOKEN.fullmatch(token) is not None
         for token in tokens
-    )
+    ):
+        return False
+    try:
+        licenses, exceptions = _spdx_catalog()
+        normalize_expression(value, licenses, exceptions)
+    except (OSError, ValueError):
+        return False
+    return True
 
 
 def _validate_component(component: Any, inventory_name: str) -> list[ValidationIssue]:

@@ -33,6 +33,15 @@ fetch_schema \
     "b6c096a999d6ee9e408a9c3ae6c6227d6981c9ba" \
     "$SCHEMA_DIR/cyclonedx-bom-1.6.schema.json"
 
+fetch_schema \
+    "https://raw.githubusercontent.com/spdx/license-list-data/31ba1a50e5397e00a304dbadc76531740e89ee48/json/licenses.json" \
+    "79ca1b1f6792d599d4fc680782e1f81f5923b636" \
+    "$SCHEMA_DIR/spdx-3.29.0-licenses.json"
+fetch_schema \
+    "https://raw.githubusercontent.com/spdx/license-list-data/31ba1a50e5397e00a304dbadc76531740e89ee48/json/exceptions.json" \
+    "ff15183baf7105f9b5747539950018bec7e43ada" \
+    "$SCHEMA_DIR/spdx-3.29.0-exceptions.json"
+
 python3 -m pip install --disable-pip-version-check --only-binary=:all: "jsonschema==4.26.0"
 export SBOM_SCHEMA_DIR="$SCHEMA_DIR"
 echo "SBOM_SCHEMA_DIR=$SCHEMA_DIR"
