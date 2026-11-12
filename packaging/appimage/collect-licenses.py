@@ -21,6 +21,16 @@ GENERATED_FILE_OWNERS = {
     "/etc/ssl/certs/ca-certificates.crt": "ca-certificates",
 }
 
+# Ubuntu 24.04's base-files package does not ship this Debian common license.
+# Pin the exact Debian common-licenses text so native copyright references remain
+# resolvable without substituting the materially different GFDL 1.3 text.
+BUNDLED_COMMON_LICENSES_DIR = (
+    Path(__file__).resolve().parent / "licenses" / "common-licenses"
+)
+BUNDLED_COMMON_LICENSE_SHA256 = {
+    "GFDL-1.2": "2652c22ba086f92e55ae4a9f9c890ad4766ffd7814a73d318e22a597edf857a4",
+}
+
 
 def query_package_metadata(package: str) -> dict[str, str | None]:
     result = subprocess.run(
@@ -93,11 +103,23 @@ def _stage_referenced_common_licenses(
     evidence: list[dict[str, str]] = []
     for name in names:
         source = common_licenses_dir / name
-        if not source.is_file():
+        bundled_source = BUNDLED_COMMON_LICENSES_DIR / name
+        if name in BUNDLED_COMMON_LICENSE_SHA256 and bundled_source.is_file():
+            source = bundled_source
+            license_content = source.read_bytes()
+            actual_sha256 = hashlib.sha256(license_content).hexdigest()
+            expected_sha256 = BUNDLED_COMMON_LICENSE_SHA256[name]
+            if actual_sha256 != expected_sha256:
+                raise ValueError(
+                    f"bundled common license integrity failure for {name}: "
+                    f"expected {expected_sha256}, got {actual_sha256}"
+                )
+        elif source.is_file():
+            license_content = source.read_bytes()
+        else:
             raise ValueError(
                 f"copyright document references missing common license text: {source}"
             )
-        license_content = source.read_bytes()
         relative = f"third-party/native/common-licenses/{name}"
         destination = output_dir / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
