@@ -14,6 +14,7 @@ everywhere.
 
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 from pathlib import Path
@@ -32,6 +33,8 @@ SECRET_SCHEMA_NAME = "io.github.clamguardian.Quarantine"
 SECRET_ATTRIBUTES = {"purpose": "quarantine-key"}
 #: Human-readable label shown by the keyring UI.
 SECRET_LABEL = "ClamGuardian quarantine key"
+
+logger = logging.getLogger(__name__)
 
 
 def default_quarantine_dir() -> Path:
@@ -78,14 +81,20 @@ class QuarantineKeyManager:
         return self._key_dir / KEY_FILE_NAME
 
     def _load(self) -> bytes | None:
-        """Try Secret Service first, then the key file."""
+        """Try Secret Service first, then the owner-only key file."""
         key = self._load_secret_service()
         if key is not None:
             return key
-        return self._load_file()
+        file_key = self._load_file()
+        if file_key is not None:
+            logger.warning(
+                "Secret Service unavailable for the quarantine key; using the "
+                "owner-only key file fallback"
+            )
+        return file_key
 
     def _load_secret_service(self) -> bytes | None:
-        """Read the key from Secret Service (GNOME Keyring); ``None`` if absent."""
+        """Read the key from Secret Service; distinguish absence from corruption."""
         try:  # pragma: no cover - requires libsecret on the desktop
             import gi
 
@@ -98,9 +107,19 @@ class QuarantineKeyManager:
                 {"purpose": Secret.SchemaAttributeType.STRING},
             )
             password = Secret.password_lookup_sync(schema, dict(SECRET_ATTRIBUTES), None)
-            return _decode_key(password)
         except Exception:  # noqa: BLE001 - Secret Service is optional
             return None
+
+        if password is None:
+            return None
+        key = _decode_key(password)
+        if key is None:
+            # Generating a replacement would make every existing vault record
+            # undecryptable. Treat a present but invalid secret as corruption.
+            raise ValueError(
+                "Quarantine key in Secret Service is corrupt; refusing to rotate it"
+            )
+        return key
 
     def _store_secret_service(self, key: bytes) -> bool:
         """Store the key in Secret Service; ``False`` when unavailable."""
@@ -163,6 +182,10 @@ class QuarantineKeyManager:
     def _generate_and_store(self) -> bytes:
         key = QuarantineVault.generate_key()
         if not self._store_secret_service(key):
+            logger.warning(
+                "Secret Service unavailable for the quarantine key; storing an "
+                "owner-only key file fallback"
+            )
             self._store_file(key)
         return key
 
