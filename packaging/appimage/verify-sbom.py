@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import re
@@ -84,6 +85,55 @@ def _verify_component_records(
                 )
 
 
+def _artifact_path_matches(pattern: str, path: str) -> bool:
+    normalized_pattern = pattern.lstrip("./")
+    normalized_path = path.lstrip("./")
+    if fnmatch.fnmatchcase(normalized_path, normalized_pattern):
+        return True
+    if not any(character in normalized_pattern for character in "*?["):
+        return normalized_path.startswith(normalized_pattern.rstrip("/") + "/")
+    return False
+
+
+def _verify_native_component_coverage(
+    appdir_inventory: dict[str, Any],
+    native_inventory: dict[str, Any],
+    license_root: Path,
+) -> None:
+    packages = native_inventory.get("packages", [])
+    if not isinstance(packages, list):
+        raise ValueError("native package inventory has a malformed packages list")
+    for component in appdir_inventory.get("components", []):
+        if component.get("detection_method") != "native-package-provenance":
+            continue
+        patterns = component.get("artifact_paths", [])
+        matches = [
+            package
+            for package in packages
+            if any(
+                _artifact_path_matches(pattern, artifact_path)
+                for pattern in patterns
+                for artifact_path in package.get("artifact_paths", [])
+            )
+        ]
+        if not matches:
+            raise ValueError(
+                "AppDir native component has no native package provenance: "
+                + str(component.get("name", component.get("id", "unknown")))
+            )
+        for package in matches:
+            relative = package.get("copyright_artifact_path")
+            if (
+                package.get("copyright_status") != "present"
+                or not isinstance(relative, str)
+                or not (license_root / relative).is_file()
+            ):
+                raise ValueError(
+                    "AppDir native component lacks package copyright evidence: "
+                    + str(component.get("name", component.get("id", "unknown")))
+                )
+
+
 def verify(
     artifact: Path, architecture: str, sbom_dir: Path, runtime_path: Path,
     native_inventory_path: Path | None = None,
@@ -126,14 +176,23 @@ def verify(
         if item.get("architecture") in {"all", "both", architecture}
     ]
     _verify_component_records(runtime_components, spdx_packages, cdx_components, "runtime")
+    appdir_inventory: dict[str, Any] | None = None
     if appdir_inventory_path is not None:
         appdir_inventory = _load(appdir_inventory_path)
         appdir_components = appdir_inventory.get("components", [])
         if not isinstance(appdir_components, list):
             raise ValueError("AppDir component inventory is malformed")
-        _verify_component_records(appdir_components, spdx_packages, cdx_components, "AppDir")
+        sbom_appdir_components = [
+            item for item in appdir_components
+            if item.get("detection_method") != "native-package-provenance"
+        ]
+        _verify_component_records(sbom_appdir_components, spdx_packages, cdx_components, "AppDir")
     if native_inventory_path is not None:
         native_inventory = _load(native_inventory_path)
+        if appdir_inventory is not None:
+            _verify_native_component_coverage(
+                appdir_inventory, native_inventory, native_inventory_path.parent
+            )
         if native_inventory.get("architecture") != architecture:
             raise ValueError("native package inventory architecture mismatch")
         if native_inventory.get("missing_copyright_packages"):
