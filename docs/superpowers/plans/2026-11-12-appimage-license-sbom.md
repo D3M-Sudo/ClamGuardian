@@ -164,7 +164,7 @@ R1–R8 and LIC-001–LIC-020 have evidence; both architectures have independent
 
 ## PR execution snapshot (2026-11-12)
 
-The remediation is committed to PR #38 on `ci/node24-actions`, currently at `7b858222dd60c5fc2bb2a952f0c6fd53cd247cbb`. PR #38 remains open and Draft, targeting `feature`; no merge, tag, release or publication was performed.
+The remediation is committed to PR #38 on `ci/node24-actions`, with CI-verified code commit `7b858222dd60c5fc2bb2a952f0c6fd53cd247cbb`; subsequent PR commits update only the report, plan, README and CHANGELOG. PR #38 remains open and Draft, targeting `feature`; no merge, tag, release or publication was performed.
 
 - Remote implementation: project and runtime license payloads, curated inventories, native Debian package/copyright collector, CA post-install provenance with maintainer-script SHA-256, flattened ELF SONAME provenance, Syft AppDir/aggregate SBOM generation, pinned official schema validation, detached artifact digest manifests, extracted-AppImage verification, CI/release evidence uploads, README, CHANGELOG and execution report.
 - CI run [43287780117](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43287780117): success. Ruff and mypy passed; Python 3.11/3.12/3.13 each reported 559 passed and 9 skipped; runtime Python 3.14 check and pinned dependency audit passed.
