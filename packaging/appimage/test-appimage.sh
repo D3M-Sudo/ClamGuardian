@@ -35,8 +35,11 @@ test -x "$extracted_appdir/AppRun"
 test -s "$extracted_appdir/AppRun.env"
 if [ -d "$extracted_appdir/runtime/compat" ]; then
   test -e "$extracted_appdir/runtime/compat/lib64"
-  find "$extracted_appdir/runtime/compat/lib64" -maxdepth 1 \\
-    -type f -name 'ld-linux*.so*' -print -quit | grep -q .
+  case "$expected_arch" in
+    x86_64) linker_name="ld-linux-x86-64.so.2" ;;
+    aarch64) linker_name="ld-linux-aarch64.so.1" ;;
+  esac
+  test -e "$extracted_appdir/runtime/compat/lib64/$linker_name"
 fi
 
 version_output="$(APPIMAGE_EXTRACT_AND_RUN=1 "$deployed" version)"
