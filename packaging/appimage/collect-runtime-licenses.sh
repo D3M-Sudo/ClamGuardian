@@ -37,7 +37,7 @@ fetch_verified "squashfuse-LICENSE.txt" \
     "https://raw.githubusercontent.com/vasi/squashfuse/0.5.2/LICENSE" \
     "2c821bbaa662c7e863424b0523f032b77ab75d87"
 fetch_verified "zstd-LICENSE.txt" \
-    "https://raw.githubusercontent.com/meta/zstd/v1.5.7/LICENSE" \
+    "https://raw.githubusercontent.com/meta/zstd/v1.5.6/LICENSE" \
     "75800288cc243f164b9d130f125e2ffae28f8e39"
 fetch_verified "zlib-LICENSE.txt" \
     "https://raw.githubusercontent.com/madler/zlib/v1.3.1/LICENSE" \
