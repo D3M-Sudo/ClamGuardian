@@ -162,12 +162,28 @@ class ScanTaskRunner:
             ]
 
         for task, loop, done in tracked:
-            if task.done() or loop.is_closed() or not loop.is_running():
+            if task.done():
                 done.set()
+                continue
+            if loop.is_closed() or not loop.is_running():
+                # A stopped loop cannot execute task cancellation or its done
+                # callback. Queue cancellation if it may restart, then detach
+                # the stale task so shutdown cannot hang or retain it forever.
+                if not loop.is_closed():
+                    with contextlib.suppress(RuntimeError):
+                        loop.call_soon_threadsafe(task.cancel)
+                with self._tasks_lock:
+                    self._tasks.pop(task, None)
+                done.set()
+                logger.warning(
+                    "Detached scan task whose event loop is no longer running"
+                )
                 continue
             try:
                 loop.call_soon_threadsafe(task.cancel)
             except RuntimeError:
+                with self._tasks_lock:
+                    self._tasks.pop(task, None)
                 done.set()
 
         if tracked:
