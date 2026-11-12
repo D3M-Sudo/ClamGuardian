@@ -19,6 +19,8 @@
 - Extended extracted-AppImage tests and CI/release artifact uploads to include license and SBOM evidence.
 - Updated AppImage documentation and CHANGELOG.
 
+The native CI run exposed and resolved two integration issues before this report was finalized: Syft 1.57.1 now receives explicit SPDX 2.3/CycloneDX 1.6 output selectors, and the generated CA certificate bundle is attributed to the `ca-certificates.postinst` maintainer-script output rather than an absent dpkg `.list` entry. Regression tests cover both cases.
+
 ## Local verification completed
 
 | Check | Result |
