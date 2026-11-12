@@ -197,11 +197,13 @@ jobs:
         env:
           APPIMAGE_ARCH: ${{ matrix.arch }}
           APP_VERSION: ${{ steps.package-version.outputs.version }}
-        run: packaging/appimage/test-appimage.sh "dist/ClamGuardian-$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')-${{ matrix.arch }}.AppImage"
-      - name: Upload tested AppImage
+        run: packaging/appimage/test-appimage.sh "dist/ClamGuardian-$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')-${{ matrix.arch }}.AppImage" "dist/sbom/${{ matrix.arch }}"
+      - name: Upload tested AppImage and license/SBOM evidence
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ClamGuardian-ci-appimage-${{ matrix.arch }}
-          path: dist/ClamGuardian-*-${{ matrix.arch }}.AppImage
+          path: |
+            dist/ClamGuardian-*-${{ matrix.arch }}.AppImage
+            dist/sbom/${{ matrix.arch }}/*
           if-no-files-found: error
           retention-days: 14
