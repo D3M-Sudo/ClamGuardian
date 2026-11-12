@@ -297,10 +297,10 @@ class QuarantineVault:
             ):
                 raise ValueError("Invalid quarantine record size")
 
-            nonce = handle.read(_NONCE_SIZE)
-            if len(nonce) != _NONCE_SIZE:
-                raise ValueError("Invalid quarantine record")
             if magic == _MAGIC_V1:
+                nonce = handle.read(_NONCE_SIZE)
+                if len(nonce) != _NONCE_SIZE:
+                    raise ValueError("Invalid quarantine record")
                 data_offset = handle.tell()
                 handle.seek(0, os.SEEK_END)
                 payload_size = handle.tell() - data_offset
@@ -317,7 +317,8 @@ class QuarantineVault:
                 )
 
             raw_geometry = handle.read(8)
-            if len(raw_geometry) != 8:
+            nonce = handle.read(_NONCE_SIZE)
+            if len(raw_geometry) != 8 or len(nonce) != _NONCE_SIZE:
                 raise ValueError("Invalid quarantine record geometry")
             chunk_size = int.from_bytes(raw_geometry[:4], "big")
             chunk_count = int.from_bytes(raw_geometry[4:], "big")
