@@ -5,7 +5,7 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-candidate-${{ github.ref }}
@@ -17,7 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install YAML parser
-        run: python3 -m pip install --disable-pip-version-check pyyaml==6.0.3
+        run: python -m pip install --disable-pip-version-check pyyaml==6.0.3
+      - name: Set up Python for YAML validation
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
       - name: Verify tag, package version and Flatpak pin agree
         env:
           RELEASE_REF: ${{ github.ref_name }}
@@ -134,6 +138,8 @@ jobs:
   create-draft:
     name: Assemble four verified artifacts into Draft
     needs: [validate-tag, flatpak, appimage]
+    permissions:
+      contents: write
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
     steps:

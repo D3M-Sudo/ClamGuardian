@@ -48,7 +48,8 @@ independently on native x86_64 and aarch64 runners. Each artifact is installed
 or executed and receives CLI plus GTK startup validation. All four must pass
 before a GitHub Release is created in Draft state.
 
-Publication is a separate manual operation:
+After the release workflow has been promoted to the repository default branch,
+publication is a separate manual operation:
 `.github/workflows/publish-release.yml` accepts the exact tag, requires a
 Draft containing exactly the four expected binaries plus `SHA256SUMS`,
 downloads and verifies every checksum, then publishes the Draft. No Flathub

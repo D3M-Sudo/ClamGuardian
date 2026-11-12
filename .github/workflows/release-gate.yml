@@ -337,7 +337,7 @@ jobs:
             echo "Ref corrente:  ${WORKFLOW_REF} (${WORKFLOW_REF_TYPE})"
             echo "Flatpak build manifest di release (job flatpak-release): ${{ needs.flatpak-release.result }}"
             echo ""
-            echo "Punti 8–10: in attesa di autorizzazione esplicita."
+            echo "Release multi-arch e pubblicazione Draft: .github/workflows/release.yml e publish-release.yml."
             if [ "$gate_failed" -ne 0 ]; then
               echo ""
               echo "::error::Release gate FAILED — uno o più job richiesti non hanno superato i controlli"
