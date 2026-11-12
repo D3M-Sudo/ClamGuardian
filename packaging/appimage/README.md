@@ -37,8 +37,12 @@ separate runtime validation before being listed as supported.
 The AppImage build stages the complete project GPL-3.0-or-later text and project
 copyright into `usr/share/licenses/ClamGuardian`. After native runtime assembly,
 `collect-licenses.py` maps bundled files to the runner's dpkg file lists and
-copies the corresponding package copyright documents. The build fails when a
-bundled Debian package has no readable copyright document. Python wheel license
+copies the corresponding package copyright documents. The generated
+`/etc/ssl/certs/ca-certificates.crt` bundle is attributed explicitly to
+`ca-certificates` through its `postinst` hook because dpkg does not list this
+generated output as a packaged file. Both the generated artifact path and the
+maintainer-script provenance are recorded in `native-packages.json`. The build
+fails when a bundled Debian package has no readable copyright document. Python wheel license
 files remain in their `.dist-info/licenses` directories. The Type 2 runtime's
 MIT, musl, libfuse, squashfuse, zstd, zlib and mimalloc license texts are fetched
 from immutable upstream refs and checked against pinned Git blob IDs before
