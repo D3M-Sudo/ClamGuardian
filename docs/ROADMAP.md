@@ -159,32 +159,32 @@ Future versions are planning targets, not implemented releases or promised dates
 
 ### Desktop Application (GTK4/Libadwaita)
 
-- **Status:** APPROVED 2026-10-18 — implemented on `feature`: Phases D1, D2, D3, D4 (D4 recorded in `docs/validation/DESKTOP-TEST-D4-2026-10-19.md`; manual desktop validation pending). Plan of record: `project/HANDOFF-2026-10-18-DESKTOP-UI.md` (core inventory, constraints, estimates).
-- **Reason:** the repository currently has no `Adw.Application`, no main window and no Scan/History/Quarantine/Diagnostics pages; the `.desktop` launcher invokes the CLI headlessly and shows nothing. The maintainer approved building the complete desktop application on the existing UI-ready core (engine, `ShieldTaskController`, profiles, history store, quarantine vault, database pages), styled after the Malwarebytes layout mapped to Libadwaita.
+- **Status:** IMPLEMENTED on `feature`: Phases D1–D4 delivered the GTK4/Libadwaita application and all six primary pages (Scan, History, Quarantine, Databases, Diagnostics, Settings), with About, notifications, theme and quarantine ingest. The 2026-10-19 D4 session record remains a pending manual-validation artifact; automated GTK smoke is not a substitute for real-host testing. The original design/implementation handoff is historical: `project/HANDOFF-2026-10-18-DESKTOP-UI.md`.
+- **Historical context:** this phase originally began when the repository lacked the GTK application shell. That statement described the 2026-10-18 baseline and is no longer a description of the current branch.
 - **Phase D1 — Foundations + Diagnostics:** **IMPLEMENTED 2026-10-18 (`4a37241`)** — headless `core/diagnostics.py` (`run_dependency_checks()` with per-distro remedies, Flatpak-aware binary lookup), CLI `clamguardian doctor [--json]` (exit 6 on critical gaps) + `clamguardian ui`, `Adw.Application` shell with `NavigationSplitView` sidebar (Scan/History/Quarantine placeholders until D2/D3, Databases embedded, Diagnostics real), Diagnostics page (status banner + per-component expanders with per-distro install guides + Recheck), startup auto-dialog when critical dependencies are missing, `.desktop` fixed to `Exec=clamguardian ui`, release-gate GTK smoke extended to app shell + diagnostics page. Local evidence: ruff + mypy green, 279 passed / 2 skipped, live validation on the desktop (healthy path + missing-dependency dialog path). Remaining for closure: CI smoke on the next gate run + maintainer click-through.
 - **Phase D2 — Scan page:** **IMPLEMENTED 2026-10-18 (`26abf34`)** — target chooser (folder/file/home), profile dropdown, Scan/Cancel buttons, in-flight state (timer + threat counter), cancel, result cards (clean / infected with per-threat `ActionRow` list / error / cancelled), history recording via `record_scan`; integrated into `MainWindow` shell and the GTK smoke job in `.github/workflows/release-gate.yml`. Gate green (ruff/mypy/pytest).
 - **Phase D3 — History + Quarantine pages:** **IMPLEMENTED 2026-10-18 (`5dbd74c`)** — `ui/history_page.py` with status-filter list and limit, detail dialog, purge with `AlertDialog` confirmation; `ui/quarantine_page.py` with entry list, restore (destination dialog) and delete with confirmation; key management via Secret Service with `0600` file fallback in app-data. Tests `tests/test_history_page.py` + `tests/test_quarantine_page.py`. Gate green (ruff/mypy/pytest).
-- **Phase D4 — Polish:** accent CSS provider + bundled `data/style.css`, About dialog (AppStream metainfo exists), optional desktop notifications via portal, light settings (default profile). README/desktop-docs realignment, desktop validation checklist update. Estimate: ~200 lines + docs. *(payment-of-record: `project/HANDOFF-2026-10-18-DESKTOP-UI.md`)*
+- **Phase D4 — Polish:** implemented accent stylesheet, About dialog, optional content-free desktop notifications, persisted default-profile/theme settings, window chrome, quarantine ingest and expanded GTK smoke coverage. See the historical implementation handoff for original details.
 - **Gate per phase:** ruff + mypy + pytest green, CI smoke green, commit to `feature`; commits/pushes per the standing authorization rule.
 - **Exit criterion:** installable Flatpak presenting all five pages, diagnostics dialog blocking-on-missing-dependencies at first run, desktop validation recorded.
 
 ### Phase 10: 1.1 USB Auto-Scan
-- **Status:** REMEDIATION IN PROGRESS — PR #18.
-- **Scope:** Require an actual mount point beneath the configured roots; track/cancel auto-scan tasks on unmount and shutdown; verify service lifecycle and host integration.
+- **Status:** IMPLEMENTED on `feature`; real-host behaviour remains a separate validation item.
+- **Scope:** Require an actual mount point beneath configured roots; track/cancel auto-scan tasks on unmount and shutdown; validate service lifecycle.
 - **Integration:** GTK background service runtime starts the USB monitor when enabled and shares the application runner/history store; CLI configuration remains available.
-- **Evidence:** Regression tests were added/updated in `tests/test_usb.py`; post-remediation CI and Release Gate are pending.
+- **Evidence:** `clamguardian/core/usb.py`, `tests/test_usb.py`, CLI `usb` command group and GTK Settings integration. PR #18 was merged; later fixes are reflected in the current branch.
 
 ### Phase 11: Threat Intelligence Integration
-- **Status:** BLOCKED pending maintainer review of applicable VirusTotal Public API terms and product eligibility; technical remediation is in PR #18.
+- **Status:** IMPLEMENTED on `feature`; Public API network access remains administratively blocked pending written eligibility authorization. Premium requires a valid entitlement.
 - **Scope:** Keep hash-only VirusTotal v3 integration opt-in; enforce a 15.1-second minimum interval; cache one provider per service lifetime; require Secret Service D-Bus availability; keep outbound lookups disabled behind `VIRUSTOTAL_TERMS_ELIGIBILITY_CONFIRMED=False` until the terms review is completed.
 - **Integration:** Scan-result enrichment uses `ThreatIntelligenceService`; CLI enforces `intelligence_enabled` and provides hidden-input `intel set-key`. Remote intelligence remains supplemental metadata and never changes the local ClamAV verdict.
-- **Evidence:** Regression tests updated in `tests/test_intelligence.py`; post-remediation CI pending. No claim of legal/terms compliance is made.
+- **Evidence:** `clamguardian/intelligence/`, `docs/design/threat-intelligence.md`, `docs/security/virustotal-evidence-storage.md`, `tests/test_intelligence.py`, `tests/test_enrichment_flows.py` and `tests/test_history.py`; merged implementation includes shared enrichment and persisted scan-linked evidence. No claim of legal/terms compliance is made.
 
 ### Phase 12: 2.x-A Event-Driven Monitoring
-- **Status:** REMEDIATION IN PROGRESS — PR #18.
+- **Status:** IMPLEMENTED on `feature`; final hardening and real-host validation are tracked separately.
 - **Scope:** Preserve queue invariants and debounce/coalescing behavior; recreate the orchestrator on restart; fail startup on missing/inaccessible watches; expose watch-registration failures and retain overflow/drop counters.
 - **Integration:** GTK background runtime starts/stops the monitor and applies path changes; runtime shares the app runner/history store.
-- **Evidence:** Restart regression coverage added in `tests/test_realtime.py`; full CI and host validation pending.
+- **Evidence:** `clamguardian/realtime/`, `clamguardian/core/runner.py`, descriptor-based engine transport, `docs/security/realtime-filesystem-boundary.md`, `tests/test_realtime.py` and `tests/test_enrichment_flows.py`. PRs #18, #23, #25, #27 and #29 provide the implementation/remediation history.
 
 ---
 
