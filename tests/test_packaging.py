@@ -420,7 +420,7 @@ def test_appimage_packaging_recipe_and_helpers_exist() -> None:
     appimage = ROOT / "packaging" / "appimage"
     recipe = (appimage / "AppImageBuilder.yml").read_text(encoding="utf-8")
     launcher = appimage / "clamguardian-launcher.c"
-    for script in ("build-appimage.sh", "prepare-wheelhouse.sh", "test-appimage.sh"):
+    for script in ("build-appimage.sh", "prepare-wheelhouse.sh", "test-appimage.sh", "install-appimagetool.sh"):
         path = appimage / script
         assert path.is_file()
         assert path.stat().st_mode & 0o111, f"{script} must be executable"
@@ -437,6 +437,15 @@ def test_appimage_packaging_recipe_and_helpers_exist() -> None:
     assert "{{APPIMAGE_ARCH}}" in recipe
     assert "{{APT_ARCH}}" in recipe
     assert "$SOURCE_DIR/wheelhouse/" in recipe
+
+    installer = (appimage / "install-appimagetool.sh").read_text(encoding="utf-8")
+    assert "appimagetool-aarch64.AppImage" in installer
+    assert "appimagetool-x86_64.AppImage" in installer
+    assert "sha256sum --check" in installer
+    assert "1.9.1" in installer
+    assert "APPIMAGE_EXTRACT_AND_RUN" not in installer
+    assert 'export PATH="$APPIMAGETOOL_DIR:$PATH"' in installer
+    assert 'appimagetool --version' in installer
 
     # The former shell launcher was replaced by a native C ELF entrypoint.
     # Both PR CI and tag-release validation must syntax-check the current source.
