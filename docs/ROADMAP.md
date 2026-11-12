@@ -50,7 +50,7 @@ Future versions are planning targets, not implemented releases or promised dates
 | **Evidence follow-up** | D4 desktop / Flatpak restore record | The published release description says D4 validation preceded the tag, but the checked-in D4 record remains PENDING and the Flatpak restore checklist has no recorded result. Recover and archive original host evidence if available; otherwise retain these as undocumented/unverified host checks. |
 | **Implemented / validation pending** | `v1.1.0` | USB mount identity checks, lifecycle cancellation and CLI/GTK integration are present on `feature`; record real-host validation before promotion. |
 | **Implemented / policy-gated** | `v1.2.0` | Public/Premium profiles, Secret Service, hash lookup, consent-gated file upload and persisted scan-linked evidence are implemented. Public API calls remain blocked pending written eligibility authorization; Premium requires entitlement. |
-| **Implemented / validation pending** | `v2.0.0` | Realtime inotify monitoring, bounded orchestration, descriptor-based scanning and lifecycle integration are on `feature`; final hardening and real-host validation remain separate gates. |
+| **Implemented / host validation pending** | `v2.0.0` | Realtime inotify monitoring, bounded orchestration, descriptor-based scanning, lifecycle integration and final feature hardening (PR #30) are integrated on `feature`; real-host validation remains a separate evidence gate. |
 | **2.x extension** | `v2.1.x` | `fanotify`/`clamonacc` access-prevention evaluation, privileges and threat model |
 | **2.x extension** | `v2.2.x` | Privileged service/IPC/Polkit only if justified by a use case |
 
@@ -181,7 +181,7 @@ Future versions are planning targets, not implemented releases or promised dates
 - **Evidence:** `clamguardian/intelligence/`, `docs/design/threat-intelligence.md`, `docs/security/virustotal-evidence-storage.md`, `tests/test_intelligence.py`, `tests/test_enrichment_flows.py` and `tests/test_history.py`; merged implementation includes shared enrichment and persisted scan-linked evidence. No claim of legal/terms compliance is made.
 
 ### Phase 12: 2.x-A Event-Driven Monitoring
-- **Status:** IMPLEMENTED on `feature`; final hardening and real-host validation are tracked separately.
+- **Status:** IMPLEMENTED and final feature hardening integrated on `feature` (PR #30); real-host validation remains pending.
 - **Scope:** Preserve queue invariants and debounce/coalescing behavior; recreate the orchestrator on restart; fail startup on missing/inaccessible watches; expose watch-registration failures and retain overflow/drop counters.
 - **Integration:** GTK background runtime starts/stops the monitor and applies path changes; runtime shares the app runner/history store.
 - **Evidence:** `clamguardian/realtime/`, `clamguardian/core/runner.py`, descriptor-based engine transport, `docs/security/realtime-filesystem-boundary.md`, `tests/test_realtime.py` and `tests/test_enrichment_flows.py`. PRs #18, #23, #25, #27 and #29 provide the implementation/remediation history.
@@ -208,15 +208,13 @@ Future versions are planning targets, not implemented releases or promised dates
 
 ## Recommended Work Order
 
-1. **Now (blocked):** manual desktop validation of Desktop Application Phase D4 on `feature` (click-through checklist, Flatpak restore). Plan of record: `project/HANDOFF-2026-10-18-DESKTOP-UI.md`; release checklist: `reports/RELEASE-1.0.1.md`. The release engineering for `1.0.1` is already prepared and waits for this record.
-2. **Then:** merge `feature` → `testing` once the manual validation is recorded, promote `testing → development → main`, tag `v1.0.1` and publish the GitHub Release with the Flatpak bundle.
-3. **After:** `1.1.0` USB Auto-Scan.
-4. **Then:** `1.2.0` Threat Intelligence.
-5. **Only after remediation and audit:** `2.0.0` realtime.
-6. **After 2.0 stability:** `2.1.x` access prevention.
-7. **Last, and only if needed:** `2.2.x` privileged service/IPC.
+1. **Host validation on `feature`:** complete and record the real-desktop checks for the GTK application, Flatpak quarantine restore, USB mount/unmount lifecycle and realtime watch/event behaviour. CI smoke tests do not replace these host-side checks. Use `docs/validation/DESKTOP-TEST-1.0.md` and the relevant subsystem checklists; preserve explicit PASS/FAIL evidence.
+2. **VirusTotal policy gate:** keep Public API requests disabled until written eligibility authorization is recorded. Enable no Public network path merely because the implementation is present. Premium use remains conditional on valid entitlement.
+3. **Release promotion:** when host validation and the applicable release criteria are satisfied, promote the intended `feature` snapshot through `testing` → `development` → `main` using separate reviewed PRs and the release gate. Do not treat implementation on `feature` as a published release.
+4. **2.x-B evaluation:** assess `fanotify` / `clamonacc` access prevention only after 2.x-A stability evidence and a dedicated privilege/threat-model review.
+5. **2.x-C decision:** consider privileged IPC / Polkit only if a concrete use case justifies the added attack surface; otherwise keep it deferred.
 
-This order keeps the project sustainable for a single maintainer and avoids prematurely turning ClamGuardian into an overly broad EDR.
+`v1.0.1` is already published (2026-10-24). USB Auto-Scan, Threat Intelligence integration, realtime monitoring and scan-linked VirusTotal evidence are implemented on `feature`; their implementation status does not imply release promotion, host validation, or permission to use policy-gated external APIs. This order keeps the project sustainable for a single maintainer and avoids prematurely turning ClamGuardian into an overly broad EDR.
 
 ## Working Rules
 
