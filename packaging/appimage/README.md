@@ -31,3 +31,26 @@ intentionally relies on the host kernel, glibc baseline, graphics drivers,
 display server, D-Bus session, Secret Service daemon and ClamAV installation.
 The compatibility baseline is Ubuntu 24.04; older distributions require
 separate runtime validation before being listed as supported.
+
+## License and SBOM evidence
+
+The AppImage build stages the complete project GPL-3.0-or-later text and project
+copyright into `usr/share/licenses/ClamGuardian`. After native runtime assembly,
+`collect-licenses.py` maps bundled files to the runner's dpkg file lists and
+copies the corresponding package copyright documents. The build fails when a
+bundled Debian package has no readable copyright document. Python wheel license
+files remain in their `.dist-info/licenses` directories. The Type 2 runtime's
+MIT, musl, libfuse, squashfuse, zstd, zlib and mimalloc license texts are fetched
+from immutable upstream refs and checked against pinned Git blob IDs before
+being staged. The mimalloc notice is included explicitly because the upstream
+runtime Makefile statically links `-lmimalloc` although the runtime's own
+`LICENSE` list does not mention it.
+
+Syft is installed at a pinned version and SHA-256 per architecture. It generates
+AppDir SPDX 2.3 and CycloneDX 1.6 documents. The curated Type 2 runtime inventory
+is added to separate aggregate SBOMs because the runtime executable is outside
+the AppDir SquashFS. A detached artifact manifest binds both aggregate SBOMs to
+the final AppImage SHA-256 and architecture. SPDX 2.3 and CycloneDX 1.6 output
+is validated against the official JSON schemas whose upstream Git blob IDs
+and source refs are pinned in `install-sbom-validator.sh`. CI uploads the AppImage and all
+license/SBOM evidence together.
