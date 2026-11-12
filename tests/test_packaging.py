@@ -439,6 +439,7 @@ def test_appimage_packaging_recipe_and_helpers_exist() -> None:
     assert 'mkdir -p "$TARGET_APPDIR/usr/bin"' in recipe
     assert "python3-gi" in recipe
     assert "      - python3.12-minimal" in recipe
+    assert "      - libpython3.12-minimal" in recipe
     assert "      - libpython3.12-stdlib" in recipe
     assert "gir1.2-gtk-4.0" in recipe
     assert "gir1.2-adw-1" in recipe
