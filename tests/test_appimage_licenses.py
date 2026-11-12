@@ -1030,11 +1030,26 @@ def test_native_curated_components_require_package_and_copyright_provenance(
             "artifact_paths": ["etc/ssl/certs/ca-certificates.crt"],
             "copyright_artifact_path": "third-party/native/ca-certificates/copyright",
             "copyright_status": "present",
+            "license": "NOASSERTION",
+            "license_status": "unknown",
+            "license_resolution_reason": "Multiple file-level licenses remain unaggregated.",
+            "license_evidence": [{
+                "file_patterns": ["*"],
+                "license_declaration": "MIT OR GPL-2+",
+                "license_text_kind": "reference-or-not-provided",
+                "copyright_artifact_path": "third-party/native/ca-certificates/copyright",
+            }],
         }]
     }
 
     module._verify_native_component_coverage(appdir_inventory, native_inventory, license_root)
 
+    native_inventory["packages"][0]["license_resolution_reason"] = ""
+    with pytest.raises(ValueError, match="license resolution reason is missing"):
+        module._verify_native_component_coverage(appdir_inventory, native_inventory, license_root)
+    native_inventory["packages"][0]["license_resolution_reason"] = (
+        "Multiple file-level licenses remain unaggregated."
+    )
     native_inventory["packages"][0]["artifact_paths"] = ["etc/ssl/certs/other.crt"]
     with pytest.raises(ValueError, match="no native package provenance"):
         module._verify_native_component_coverage(appdir_inventory, native_inventory, license_root)

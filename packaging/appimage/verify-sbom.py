@@ -135,6 +135,44 @@ def _verify_native_component_coverage(
     packages = native_inventory.get("packages", [])
     if not isinstance(packages, list):
         raise ValueError("native package inventory has a malformed packages list")
+    for package in packages:
+        name = str(package.get("package", "unknown"))
+        license_value = package.get("license")
+        license_status = package.get("license_status")
+        reason = package.get("license_resolution_reason")
+        evidence = package.get("license_evidence")
+        if license_value == "NOASSERTION":
+            if license_status != "unknown":
+                raise ValueError(
+                    f"unasserted native package license has an invalid status: {name}"
+                )
+        elif not isinstance(license_value, str) or license_status != "verified":
+            raise ValueError(
+                f"native package license assertion lacks verified status: {name}"
+            )
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError(f"native package license resolution reason is missing: {name}")
+        if not isinstance(evidence, list):
+            raise ValueError(f"native package file-level license evidence is malformed: {name}")
+        if license_status == "verified" and not evidence:
+            raise ValueError(f"verified native package license has no file-level evidence: {name}")
+        copyright_path = package.get("copyright_artifact_path")
+        for item in evidence:
+            if not isinstance(item, dict):
+                raise ValueError(f"native package license evidence entry is malformed: {name}")
+            declaration = item.get("license_declaration")
+            patterns = item.get("file_patterns")
+            if not isinstance(declaration, str) or not declaration.strip():
+                raise ValueError(f"native package license declaration is missing: {name}")
+            if not isinstance(patterns, list) or not all(
+                isinstance(pattern, str) for pattern in patterns
+            ):
+                raise ValueError(f"native package file patterns are malformed: {name}")
+            if item.get("copyright_artifact_path") != copyright_path:
+                raise ValueError(f"native package license evidence path mismatch: {name}")
+            text_hash = item.get("license_text_sha256")
+            if text_hash is not None and not re.fullmatch(r"[0-9a-f]{64}", str(text_hash)):
+                raise ValueError(f"native package license text hash is malformed: {name}")
     for component in appdir_inventory.get("components", []):
         if component.get("detection_method") != "native-package-provenance":
             continue
