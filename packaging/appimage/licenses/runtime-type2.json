@@ -56,7 +56,7 @@
       "architecture": "both",
       "license": "MIT",
       "license_status": "verified",
-      "source": "Alpine 3.21 musl APKBUILD at v3.21.0 declares upstream 1.2.5 and APK revision 8; exact installed APK record is unavailable.",
+      "source": "Alpine 3.21 musl APKBUILD at f2036bfe000ab05e1f300c6fce57be3da9db426e declares upstream 1.2.5-r21; exact installed APK record is unavailable.",
       "source_package": "musl",
       "artifact_paths": [
         "AppImage Type 2 runtime executable"
@@ -67,7 +67,7 @@
       "detection_method": "upstream-build-recipe",
       "verification_status": "partial",
       "source_paths": [
-        "https://github.com/alpinelinux/aports/blob/v3.21.0/main/musl/APKBUILD",
+        "https://github.com/alpinelinux/aports/blob/f2036bfe000ab05e1f300c6fce57be3da9db426e/main/musl/APKBUILD",
         "https://github.com/ifduyue/musl/tree/v1.2.5"
       ],
       "binary_package": "musl-dev",
