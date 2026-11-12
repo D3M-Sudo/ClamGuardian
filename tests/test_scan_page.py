@@ -101,7 +101,7 @@ def test_scan_button_uses_gtk_button_not_preferences_row(
     monkeypatch.setattr(scan_page_module.Gtk, "Image", FakeImage, raising=False)
     monkeypatch.setattr(scan_page_module.Gtk, "Label", FakeLabel, raising=False)
 
-    button = scan_page_module._button_row("Scan", "system-run-symbolic")
+    button = scan_page_module._icon_button("Scan", "system-run-symbolic")
     assert isinstance(button, FakeButton)
     assert isinstance(button.child, FakeBox)
     assert button.child.children[0].icon_name == "system-run-symbolic"
