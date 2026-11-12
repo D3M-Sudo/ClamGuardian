@@ -85,7 +85,8 @@ def patch_apprun2_module(path: Path) -> None:
             "unreviewed patch. Check the pinned appimage-builder version."
         )
     source = source.replace(APPRUN2_SETUP_ORIGINAL, APPRUN2_SETUP_REPLACEMENT, 1)
-    source = source.replace("import string\\n", "import string\\nimport shutil\\n", 1)
+    if "import shutil\\n" not in source:
+        source = source.replace("import string\\n", "import string\\nimport shutil\\n", 1)
     path.write_text(source, encoding="utf-8")
 
 

@@ -10,7 +10,7 @@ sudo apt-get update
 sudo apt-get install -y librsvg2-bin squashfs-tools
 BUILDER_ENV="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/appimage-builder-venv"
 python3 -m venv "$BUILDER_ENV"
-"$BUILDER_ENV/bin/python" -m pip install --disable-pip-version-check "appimage-builder==1.0.0"
+"$BUILDER_ENV/bin/python" -m pip install --disable-pip-version-check "appimage-builder==1.1.0"
 "$BUILDER_ENV/bin/python" "$ROOT/packaging/appimage/patch-appimage-builder.py" "$BUILDER_ENV"
 . "$ROOT/packaging/appimage/install-appimagetool.sh"
 export APP_VERSION APT_ARCH APPIMAGE_ARCH

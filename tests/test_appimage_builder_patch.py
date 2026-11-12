@@ -19,14 +19,24 @@ class Package:
             return version.parse(self.version) > version.parse(other.version)
 """
 
+APPRUN2_ORIGINAL = """import string
+
+
+class AppRunV2Setup:
+    def setup(self):
+        self.move_glibc_to_compat_runtime()
+        runtime_env = self._configure_runtime_environment()
+"""
+
 
 def test_appimage_builder_patch_uses_native_debian_version_ordering(tmp_path: Path) -> None:
-    package_module = (
-        tmp_path
-        / "lib/python3.12/site-packages/appimagebuilder/modules/deploy/apt/package.py"
-    )
+    site_packages = tmp_path / "lib/python3.12/site-packages"
+    package_module = site_packages / "appimagebuilder/modules/deploy/apt/package.py"
+    apprun_module = site_packages / "appimagebuilder/modules/setup/apprun_2/apprun2.py"
     package_module.parent.mkdir(parents=True)
+    apprun_module.parent.mkdir(parents=True)
     package_module.write_text(ORIGINAL, encoding="utf-8")
+    apprun_module.write_text(APPRUN2_ORIGINAL, encoding="utf-8")
 
     subprocess.run([sys.executable, str(PATCHER), str(tmp_path)], check=True)
     patched = package_module.read_text(encoding="utf-8")
@@ -35,9 +45,17 @@ def test_appimage_builder_patch_uses_native_debian_version_ordering(tmp_path: Pa
     assert "version.parse(" not in patched
     assert "result.returncode not in (0, 1)" in patched
 
-    # Reapplying the patch is safe and does not alter the result.
+    apprun_patched = apprun_module.read_text(encoding="utf-8")
+    assert "import shutil" in apprun_patched
+    assert 'compat_linker_folder = self.compat_runtime_path / "lib64"' in apprun_patched
+    assert '"*/*-linux-gnu*/ld-linux*.so*"' in apprun_patched
+    assert "compat_linker_folder.symlink_to(symlink_target)" in apprun_patched
+    assert "x86_64-linux-gnu" not in apprun_patched
+
+    # Reapplying the patch is safe and does not alter either module.
     subprocess.run([sys.executable, str(PATCHER), str(tmp_path)], check=True)
     assert package_module.read_text(encoding="utf-8") == patched
+    assert apprun_module.read_text(encoding="utf-8") == apprun_patched
 
 
 def test_appimage_builder_patch_fails_closed_on_unknown_upstream_source(tmp_path: Path) -> None:

@@ -469,6 +469,8 @@ def test_appimage_packaging_recipe_and_helpers_exist() -> None:
     assert '"*/*-linux-gnu*/ld-linux*.so*"' in builder_patch
     assert "compat_linker_folder.symlink_to(symlink_target)" in builder_patch
     assert "Patched Ubuntu compatibility linker path" in builder_patch
+    build_script = (appimage / "build-appimage.sh").read_text(encoding="utf-8")
+    assert 'appimage-builder==1.1.0' in build_script
 
     appimage_test = (appimage / "test-appimage.sh").read_text(encoding="utf-8")
     assert "--appimage-extract" in appimage_test
