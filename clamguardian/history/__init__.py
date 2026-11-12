@@ -14,6 +14,7 @@ from .models import (
     METADATA_MAX_BYTES,
     PROFILE_SNAPSHOT_MAX_BYTES,
     HistoryRecord,
+    ThreatIntelligenceRecord,
     decode_timestamp,
     encode_timestamp,
     history_record_from_scan,
@@ -26,6 +27,7 @@ from .models import (
 __all__ = [
     "HistoryError",
     "HistoryRecord",
+    "ThreatIntelligenceRecord",
     "HistoryStore",
     "SqliteHistoryStore",
     "SCHEMA_VERSION",
