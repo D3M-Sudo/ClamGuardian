@@ -69,6 +69,8 @@ install -Dm644 "$APPDIR/io.github.clamguardian.ClamGuardian.desktop" \
     "$APPDIR/usr/share/applications/io.github.clamguardian.ClamGuardian.desktop"
 install -Dm644 "$ROOT/data/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg" \
     "$APPDIR/io.github.clamguardian.ClamGuardian.svg"
+install -Dm644 "$ROOT/data/io.github.clamguardian.ClamGuardian.metainfo.xml" \
+    "$APPDIR/usr/share/metainfo/io.github.clamguardian.ClamGuardian.appdata.xml"
 install -Dm644 "$ROOT/data/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg" \
     "$APPDIR/usr/share/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg"
 ln -sfn "usr/share/icons/hicolor/scalable/apps/io.github.clamguardian.ClamGuardian.svg" "$APPDIR/.DirIcon"

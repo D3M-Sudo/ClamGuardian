@@ -18,9 +18,10 @@ Python modules.
    deployment; unresolved ELF dependencies abort the build.
 5. Use the maintained custom `AppRun` to configure Python, GI, GIO,
    GSettings, pixbuf loaders and CA certificates.
-6. Package with SHA-256-pinned appimagetool 1.9.1 and the pinned type2 runtime.
-   Test extraction, architecture, CLI and complete GTK window construction
-   before uploading the artifact.
+6. Install the AppStream metadata under the filename expected by appimagetool.
+7. Package with SHA-256-pinned appimagetool 1.9.1 and the pinned type2 runtime.
+   Test extraction, architecture, desktop/icon/metainfo assets, CLI and complete
+   GTK window construction before uploading the artifact.
 
 No x86_64 artifact is relabelled as aarch64. Each architecture is built and
 tested on a native runner.

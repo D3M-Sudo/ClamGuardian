@@ -455,6 +455,7 @@ def test_appimage_manual_appdir_pipeline_is_pinned_and_complete() -> None:
     assert "bundle-runtime.sh" in build
     assert 'APPDIR/usr/share/applications/io.github.clamguardian.ClamGuardian.desktop' in build
     assert 'APPDIR/io.github.clamguardian.ClamGuardian.svg' in build
+    assert 'APPDIR/usr/share/metainfo/io.github.clamguardian.ClamGuardian.appdata.xml' in build
     assert "APT_ARCH" not in build and "APT_MIRROR" not in build
 
     bundler = (appimage / "bundle-runtime.sh").read_text(encoding="utf-8")
@@ -483,6 +484,7 @@ def test_appimage_manual_appdir_pipeline_is_pinned_and_complete() -> None:
     assert "--appimage-extract" in appimage_test
     assert "--python-interpreter" in appimage_test
     assert "gtk-smoke.py" in appimage_test
+    assert 'usr/share/metainfo/io.github.clamguardian.ClamGuardian.appdata.xml' in appimage_test
     assert "timeout --signal=TERM 20s" not in appimage_test
 
 
