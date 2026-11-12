@@ -109,101 +109,120 @@ class QuarantineVault:
         if requested.is_symlink():
             raise ValueError("Refusing to quarantine a symbolic link")
         source = requested.resolve(strict=True)
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
-        source_fd = os.open(source, flags)
-        try:
-            before = os.fstat(source_fd)
-            if not stat.S_ISREG(before.st_mode):
-                raise ValueError("Only regular files can be quarantined")
-            size = before.st_size
-            if size > self.max_bytes:
-                raise ValueError(
-                    f"File is too large to quarantine: {size} bytes exceeds the "
-                    f"{self.max_bytes} byte limit"
-                )
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        with _open_directory_chain(source.parent, create=False) as parent_fd:
+            source_fd = os.open(source.name, flags, dir_fd=parent_fd)
+            try:
+                before = os.fstat(source_fd)
+                if not stat.S_ISREG(before.st_mode):
+                    raise ValueError("Only regular files can be quarantined")
+                size = before.st_size
+                if size > self.max_bytes:
+                    raise ValueError(
+                        f"File is too large to quarantine: {size} bytes exceeds the "
+                        f"{self.max_bytes} byte limit"
+                    )
 
-            item_id = uuid.uuid4().hex
-            metadata = {
-                "item_id": item_id,
-                "original_name": source.name,
-                "original_path": str(source),
-                "created_at": time.time(),
-                "size": size,
-            }
-            aad = _encode_metadata(metadata)
-            nonce = secrets.token_bytes(_NONCE_SIZE)
-            chunk_count = max(1, -(-size // self.chunk_size))
-            destination = self.directory / f"{item_id}.qtn"
+                item_id = uuid.uuid4().hex
+                metadata = {
+                    "item_id": item_id,
+                    "original_name": source.name,
+                    "original_path": str(source),
+                    "created_at": time.time(),
+                    "size": size,
+                }
+                aad = _encode_metadata(metadata)
+                nonce = secrets.token_bytes(_NONCE_SIZE)
+                chunk_count = max(1, -(-size // self.chunk_size))
+                destination = self.directory / f"{item_id}.qtn"
 
-            written = 0
-            with self._atomic_writer(destination) as handle:
-                handle.write(_MAGIC_V2)
-                handle.write(len(aad).to_bytes(4, "big"))
-                handle.write(aad)
-                handle.write(self.chunk_size.to_bytes(4, "big"))
-                handle.write(chunk_count.to_bytes(4, "big"))
-                handle.write(nonce)
-                with os.fdopen(os.dup(source_fd), "rb") as src:
-                    for index in range(chunk_count):
-                        chunk = src.read(self.chunk_size)
-                        written += len(chunk)
-                        if written > self.max_bytes:
-                            raise ValueError(
-                                "File grew past the quarantine size limit while being read"
+                written = 0
+                with self._atomic_writer(destination) as handle:
+                    handle.write(_MAGIC_V2)
+                    handle.write(len(aad).to_bytes(4, "big"))
+                    handle.write(aad)
+                    handle.write(self.chunk_size.to_bytes(4, "big"))
+                    handle.write(chunk_count.to_bytes(4, "big"))
+                    handle.write(nonce)
+                    with os.fdopen(os.dup(source_fd), "rb") as src:
+                        for index in range(chunk_count):
+                            chunk = src.read(self.chunk_size)
+                            written += len(chunk)
+                            if written > self.max_bytes:
+                                raise ValueError(
+                                    "File grew past the quarantine size limit while being read"
+                                )
+                            handle.write(
+                                self._encrypt_chunk(
+                                    nonce, aad, index, index == chunk_count - 1, chunk
+                                )
                             )
-                        handle.write(
-                            self._encrypt_chunk(
-                                nonce, aad, index, index == chunk_count - 1, chunk
-                            )
+
+                after = os.fstat(source_fd)
+                if not _same_file_snapshot(before, after) or written != size:
+                    destination.unlink(missing_ok=True)
+                    raise ValueError("File changed while being quarantined")
+
+                # Move the directory entry to an unpredictable sibling name first.
+                # This pins the entry selected by renameat; we then compare that
+                # entry with the descriptor whose contents were encrypted.
+                staged_name = f".{source.name}.{uuid.uuid4().hex}.clamguardian-pending"
+                try:
+                    os.rename(
+                        source.name,
+                        staged_name,
+                        src_dir_fd=parent_fd,
+                        dst_dir_fd=parent_fd,
+                    )
+                    staged = os.stat(
+                        staged_name, dir_fd=parent_fd, follow_symlinks=False
+                    )
+                    if not stat.S_ISREG(staged.st_mode) or not _same_file_snapshot(
+                        before, staged
+                    ):
+                        _restore_staged_entry(parent_fd, staged_name, source.name)
+                        destination.unlink(missing_ok=True)
+                        raise ValueError(
+                            "Source path changed while being quarantined; "
+                            "the replacement was preserved"
                         )
+                    try:
+                        os.unlink(staged_name, dir_fd=parent_fd)
+                    except OSError:
+                        _restore_staged_entry(parent_fd, staged_name, source.name)
+                        destination.unlink(missing_ok=True)
+                        raise
+                except OSError:
+                    destination.unlink(missing_ok=True)
+                    raise
 
-            after = os.fstat(source_fd)
-            before_identity = (
-                before.st_dev, before.st_ino, before.st_size,
-                before.st_mtime_ns, before.st_ctime_ns,
-            )
-            after_identity = (
-                after.st_dev, after.st_ino, after.st_size,
-                after.st_mtime_ns, after.st_ctime_ns,
-            )
-            if before_identity != after_identity or written != size:
-                destination.unlink(missing_ok=True)
-                raise ValueError("File changed while being quarantined")
-
-            try:
-                current = os.stat(source, follow_symlinks=False)
-            except OSError:
-                destination.unlink(missing_ok=True)
-                raise
-            if (
-                not stat.S_ISREG(current.st_mode)
-                or (current.st_dev, current.st_ino) != (before.st_dev, before.st_ino)
-            ):
-                destination.unlink(missing_ok=True)
-                raise ValueError("Source path changed while being quarantined")
-
-            try:
-                source.unlink()
-            except OSError:
-                destination.unlink(missing_ok=True)
-                raise
-            return self._entry_from_metadata(metadata)
-        finally:
-            os.close(source_fd)
+                return self._entry_from_metadata(metadata)
+            finally:
+                os.close(source_fd)
 
     def restore(self, item_id: str, destination: Path | None = None) -> Path:
         """Decrypt an item into *destination* and remove its quarantine record."""
         path = self._path(item_id)
         header = self._read_header(item_id)
         target = self._restore_target(header.metadata, destination)
-        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if not target.name or target.name in {".", ".."}:
+            raise ValueError("Invalid or unsafe restore destination")
 
-        with self._atomic_writer(target, mode=0o600) as out, path.open("rb") as handle:
-            handle.seek(header.data_offset)
-            if header.legacy:
-                out.write(self._aes.decrypt(header.nonce, handle.read(), header.aad))
-            else:
-                self._restore_chunks(handle, header, out)
+        # Resolve and pin every parent directory without following symlinks.
+        # All subsequent creation and replacement is relative to this descriptor,
+        # so swapping a pathname ancestor cannot redirect the restored payload.
+        with _open_directory_chain(target.parent, create=True) as parent_fd:
+            with _atomic_writer_at(parent_fd, target.name, mode=0o600) as out:
+                with path.open("rb") as handle:
+                    handle.seek(header.data_offset)
+                    if header.legacy:
+                        out.write(self._aes.decrypt(header.nonce, handle.read(), header.aad))
+                    else:
+                        self._restore_chunks(handle, header, out)
 
         path.unlink()
         return target
@@ -407,6 +426,113 @@ class QuarantineVault:
     def _atomic_write(path: Path, data: bytes, *, mode: int = 0o600) -> None:
         with QuarantineVault._atomic_writer(path, mode=mode) as handle:
             handle.write(data)
+
+
+@contextlib.contextmanager
+def _open_directory_chain(path: Path, *, create: bool) -> Iterator[int]:
+    """Open an absolute directory path one component at a time, never following symlinks."""
+    path = Path(os.path.abspath(os.fspath(path)))
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptor = os.open(path.anchor, flags)
+    try:
+        for component in path.parts[1:]:
+            try:
+                next_descriptor = os.open(component, flags, dir_fd=descriptor)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                try:
+                    os.mkdir(component, mode=0o700, dir_fd=descriptor)
+                except FileExistsError:
+                    pass
+                next_descriptor = os.open(component, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = next_descriptor
+        yield descriptor
+    finally:
+        os.close(descriptor)
+
+
+def _same_file_snapshot(first: os.stat_result, second: os.stat_result) -> bool:
+    """Compare inode identity and mutation-sensitive metadata."""
+    return (
+        first.st_dev,
+        first.st_ino,
+        first.st_size,
+        first.st_mtime_ns,
+        first.st_ctime_ns,
+    ) == (
+        second.st_dev,
+        second.st_ino,
+        second.st_size,
+        second.st_mtime_ns,
+        second.st_ctime_ns,
+    )
+
+
+def _restore_staged_entry(parent_fd: int, staged_name: str, original_name: str) -> None:
+    """Restore a staged entry without replacing a path installed by another process."""
+    try:
+        os.link(
+            staged_name,
+            original_name,
+            src_dir_fd=parent_fd,
+            dst_dir_fd=parent_fd,
+            follow_symlinks=False,
+        )
+    except FileExistsError:
+        # Preserve the staged object under its unpredictable name rather than
+        # overwriting a concurrent replacement at the original pathname.
+        raise ValueError(
+            f"Source replacement detected; original entry preserved as {staged_name}"
+        ) from None
+    os.unlink(staged_name, dir_fd=parent_fd)
+
+
+@contextlib.contextmanager
+def _atomic_writer_at(
+    parent_fd: int, name: str, *, mode: int = 0o600
+) -> Iterator[BinaryIO]:
+    """Atomically write a file relative to a pinned, already-validated directory."""
+    temporary = f".{name}.{secrets.token_hex(16)}.tmp"
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptor = os.open(temporary, flags, mode, dir_fd=parent_fd)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            yield handle
+            handle.flush()
+            os.fsync(handle.fileno())
+
+        try:
+            existing = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            existing = None
+        if existing is not None and (
+            stat.S_ISLNK(existing.st_mode) or not stat.S_ISREG(existing.st_mode)
+        ):
+            raise ValueError("Refusing to replace a non-regular restore destination")
+        os.replace(
+            temporary,
+            name,
+            src_dir_fd=parent_fd,
+            dst_dir_fd=parent_fd,
+        )
+    finally:
+        try:
+            os.unlink(temporary, dir_fd=parent_fd)
+        except FileNotFoundError:
+            pass
 
 
 def _encode_metadata(metadata: dict[str, Any]) -> bytes:
