@@ -149,7 +149,8 @@ class DatabaseManager:
         with self._state_lock:
             if source_id in self._updating_sources:
                 raise RuntimeError(
-                    f"Cannot change database source state while its update is in progress: {source_id}"
+                    "Cannot change database source state while its update is in "
+                    f"progress: {source_id}"
                 )
             s = self._require(source_id)
             self._sources[source_id] = DatabaseSource(
