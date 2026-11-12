@@ -181,9 +181,10 @@ class QuarantineVault:
                     staged = os.stat(
                         staged_name, dir_fd=parent_fd, follow_symlinks=False
                     )
-                    if not stat.S_ISREG(staged.st_mode) or not _same_file_snapshot(
-                        before, staged
-                    ):
+                    if not stat.S_ISREG(staged.st_mode) or (
+                        staged.st_dev,
+                        staged.st_ino,
+                    ) != (before.st_dev, before.st_ino):
                         try:
                             _restore_staged_entry(parent_fd, staged_name, source.name)
                         finally:
