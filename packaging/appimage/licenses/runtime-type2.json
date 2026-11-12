@@ -16,11 +16,11 @@
       "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/docker/Dockerfile"
     ],
     "inventory_semantics": {
-      "binary_package": "The APK package installed by the upstream runtime build, when known",
-      "source_package": "The Alpine source package name, only when independently evidenced",
-      "upstream_version": "Upstream source version; distinct from the Alpine APK revision",
-      "apk_revision": "Exact installed Alpine package revision; null when upstream build logs do not retain it",
-      "evidence": "Evidence and verification status are recorded per component; unavailable values remain null/unknown"
+      "binary_package": "Requested or identified binary package name in the upstream build environment",
+      "source_package": "Source package name when established from upstream packaging metadata",
+      "upstream_version": "The component's upstream version, separate from the Alpine APK revision",
+      "apk_revision": "Exact installed APK revision; null when not retained by the upstream build",
+      "evidence": "Version, package and license confidence are independent; unavailable values remain null/unknown"
     }
   },
   "components": [
@@ -44,7 +44,9 @@
         "usr/share/licenses/ClamGuardian/third-party/runtime/AppImage-type2-runtime-MIT.txt"
       ],
       "detection_method": "upstream-release-and-source",
-      "verification_status": "verified"
+      "verification_status": "verified",
+      "binary_package": null,
+      "apk_revision": null
     },
     {
       "id": "runtime-musl",
@@ -54,8 +56,8 @@
       "architecture": "both",
       "license": "MIT",
       "license_status": "verified",
-      "source": "Alpine 3.21 musl APKBUILD declares 1.2.5-r21 at f2036bfe000ab05e1f300c6fce57be3da9db426e; exact installed package record unavailable",
-      "source_package": "musl-dev",
+      "source": "Alpine 3.21 musl APKBUILD at v3.21.0 declares upstream 1.2.5 and APK revision 8; exact installed APK record is unavailable.",
+      "source_package": "musl",
       "artifact_paths": [
         "AppImage Type 2 runtime executable"
       ],
@@ -67,7 +69,9 @@
       "source_paths": [
         "https://github.com/alpinelinux/aports/blob/f2036bfe000ab05e1f300c6fce57be3da9db426e/main/musl/APKBUILD",
         "https://github.com/ifduyue/musl/tree/v1.2.5"
-      ]
+      ],
+      "binary_package": "musl-dev",
+      "apk_revision": null
     },
     {
       "id": "runtime-libfuse",
@@ -78,7 +82,7 @@
       "license": "LGPL-2.1-only",
       "license_status": "verified",
       "source": "libfuse 3.15.0 source archive SHA-256 70589cfd5e1cff7ccd6ac91c86c01be340b227285c5e200baa284e401eea2ca0; patched mount.c from the pinned runtime source commit",
-      "source_package": null,
+      "source_package": "libfuse",
       "artifact_paths": [
         "AppImage Type 2 runtime executable"
       ],
@@ -90,7 +94,9 @@
       "source_paths": [
         "https://github.com/libfuse/libfuse/releases/tag/fuse-3.15.0",
         "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/common/install-dependencies.sh"
-      ]
+      ],
+      "binary_package": null,
+      "apk_revision": null
     },
     {
       "id": "runtime-squashfuse",
@@ -101,7 +107,7 @@
       "license": "BSD-2-Clause",
       "license_status": "verified",
       "source": "squashfuse 0.5.2 source archive SHA-256 db0238c5981dabbd80ee09ae15387f390091668ca060a7bc38047912491443d3",
-      "source_package": null,
+      "source_package": "squashfuse",
       "artifact_paths": [
         "AppImage Type 2 runtime executable"
       ],
@@ -113,7 +119,9 @@
       "source_paths": [
         "https://github.com/vasi/squashfuse/tree/0.5.2",
         "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/common/install-dependencies.sh"
-      ]
+      ],
+      "binary_package": null,
+      "apk_revision": null
     },
     {
       "id": "runtime-zstd",
@@ -123,8 +131,8 @@
       "architecture": "both",
       "license": "BSD-3-Clause",
       "license_status": "verified",
-      "source": "Version identified from the packaged Type 2 runtime binary evidence (zstd 1.5.6); exact Alpine APK revision is not retained. License text is checked against the upstream zstd v1.5.6 source.",
-      "source_package": "zstd-static",
+      "source": "The packaged Type 2 runtime binary evidence identifies zstd 1.5.6. Alpine 3.21 APKBUILD at v3.21.0 declares zstd 1.5.6-r1; exact installed APK record is unavailable.",
+      "source_package": "zstd",
       "artifact_paths": [
         "AppImage Type 2 runtime executable"
       ],
@@ -136,7 +144,9 @@
       "source_paths": [
         "https://github.com/facebook/zstd/tree/v1.5.6",
         "https://github.com/alpinelinux/aports/tree/v3.21.0/main/zstd"
-      ]
+      ],
+      "binary_package": "zstd-static",
+      "apk_revision": null
     },
     {
       "id": "runtime-zlib",
@@ -146,8 +156,8 @@
       "architecture": "both",
       "license": "Zlib",
       "license_status": "verified",
-      "source": "Alpine 3.21 zlib APKBUILD at 4c2722e7ecc1c5e3ba882429044a101497121223 declares upstream 1.3.1 and APK revision 2; exact installed APK record is unavailable.",
-      "source_package": "zlib-static",
+      "source": "Alpine 3.21 zlib APKBUILD at v3.21.0 declares upstream 1.3.1 and APK revision 2; exact installed APK record is unavailable.",
+      "source_package": "zlib",
       "artifact_paths": [
         "AppImage Type 2 runtime executable"
       ],
@@ -159,7 +169,9 @@
       "source_paths": [
         "https://github.com/alpinelinux/aports/blob/4c2722e7ecc1c5e3ba882429044a101497121223/main/zlib/APKBUILD",
         "https://github.com/madler/zlib/tree/v1.3.1"
-      ]
+      ],
+      "binary_package": "zlib-static",
+      "apk_revision": null
     },
     {
       "id": "runtime-mimalloc",
@@ -169,7 +181,7 @@
       "architecture": "both",
       "license": "MIT",
       "license_status": "verified",
-      "source": "The pinned Type 2 runtime Dockerfile installs mimalloc-dev and the runtime Makefile statically links -lmimalloc. The exact installed APK revision and upstream mimalloc version are not retained in the upstream build evidence.",
+      "source": "The pinned Type 2 runtime Dockerfile requests mimalloc-dev and the runtime Makefile statically links -lmimalloc. Alpine v3.21 has a mimalloc2-dev provider, but the exact provider selected and installed APK revision are not retained; no upstream version is asserted.",
       "source_package": null,
       "artifact_paths": [
         "AppImage Type 2 runtime executable"
@@ -181,8 +193,11 @@
       "verification_status": "partial",
       "source_paths": [
         "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/docker/Dockerfile",
-        "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/src/runtime/Makefile"
-      ]
+        "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/src/runtime/Makefile",
+        "https://github.com/alpinelinux/aports/blob/v3.21.0/community/mimalloc2/APKBUILD"
+      ],
+      "binary_package": "mimalloc-dev",
+      "apk_revision": null
     }
   ]
 }
