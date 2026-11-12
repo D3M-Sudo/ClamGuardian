@@ -41,6 +41,8 @@ BaseAVEngine`, exactly as for the GTK controller.
 
 ## Commands
 
+The command inventory below was reconciled against the parser in `clamguardian/cli/main.py` on 2026-11-12. Use `clamguardian COMMAND --help` for exact arguments and options; this table is a capability summary, not a substitute for argparse help.
+
 | Command     | Status | Notes                                                        |
 | ----------- | ------ | ------------------------------------------------------------ |
 | `scan`      | ✅ M3  | `clamguardian scan PATH [--profile ID] [--json]`             |
@@ -49,7 +51,11 @@ BaseAVEngine`, exactly as for the GTK controller.
 | `history`   | ✅ M4  | `list` / `show ID` / `purge` over the SQLite store; `--json` |
 | `doctor`    | ✅ D1  | Core dependency diagnostics (binaries, daemon, databases); `--json`; exit 6 on critical gaps |
 | `ui`        | ✅ D1  | launches the GTK4/Libadwaita app (`ui/app.py`); exit 3 when PyGObject is unavailable |
-| `databases` | ❌ M3  | see "Why no `databases` command" below                       |
+| `usb`       | ✅ 1.1 | `status`, `enable`, `disable`, `scan`; removable-media automation |
+| `intel`     | ✅ 1.2 | `profile`, `set-key`, `status`, `enable`, `disable`, `lookup`, consent-gated `upload` |
+| `monitor`   | ✅ 2.x-A | `status`, `enable`, `disable`, `add`, `remove`; realtime inotify monitoring |
+| `schedule`  | ✅ 1.1 | `status`, `enable --time HH:MM`, `disable`; daily user-session scans |
+| `autostart` | ✅ 1.1 | `status`, `enable`, `disable`; user-session desktop autostart |
 
 ### Default profile
 
