@@ -281,6 +281,10 @@ def collect_package_provenance(
     for host_path, package in GENERATED_FILE_OWNERS.items():
         generated_path = appdir / host_path.lstrip("/")
         if generated_path.is_file():
+            if package in owners_by_path.get(host_path, set()):
+                # A dpkg-listed file already has direct package provenance;
+                # require postinst evidence only for an unlisted generated output.
+                continue
             package_paths.setdefault(package, []).append(host_path.lstrip("/"))
             generated_paths_by_package.setdefault(package, []).append(host_path)
 
