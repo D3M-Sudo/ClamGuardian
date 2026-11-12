@@ -1,18 +1,3 @@
-## Unreleased
-
-### Added
-- Add explicit VirusTotal Public and Premium API profiles with independent OS Secret Service credentials.
-- Add persistent profile-aware request pacing, Public daily quota enforcement, and cross-process Retry-After cooldowns.
-- Add hash-first file submission workflow with per-file typed consent, privacy warning, SHA-256 revalidation, upload polling, CLI commands, and GTK profile selection.
-
-### Security
-- Keep Public API requests blocked until written VirusTotal eligibility authorization is recorded.
-- Remove upstream response bodies and sensitive request details from VirusTotal error logs; never fall back between API profiles.
-- Keep VirusTotal enrichment separate from the local ClamAV verdict.
-
-### Changed
-- Persist VirusTotal hash assessments in a dedicated scan-linked SQLite table, separate from the ClamAV verdict, with a transactional v1-to-v2 schema migration and cascading retention lifecycle.
-
 # Changelog
 
 All notable changes to ClamGuardian are documented here.
@@ -22,6 +7,16 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## [Unreleased]
+
+### Added
+- **VirusTotal API profiles and file submission:** independent Public/Premium credentials in OS Secret Service, explicit profile selection, hash-first lookup and consent-gated upload with snapshot revalidation and analysis polling.
+- **Shared scan enrichment:** centralize optional VirusTotal enrichment across pathname and descriptor-based scan workflows while preserving the local ClamAV verdict and request-time profile/provenance.
+- **Persistent intelligence evidence:** store normalized VirusTotal assessments in a scan-linked SQLite table with schema migration and retention lifecycle; expose retrieval through the HistoryStore interface.
+- **Realtime descriptor coverage:** exercise the inotify-to-descriptor scan path through enrichment and persisted evidence, without pathname fallback.
+
+### Security
+- **VirusTotal request isolation:** enforce profile-specific authorization, shared rate/quota controls, bounded retries and cooldowns; reject mismatched report digests and avoid exposing provider response bodies or credentials in logs.
+- **Evidence separation:** keep remote intelligence metadata distinct from the authoritative ClamAV scan verdict.
 
 ### Fixed
 - **USB lifecycle and mount validation:** require an actual mount backed by removable/USB block-device identity beneath an allowed root; track background scan tasks, cancel them on unmount/shutdown, and prevent ordinary directories from being treated as removable devices.
