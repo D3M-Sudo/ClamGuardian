@@ -25,10 +25,13 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - **AppImage license and SBOM evidence:** stage the complete project GPL license, collect copyright documents for Debian packages that own bundled AppDir files, generate Syft SPDX 2.3 and CycloneDX 1.6 AppDir inventories, and publish aggregate SBOMs that also represent the AppImage Type 2 runtime. Bind the evidence to the final artifact SHA-256 and verify it during native CI.
 - **AppImage release evidence:** attach architecture-specific SPDX/CycloneDX SBOM and license-evidence archives to Draft releases, with strict artifact cardinality checks and release-level SHA-256 verification.
 - **SPDX semantic validation:** validate license identifiers against the pinned SPDX License List, require actual extracted text for unresolved LicenseRefs, and enforce the `NONE`/`NOASSERTION` operator restrictions.
+- **AppImage Type 2 relink evidence:** attach per-architecture source bundles with the pinned runtime source, libfuse and patch, squashfuse, static dependency source snapshots, build inputs and checksums; unresolved mimalloc source identity remains explicit.
 
 ### Changed
 
 - **AppImage Debian copyright parsing:** distinguish DEP-5 package-level header declarations from file-scoped `Files` declarations and stand-alone license-text paragraphs; retain `NOASSERTION` for partial coverage or mixed file-level licenses.
+- **AppImage runtime provenance:** distinguish binary package, source package, upstream version and exact Alpine APK revision; correct zstd to the version identified in the packaged runtime evidence and keep mimalloc version unknown without installed-package proof.
+- **Embedded libmpdec evidence:** identify libmpdec 2.5.1 from the CPython 3.12.3 source header and recognize BSD-2-Clause only when the scoped Debian notice contains both redistribution conditions and the complete disclaimer.
 - **GitHub Actions runtime compatibility:** replace all seven `actions/upload-artifact` v4 references that targeted deprecated Node.js 20 across CI, Release Gate and tagged-release workflows with the immutable Node.js 24-compatible v7.0.2 release pin.
 
 ### Fixed
