@@ -184,40 +184,8 @@ jobs:
         run: |
           mkdir -p release-assets
           gh run download "$GITHUB_RUN_ID" --dir release-assets
-      - name: Verify payload and checksums
-        run: |
-          set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          mkdir -p release
-          expected=("ClamGuardian-${version}-linux-x86_64.flatpak" "ClamGuardian-${version}-linux-aarch64.flatpak" "ClamGuardian-${version}-x86_64.AppImage" "ClamGuardian-${version}-aarch64.AppImage")
-          for file in "${expected[@]}"; do
-            matches="$(find release-assets -type f -name "$file" -print)"
-            test "$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l)" -eq 1
-            cp "$matches" release/
-          done
-          for arch in x86_64 aarch64; do
-            required_evidence=(
-              "aggregate-${arch}.spdx.json"
-              "aggregate-${arch}.cdx.json"
-              "appdir.spdx.json"
-              "appdir.cdx.json"
-              "artifact-${arch}.json"
-              "schema-validation-${arch}.json"
-              "native-packages.json"
-              "license-evidence-${arch}.tar.gz"
-            )
-            mkdir -p "release/sbom-${arch}"
-            for evidence in "${required_evidence[@]}"; do
-              matches="$(find release-assets -type f -path "*/sbom/${arch}/${evidence}" -print)"
-              test "$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l)" -eq 1
-              cp "$matches" "release/sbom-${arch}/"
-            done
-            tar -C "release/sbom-${arch}" \
-              -czf "release/ClamGuardian-${version}-sbom-${arch}.tar.gz" .
-            rm -rf "release/sbom-${arch}"
-          done
-          (cd release && find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\0' \
-            | sort -z | xargs -0 sha256sum > SHA256SUMS && sha256sum --check SHA256SUMS)
+      - name: Assemble release payload and SBOM evidence
+        run: packaging/appimage/assemble-release-evidence.sh release-assets release "${GITHUB_REF_NAME#v}"
       - name: Create GitHub Release as Draft
         env:
           GH_TOKEN: ${{ github.token }}

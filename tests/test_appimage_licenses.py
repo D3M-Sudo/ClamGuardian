@@ -1501,7 +1501,7 @@ def test_debian_non_spdx_license_identifiers_remain_unasserted() -> None:
 
 def test_release_workflow_requires_architecture_sbom_evidence_archives() -> None:
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-    build = (ROOT / "packaging/appimage/build-appimage.sh").read_text(
+    assembler = (ROOT / "packaging/appimage/assemble-release-evidence.sh").read_text(
         encoding="utf-8"
     )
     for evidence in (
@@ -1514,11 +1514,10 @@ def test_release_workflow_requires_architecture_sbom_evidence_archives() -> None
         "native-packages.json",
         "license-evidence-${arch}.tar.gz",
     ):
-        assert evidence in workflow
-    assert "ClamGuardian-${version}-sbom-${arch}.tar.gz" in workflow
+        assert evidence in assembler
+    assert "ClamGuardian-${version}-sbom-${architecture}.tar.gz" in assembler
     assert "sha256sum --check SHA256SUMS" in workflow
-    assert 'tar -C "$APPDIR/usr/share/licenses"' in build
-    assert '"$sbom_dir/native-packages.json"' in build
+    assert "assemble-release-evidence.sh release-assets release" in workflow
 
 
 def test_native_license_evidence_ignores_empty_license_fields() -> None:

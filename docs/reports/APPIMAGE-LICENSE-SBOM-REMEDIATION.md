@@ -2,9 +2,9 @@
 
 **Status: IMPLEMENTED ON PR / CI GREEN / NOT RELEASE-READY**  
 **Target:** PR #38, branch `ci/node24-actions` → `feature`  
-**CI-verified PR head:** `e2f0214b63c55fe1dd44a4190efca42ecf348699`. This revision includes the pinned GFDL-1.2 fallback and common-license reference normalization.  
-**CI:** [run 43290602327](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43290602327) — **success**  
-**Release Gate:** [run 43290602380](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43290602380) — **success**
+**Latest implementation commit:** `46e17cdaebc1f61c6c2c4c076a417f4cc3a938d9` (CI verification for the latest commit pending).  
+**Latest verified CI:** [run 43313317581](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43313317581) — **success**, at `64417a2d0b4c4e7290a8ac92589543a8376106ae`.  
+**Latest verified Release Gate:** [run 43313317563](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43313317563) — **success**, at the same preceding commit.
 
 ## Implementation delivered
 
@@ -39,24 +39,24 @@ The remediation is committed to the remote PR branch. The implementation include
 | Native AppImage aarch64 | **Passed** |
 | Release Gate: preflight, GTK smoke, AppStream, Flatpak local build, real ClamAV scan | **Passed** |
 
-The nine pytest skips in each Python matrix are existing headless/optional-dependency skips. The build-time AppImage pipeline separately installs and exercises the GTK runtime and validates the official SBOM schemas.
+The nine pytest skips in each Python matrix are existing headless/optional-dependency skips. The build-time AppImage pipeline separately installs and exercises the GTK runtime and validates SPDX expressions against the pinned SPDX License List, LicenseRef text requirements, CycloneDX declarations, and the official JSON schemas.
 
 ### Native AppImage evidence
 
 Both native architectures completed the extracted-artifact test successfully:
 
-- **x86_64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents validated against official schemas; GTK smoke passed; final artifact digest verified as `249b938cf5fd800a912b051728ad5ac5126351b1fb9c526cc9335e29aaa221c1`.
-- **aarch64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents validated against official schemas; GTK smoke passed; final artifact digest verified as `6a672738e3fb5cae9eeb66c96b2d0be48d9d7f2ae8ebc8869fe8d4eeffce2c97`.
+- **x86_64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents passed SPDX/CycloneDX semantic and JSON-schema validation; GTK smoke passed; final artifact digest verified as `ab39df018ff35d6b6b1cfd707e250f5472e183f43c7e23ac5bb4b83ef03fb0fa`.
+- **aarch64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents passed SPDX/CycloneDX semantic and JSON-schema validation; GTK smoke passed; final artifact digest verified as `85849b97b83a9bad262c044a7db552ab69107421414e22fc2174b002a788d1a9`.
 
 The artifact test reports passed architecture, runtime, licenses, SBOM, CLI and GTK construction checks for both builds.
 
 ## SBOM license coverage — remaining limitation
 
-The actual x86_64 and aarch64 aggregate SPDX SBOMs each contain **142 package records; 108 have `licenseDeclared: NOASSERTION`**. This is a real coverage gap, not a schema-validation failure.
+The actual x86_64 and aarch64 aggregate SPDX SBOMs each contain **142 package records; 110 have `licenseDeclared: NOASSERTION`**. This is a real coverage gap, not a schema-validation failure.
 
 The 13 Python wheel entries are no longer left as `NOASSERTION` in the curated inventory: their declared expressions are now aligned with Syft's extracted wheel metadata and reconciled against SPDX and CycloneDX. These are metadata-derived declarations, not independent legal determinations.
 
-The remaining 108 unknown declarations include many native/system package records. Their copyright documents are present in the AppImage, but the collector deliberately does not invent a single package-level SPDX expression when the Debian copyright data is absent, ambiguous, multi-stanza or outside its supported normalization rules. Those records need a separate evidence-backed classification pass before complete package-level license coverage can be claimed.
+The native inventory has 117 bundled Debian package records: 12 have a normalized package-level SPDX expression and 105 remain `NOASSERTION`. The aggregate SPDX total is 110 `NOASSERTION` records because it also contains records sourced from the AppDir/Syft inventory, including overlaps. The same counts were independently observed in x86_64 and aarch64 artifacts. Their copyright documents are present in the AppImage, but the collector deliberately does not invent a single package-level SPDX expression when the Debian copyright data is absent, ambiguous, multi-stanza or outside its supported normalization rules. Those records need a separate evidence-backed classification pass before complete package-level license coverage can be claimed.
 
 ## Remaining release-readiness blockers
 
