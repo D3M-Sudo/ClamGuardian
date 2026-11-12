@@ -2,9 +2,9 @@
 
 **Status: IMPLEMENTED ON PR / CI AND RELEASE GATE GREEN / NOT RELEASE-READY**  
 **Target:** PR #38, branch `ci/node24-actions` → `feature`  
-**CI-verified PR head:** `a0fa49fa807aa71fd6f2e59d44aaed5d8f90a8b2`.  
-**CI:** [run 43315570322](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43315570322) — **success** (9/9 jobs).  
-**Release Gate:** [run 43315570324](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43315570324) — **success on attempt 2**; the first AppStream attempt received a transient GitHub 502, and the isolated retry passed.
+**CI-verified implementation and test head:** `5e6ee6bf6ade371f4c1e234945e5d853aa399a12`.  
+**CI:** [run 43317428151](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43317428151) — **success** (9/9 jobs).  
+**Release Gate:** [run 43317427999](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43317427999) — **success**; all applicable checks passed.
 
 ## Implementation delivered
 
@@ -21,7 +21,8 @@ The remediation is committed to the remote PR branch. The implementation include
 - Semantic SPDX license-expression validation against the pinned SPDX License List, including exception identifiers, LicenseRef extracted-text requirements, and the rule that `NONE`/`NOASSERTION` cannot be combined with `OR` or `WITH` (while `AND` remains allowed).
 - Official SPDX 2.3 and CycloneDX 1.6 JSON-schema validation using pinned upstream schema refs and Git blob IDs.
 - A tested release assembler that fails closed on missing/duplicate artifacts, packages per-architecture SBOM/license evidence archives, and verifies release-level SHA-256 checksums.
-- Extracted-AppImage verification for architecture, CLI, GTK construction, license tree, native/runtime provenance, SBOM contents and final artifact digest.
+- Extracted-AppImage verification for architecture, CLI, GTK construction, license tree, native/runtime provenance, SBOM contents, semantic-validation report and final artifact digest.
+- A dedicated fail-closed SBOM report validator checks both semantic validation results and all four expected schema-validation documents during extracted-artifact testing.
 - CI and release-gate integration, artifact upload, README, CHANGELOG and this evidence report.
 
 ## Remote verification results
@@ -30,7 +31,7 @@ The remediation is committed to the remote PR branch. The implementation include
 |---|---|
 | Ruff `ruff check .` | **Passed** |
 | Mypy `mypy clamguardian` | **Passed** |
-| Pytest, Python 3.11 | **585 passed, 9 skipped** |
+| Pytest, Python 3.11 | **586 passed, 9 skipped** |
 | Pytest, Python 3.12 | **585 passed, 9 skipped** |
 | Pytest, Python 3.13 | **585 passed, 9 skipped** |
 | Runtime Python 3.14 headless check | **Passed** |
@@ -47,8 +48,8 @@ The nine pytest skips in each Python matrix are existing headless/optional-depen
 
 Both native architectures completed the extracted-artifact test successfully:
 
-- **x86_64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents passed SPDX/CycloneDX semantic and JSON-schema validation; GTK smoke passed; final artifact digest verified as `d85b80ee09e874a0dd61f66a2379d242f38e0c63cec221e72a3033ba80a7cddf`.
-- **aarch64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents passed SPDX/CycloneDX semantic and JSON-schema validation; GTK smoke passed; final artifact digest verified as `dc26ef06053cf1d283604de1da3f4bd113e8b612b868c1169bf9134a08b2ae22`.
+- **x86_64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents passed SPDX/CycloneDX semantic and JSON-schema validation; GTK smoke passed; final artifact digest verified as `df75c6c92a49d8bccdce724ef56e06d569ae8079d464284fe18219da76041b3d`.
+- **aarch64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents passed SPDX/CycloneDX semantic and JSON-schema validation; GTK smoke passed; final artifact digest verified as `938ba5ac315dc7654ebb808991d5b7c4fad89e281e00c737a62635130cece6fb`.
 
 The artifact test reports passed architecture, runtime, licenses, SBOM, CLI and GTK construction checks for both builds.
 
