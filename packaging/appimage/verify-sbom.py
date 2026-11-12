@@ -44,6 +44,28 @@ def _normalized_name(value: Any) -> str:
     return str(value).casefold().replace("_", "-").replace(".", "-")
 
 
+def _strip_outer_parentheses(expression: str) -> str:
+    value = expression.strip()
+    while value.startswith("(") and value.endswith(")"):
+        depth = 0
+        wraps_entire_expression = True
+        for index, character in enumerate(value):
+            if character == "(":
+                depth += 1
+            elif character == ")":
+                depth -= 1
+                if depth < 0:
+                    wraps_entire_expression = False
+                    break
+            if depth == 0 and index < len(value) - 1:
+                wraps_entire_expression = False
+                break
+        if not wraps_entire_expression or depth != 0:
+            break
+        value = value[1:-1].strip()
+    return value
+
+
 def _verify_component_records(
     expected_components: list[dict[str, Any]],
     spdx_packages: list[dict[str, Any]],
@@ -83,9 +105,12 @@ def _verify_component_records(
                 elif isinstance(entry.get("license"), dict):
                     license_data = entry["license"]
                     cdx_expressions.add(license_data.get("id") or license_data.get("name"))
-            accepted_cdx_values = {license_expression}
+            normalized_cdx_expressions = {
+                _strip_outer_parentheses(str(item)) for item in cdx_expressions
+            }
+            accepted_cdx_values = {_strip_outer_parentheses(license_expression)}
             accepted_cdx_values.update(_CDX_LICENSE_NAME_ALIASES.get(license_expression, set()))
-            if not accepted_cdx_values.intersection(cdx_expressions):
+            if not accepted_cdx_values.intersection(normalized_cdx_expressions):
                 raise ValueError(
                     f"CycloneDX license mismatch for {name}: expected {license_expression}, "
                     f"got {sorted(str(item) for item in cdx_expressions)}"
