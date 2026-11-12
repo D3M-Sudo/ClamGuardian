@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "runtime": {
     "release": "20251108",
     "upstream_commit": "dd6cebedcbddde9c82f89b011e8e1d40b6e43868",
@@ -14,7 +14,14 @@
       "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/common/install-dependencies.sh",
       "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/chroot/build.sh",
       "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/docker/Dockerfile"
-    ]
+    ],
+    "inventory_semantics": {
+      "binary_package": "The APK package installed by the upstream runtime build, when known",
+      "source_package": "The Alpine source package name, only when independently evidenced",
+      "upstream_version": "Upstream source version; distinct from the Alpine APK revision",
+      "apk_revision": "Exact installed Alpine package revision; null when upstream build logs do not retain it",
+      "evidence": "Evidence and verification status are recorded per component; unavailable values remain null/unknown"
+    }
   },
   "components": [
     {
@@ -111,12 +118,12 @@
     {
       "id": "runtime-zstd",
       "name": "zstd",
-      "version": "1.5.7",
-      "version_status": "declared",
+      "version": "1.5.6",
+      "version_status": "verified",
       "architecture": "both",
       "license": "BSD-3-Clause",
       "license_status": "verified",
-      "source": "Alpine 3.21 zstd APKBUILD declares 1.5.7-r2 at 3c6e2ee2b16f403d53eab39c4426eb61f003c322; exact installed package record unavailable; BSD-3-Clause option selected",
+      "source": "Version identified from the packaged Type 2 runtime binary evidence (zstd 1.5.6); exact Alpine APK revision is not retained. License text is checked against the upstream zstd v1.5.6 source.",
       "source_package": "zstd-static",
       "artifact_paths": [
         "AppImage Type 2 runtime executable"
@@ -127,9 +134,8 @@
       "detection_method": "upstream-build-recipe",
       "verification_status": "partial",
       "source_paths": [
-        "https://github.com/alpinelinux/aports/blob/3c6e2ee2b16f403d53eab39c4426eb61f003c322/main/zstd/APKBUILD",
-        "https://github.com/meta/zstd/tree/v1.5.7",
-        "https://github.com/facebook/zstd/tree/v1.5.7"
+        "https://github.com/facebook/zstd/tree/v1.5.6",
+        "https://github.com/alpinelinux/aports/tree/v3.21.0/main/zstd"
       ]
     },
     {
@@ -140,7 +146,7 @@
       "architecture": "both",
       "license": "Zlib",
       "license_status": "verified",
-      "source": "Alpine 3.21 zlib APKBUILD declares 1.3.1-r2 at 4c2722e7ecc1c5e3ba882429044a101497121223; exact installed package record unavailable",
+      "source": "Alpine 3.21 zlib APKBUILD at 4c2722e7ecc1c5e3ba882429044a101497121223 declares upstream 1.3.1 and APK revision 2; exact installed APK record is unavailable.",
       "source_package": "zlib-static",
       "artifact_paths": [
         "AppImage Type 2 runtime executable"
@@ -158,13 +164,13 @@
     {
       "id": "runtime-mimalloc",
       "name": "mimalloc",
-      "version": "2.2.3",
-      "version_status": "declared",
+      "version": null,
+      "version_status": "unknown",
       "architecture": "both",
       "license": "MIT",
       "license_status": "verified",
-      "source": "Alpine 3.21 mimalloc2 APKBUILD declares 2.2.3-r2 at 254024f3b0572339fd24fae8865a4e313239ba71; exact installed package record unavailable; statically linked by src/runtime/Makefile but omitted from upstream LICENSE list",
-      "source_package": "mimalloc2-dev",
+      "source": "The pinned Type 2 runtime Dockerfile installs mimalloc-dev and the runtime Makefile statically links -lmimalloc. The exact installed APK revision and upstream mimalloc version are not retained in the upstream build evidence.",
+      "source_package": null,
       "artifact_paths": [
         "AppImage Type 2 runtime executable"
       ],
@@ -174,9 +180,8 @@
       "detection_method": "upstream-build-recipe",
       "verification_status": "partial",
       "source_paths": [
-        "https://github.com/alpinelinux/aports/blob/254024f3b0572339fd24fae8865a4e313239ba71/community/mimalloc2/APKBUILD",
-        "https://github.com/microsoft/mimalloc/tree/v2.2.3",
-        "https://github.com/microsoft/mimalloc/tree/v2.2.3"
+        "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/docker/Dockerfile",
+        "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/src/runtime/Makefile"
       ]
     }
   ]
