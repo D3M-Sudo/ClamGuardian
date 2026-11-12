@@ -162,14 +162,14 @@ R1–R8 and LIC-001–LIC-020 have evidence; both architectures have independent
 
 ---
 
-## Local execution snapshot (2026-11-12)
+## PR execution snapshot (2026-11-12)
 
-The following implementation exists in the archive-backed local worktree. This is not a claim that the corresponding native artifacts or remote PR have been updated.
+The remediation is committed to PR #38 on `ci/node24-actions`, currently at `0e31cd3bd6b89c9028fb4dc6d01ab4de496d51cd`. PR #38 remains open and Draft, targeting `feature`; no merge, tag, release or publication was performed.
 
-- Implemented locally: GPL project license payload, runtime license fetcher with Git blob verification, Debian package/copyright collector, libmpdec evidence gate, AppDir/runtime SBOM generator, aggregate SPDX/CycloneDX output, official-schema validation harness, detached artifact digest manifest, extracted-AppImage verification, CI/release artifact upload changes, README and CHANGELOG updates.
-- Local checks: 525 pytest passed, 19 skipped for unavailable GTK/PyGObject/display dependencies; inventory validator, changelog validator, Python compilation, shell syntax and workflow YAML parsing passed.
-- Not yet verified: native x86_64/aarch64 builds, real Syft scans, downloaded official-schema validation, native package copyright collection, runtime license downloads, independent aarch64 extraction, Ruff and mypy, LGPL static-linking obligations.
-- Runtime package versions for musl, zstd, zlib and mimalloc are recorded as `declared` from Alpine 3.21 APKBUILD evidence, not as verified installed versions. The embedded libmpdec version remains unknown.
-- The available ZIP has no `.git` directory. The remote PR head was last observed at `59bec2db722e8b0f04e2c40a398a585f5dcc1b10`; no commit or push was made.
+- Remote implementation: project and runtime license payloads, curated inventories, native Debian package/copyright collector, CA post-install provenance, flattened ELF SONAME provenance, libmpdec evidence gate, Syft AppDir/aggregate SBOM generation, pinned official schema validation, detached artifact digest manifests, extracted-AppImage verification, CI/release evidence uploads, README, CHANGELOG and execution report.
+- CI run [43285081892](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43285081892): success. Ruff and mypy passed; Python 3.11/3.12/3.13 each reported 557 passed and 9 skipped; runtime Python 3.14 check and pinned dependency audit passed.
+- Native x86_64 and aarch64 AppImage builds and extracted-artifact checks passed. Each architecture collected copyright evidence for 117 bundled Debian packages, fetched/verified seven Type 2 runtime license documents, validated four SBOM documents against official schemas, passed GTK smoke and verified its final artifact SHA-256.
+- Native Flatpak x86_64/aarch64 checks passed. Release Gate [43285081896](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43285081896) passed preflight, GTK smoke, AppStream, local Flatpak build and real ClamAV scan.
+- Remaining blockers: 13 Python wheel license entries remain `NOASSERTION`; musl/zstd/zlib/mimalloc versions remain declared rather than verified installed versions; libmpdec version remains unknown; libfuse LGPL static-linking obligations require engineering/legal review; separate independent artifact and whole-branch review remains outstanding.
 
-See `docs/reports/APPIMAGE-LICENSE-SBOM-REMEDIATION.md` for the complete evidence gaps and current release-readiness verdict.
+See `docs/reports/APPIMAGE-LICENSE-SBOM-REMEDIATION.md` for the detailed evidence and release-readiness verdict.
