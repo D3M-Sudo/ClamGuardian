@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import shutil
 import tempfile
 import threading
+from _thread import LockType
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -15,6 +17,8 @@ from pathlib import Path
 from .models import DatabaseArtifact, DatabaseSource, DatabaseStatus, InstalledDatabase
 from .provider import DatabaseProvider, FileDatabaseProvider
 
+logger = logging.getLogger(__name__)
+
 
 class DatabaseUpdateError(RuntimeError):
     pass
@@ -23,7 +27,7 @@ class DatabaseUpdateError(RuntimeError):
 StatusCallback = Callable[[InstalledDatabase], Awaitable[None] | None]
 
 @asynccontextmanager
-async def _async_thread_lock(lock: threading.Lock) -> AsyncIterator[None]:
+async def _async_thread_lock(lock: LockType) -> AsyncIterator[None]:
     """Acquire a process-wide lock without blocking or binding to one event loop."""
     if not lock.acquire(blocking=False):
         acquisition = asyncio.create_task(asyncio.to_thread(lock.acquire))
@@ -59,7 +63,7 @@ class DatabaseManager:
         self.status_callback = status_callback
         self._sources: dict[str, DatabaseSource] = {}
         self._installed: dict[str, InstalledDatabase] = {}
-        self._locks: dict[str, threading.Lock] = {}
+        self._locks: dict[str, LockType] = {}
         self._locks_guard = threading.Lock()
         self._state_lock = threading.RLock()
         self._updating_sources: set[str] = set()
