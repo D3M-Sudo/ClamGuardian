@@ -104,9 +104,11 @@ jobs:
           - arch: x86_64
             runner: ubuntu-24.04
             apt_arch: amd64
+            apt_mirror: http://archive.ubuntu.com/ubuntu/
           - arch: aarch64
             runner: ubuntu-24.04-arm
             apt_arch: arm64
+            apt_mirror: http://ports.ubuntu.com/ubuntu-ports/
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
@@ -127,6 +129,7 @@ jobs:
       - name: Build AppImage
         env:
           APT_ARCH: ${{ matrix.apt_arch }}
+          APT_MIRROR: ${{ matrix.apt_mirror }}
           APPIMAGE_ARCH: ${{ matrix.arch }}
         run: |
           export APP_VERSION="${GITHUB_REF_NAME#v}"

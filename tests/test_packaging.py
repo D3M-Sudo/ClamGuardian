@@ -450,3 +450,18 @@ def test_generated_packaging_wheelhouses_are_ignored() -> None:
     gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
     assert "/packaging/flatpak/wheelhouse/" in gitignore
     assert "/packaging/appimage/wheelhouse/" in gitignore
+
+
+def test_appimage_recipe_has_native_ubuntu_24_04_apt_sources() -> None:
+    recipe = yaml.safe_load(
+        (ROOT / "packaging" / "appimage" / "AppImageBuilder.yml").read_text(encoding="utf-8")
+    )
+    apt = recipe["AppDir"]["apt"]
+    assert apt["arch"] == "{{APT_ARCH}}"
+    assert len(apt["sources"]) == 3
+    lines = [source["sourceline"] for source in apt["sources"]]
+    assert any(" noble main universe" in line for line in lines)
+    assert any(" noble-updates main universe" in line for line in lines)
+    assert any(" noble-security main universe" in line for line in lines)
+    assert all("{{APT_ARCH}}" in line and "{{APT_MIRROR}}" in line for line in lines)
+    assert all(source.get("key_url") for source in apt["sources"])
