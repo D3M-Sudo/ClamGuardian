@@ -162,7 +162,7 @@ class ScanTaskRunner:
             ]
 
         for task, loop, done in tracked:
-            if task.done() or loop.is_closed():
+            if task.done() or loop.is_closed() or not loop.is_running():
                 done.set()
                 continue
             try:
