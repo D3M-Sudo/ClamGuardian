@@ -407,30 +407,41 @@ def collect_package_provenance(
         generated_paths = generated_paths_by_package.get(package, [])
         generated_output_provenance: list[dict[str, str]] = []
         if generated_paths:
-            postinst_path = dpkg_info_dir / f"{package}.postinst"
-            if not postinst_path.is_file():
+            marker_relative = "ca-certificates-generation.sha256"
+            marker_path = output_dir / marker_relative
+            if not marker_path.is_file():
                 raise ValueError(
-                    f"generated AppDir output for {package} has no postinst evidence"
+                    f"generated AppDir output for {package} has no build generation evidence"
                 )
-            postinst_content = postinst_path.read_bytes()
-            if b"update-ca-certificates" not in postinst_content:
-                raise ValueError(
-                    f"{package}.postinst does not invoke update-ca-certificates"
-                )
-            postinst_source_path = f"/var/lib/dpkg/info/{package}.postinst"
-            source_paths.append(postinst_source_path)
-            postinst_sha256 = hashlib.sha256(postinst_content).hexdigest()
-            generated_output_provenance = [
-                {
+            recorded_sha256 = marker_path.read_text(encoding="utf-8").strip()
+            for generated_path in generated_paths:
+                artifact_path = appdir / generated_path.lstrip("/")
+                if not artifact_path.is_file():
+                    raise ValueError(
+                        f"generated AppDir output is missing: {generated_path}"
+                    )
+                actual_sha256 = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
+                if recorded_sha256 != actual_sha256:
+                    raise ValueError(
+                        f"generated AppDir output hash does not match build evidence: "
+                        f"{generated_path}"
+                    )
+                generated_output_provenance.append({
                     "artifact_path": generated_path.lstrip("/"),
-                    "maintainer_script": postinst_source_path,
-                    "maintainer_script_sha256": postinst_sha256,
-                    "required_command": "update-ca-certificates",
-                }
-                for generated_path in generated_paths
-            ]
+                    "generation_command": "update-ca-certificates --fresh",
+                    "generation_script": "packaging/appimage/bundle-runtime.sh",
+                    "generation_marker": (
+                        "usr/share/licenses/ClamGuardian/" + marker_relative
+                    ),
+                    "generated_sha256": actual_sha256,
+                    "generation_exit_status": "0",
+                })
+            source_paths.extend([
+                "packaging/appimage/bundle-runtime.sh",
+                "usr/share/licenses/ClamGuardian/" + marker_relative,
+            ])
             package_detection_methods.setdefault(package, set()).add(
-                "known-generated-postinst-output"
+                "known-generated-build-command-output"
             )
         if package_list.is_file() and not package_detection_methods.get(package):
             package_detection_methods.setdefault(package, set()).add("dpkg-file-list")

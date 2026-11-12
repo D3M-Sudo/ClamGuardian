@@ -946,7 +946,7 @@ def test_syft_output_formats_pin_spdx_and_cyclonedx_schema_versions(
 
 
 
-def test_native_license_collector_attributes_generated_ca_bundle_to_package_postinst(
+def test_native_license_collector_attributes_generated_ca_bundle_to_build_command(
     tmp_path: Path,
 ) -> None:
     module_path = ROOT / "packaging" / "appimage" / "collect-licenses.py"
@@ -963,10 +963,9 @@ def test_native_license_collector_attributes_generated_ca_bundle_to_package_post
     ca_bundle.parent.mkdir(parents=True)
     ca_bundle.write_text("generated CA bundle", encoding="utf-8")
     info.mkdir()
-    postinst = info / "ca-certificates.postinst"
-    postinst.write_text(
-        "#!/bin/sh\nupdate-ca-certificates --fresh\n", encoding="utf-8"
-    )
+    marker = appdir / "usr/share/licenses/ClamGuardian/ca-certificates-generation.sha256"
+    marker.parent.mkdir(parents=True)
+    marker.write_text(hashlib.sha256(ca_bundle.read_bytes()).hexdigest() + "\\n", encoding="utf-8")
     (docs / "ca-certificates").mkdir(parents=True)
     (docs / "ca-certificates/copyright").write_text(
         "CA certificate package copyright\n", encoding="utf-8"
@@ -986,15 +985,15 @@ def test_native_license_collector_attributes_generated_ca_bundle_to_package_post
 
     package = next(item for item in result["packages"] if item["package"] == "ca-certificates")
     assert package["version"] == "20260816ubuntu0.24.04.2"
-    assert package["detection_method"] == "known-generated-postinst-output"
-    assert "/var/lib/dpkg/info/ca-certificates.postinst" in package["source_paths"]
+    assert package["detection_method"] == "known-generated-build-command-output"
+    assert "packaging/appimage/bundle-runtime.sh" in package["source_paths"]
     provenance = package["generated_output_provenance"][0]
     assert provenance["artifact_path"] == "etc/ssl/certs/ca-certificates.crt"
-    assert provenance["maintainer_script"] == "/var/lib/dpkg/info/ca-certificates.postinst"
-    assert provenance["maintainer_script_sha256"] == hashlib.sha256(
-        postinst.read_bytes()
+    assert provenance["generation_command"] == "update-ca-certificates --fresh"
+    assert provenance["generation_script"] == "packaging/appimage/bundle-runtime.sh"
+    assert provenance["generated_sha256"] == hashlib.sha256(
+        ca_bundle.read_bytes()
     ).hexdigest()
-    assert provenance["required_command"] == "update-ca-certificates"
     assert "etc/ssl/certs/ca-certificates.crt" in package["artifact_paths"]
 
 
@@ -1128,12 +1127,12 @@ def test_native_license_collector_attributes_flattened_elf_by_unique_soname_file
 
 
 
-def test_native_license_collector_rejects_generated_ca_bundle_without_postinst(
+def test_native_license_collector_rejects_generated_ca_bundle_without_build_evidence(
     tmp_path: Path,
 ) -> None:
     module_path = ROOT / "packaging" / "appimage" / "collect-licenses.py"
     spec = importlib.util.spec_from_file_location(
-        "appimage_generated_ca_missing_postinst", module_path
+        "appimage_generated_ca_missing_build_evidence", module_path
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -1152,7 +1151,7 @@ def test_native_license_collector_rejects_generated_ca_bundle_without_postinst(
         "CA certificate package copyright\n", encoding="utf-8"
     )
 
-    with pytest.raises(ValueError, match="no postinst evidence"):
+    with pytest.raises(ValueError, match="no build generation evidence"):
         module.collect_package_provenance(
             appdir,
             info,

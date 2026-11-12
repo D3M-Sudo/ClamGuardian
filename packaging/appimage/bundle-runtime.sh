@@ -62,9 +62,21 @@ test -x "$QUERY_LOADERS_SOURCE"
 install -Dm755 "$QUERY_LOADERS_SOURCE" "$APPDIR/usr/bin/gdk-pixbuf-query-loaders"
 test -f "$APPDIR/usr/lib/$MULTIARCH/gdk-pixbuf-2.0/2.10.0/loaders/libpixbufloader-svg.so"
 
-# TLS uses the host-independent CA bundle; do not rely on the host's /etc path.
+# Generate the host CA bundle explicitly, then bind the copied bytes to a
+# build-time evidence marker. A postinst file containing the command alone is
+# not evidence that the command actually ran.
+if ! command -v update-ca-certificates >/dev/null 2>&1; then
+    echo "update-ca-certificates is required to generate the AppImage CA bundle" >&2
+    exit 1
+fi
+update-ca-certificates --fresh
+test -s /etc/ssl/certs/ca-certificates.crt
 install -Dm644 /etc/ssl/certs/ca-certificates.crt \
     "$APPDIR/etc/ssl/certs/ca-certificates.crt"
+ca_bundle_sha256="$(sha256sum "$APPDIR/etc/ssl/certs/ca-certificates.crt" | awk '{print $1}')"
+mkdir -p "$APPDIR/usr/share/licenses/ClamGuardian"
+printf '%s\\n' "$ca_bundle_sha256" \
+    > "$APPDIR/usr/share/licenses/ClamGuardian/ca-certificates-generation.sha256"
 
 # CPython's python.o is a static-link input, not a runtime object. linuxdeploy
 # cannot patch it (patchelf reports "wrong ELF type"), so omit it from AppDir.
