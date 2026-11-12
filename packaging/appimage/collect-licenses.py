@@ -189,7 +189,18 @@ def collect_package_provenance(
         raise ValueError(f"package documentation directory does not exist: {doc_root}")
 
     owners_by_path = _package_file_owners(dpkg_info_dir)
+    owners_by_library_filename: dict[str, dict[str, set[str]]] = {}
+    for source_path, packages in owners_by_path.items():
+        filename = Path(source_path).name
+        if re.fullmatch(r"lib[^/]+\\.so\\.\\d+(?:\\.\\d+)*", filename):
+            for package in packages:
+                owners_by_library_filename.setdefault(filename, {}).setdefault(
+                    package, set()
+                ).add(source_path)
+
     package_paths: dict[str, list[str]] = {}
+    package_source_paths: dict[str, set[str]] = {}
+    package_detection_methods: dict[str, set[str]] = {}
     for appdir_path in sorted(appdir.rglob("*")):
         if appdir_path.is_dir():
             continue
@@ -206,9 +217,58 @@ def collect_package_provenance(
                 target_relative = Path(os.path.normpath(str(relative.parent / link_target)))
             if target_relative != Path("..") and not str(target_relative).startswith("../"):
                 host_paths.add("/" + target_relative.as_posix())
+        matched = False
         for host_path in host_paths:
             for package in owners_by_path.get(host_path, set()):
                 package_paths.setdefault(package, []).append(relative.as_posix())
+                package_source_paths.setdefault(package, set()).add(host_path)
+                package_detection_methods.setdefault(package, set()).add(
+                    "dpkg-file-list" if host_path == "/" + relative.as_posix()
+                    else "dpkg-file-list-symlink-target"
+                )
+                matched = True
+
+        # linuxdeploy may flatten a multiarch library into AppDir/usr/lib and
+        # copy its SONAME file as a regular ELF file. In that case the copied
+        # basename (e.g. libfoo.so.2) differs from the dpkg-listed real file
+        # (e.g. libfoo.so.2.0.0). Attribute it only when that SONAME filename
+        # maps to exactly one installed package.
+        if (
+            not matched
+            and relative.parts[:2] == ("usr", "lib")
+            and re.fullmatch(r"lib[^/]+\\.so\\.\\d+(?:\\.\\d+)*", relative.name)
+            and appdir_path.is_file()
+        ):
+            with appdir_path.open("rb") as handle:
+                is_elf = handle.read(4) == b"\\x7fELF"
+            if is_elf:
+                candidates = {
+                    filename: package_map
+                    for filename, package_map in owners_by_library_filename.items()
+                    if filename == relative.name or filename.startswith(relative.name + ".")
+                }
+                candidate_packages = {
+                    package for package_map in candidates.values() for package in package_map
+                }
+                if len(candidate_packages) > 1:
+                    raise ValueError(
+                        "ambiguous dpkg ownership for flattened AppDir library "
+                        + relative.as_posix()
+                        + ": "
+                        + ", ".join(sorted(candidate_packages))
+                    )
+                if len(candidate_packages) == 1:
+                    package = next(iter(candidate_packages))
+                    source_paths = {
+                        source_path
+                        for package_map in candidates.values()
+                        for source_path in package_map.get(package, set())
+                    }
+                    package_paths.setdefault(package, []).append(relative.as_posix())
+                    package_source_paths.setdefault(package, set()).update(source_paths)
+                    package_detection_methods.setdefault(package, set()).add(
+                        "dpkg-file-list-unique-soname-filename"
+                    )
 
     generated_paths_by_package: dict[str, list[str]] = {}
     for host_path, package in GENERATED_FILE_OWNERS.items():
@@ -253,16 +313,16 @@ def collect_package_provenance(
         source_paths = (
             [f"/var/lib/dpkg/info/{package}.list"] if package_list.is_file() else []
         )
+        source_paths.extend(sorted(package_source_paths.get(package, set())))
         generated_paths = generated_paths_by_package.get(package, [])
         if generated_paths:
             source_paths.append(f"/var/lib/dpkg/info/{package}.postinst")
-        detection_method = (
-            "dpkg-file-list+known-generated-postinst-output"
-            if package_list.is_file() and generated_paths
-            else "known-generated-postinst-output"
-            if generated_paths
-            else "dpkg-file-list"
-        )
+            package_detection_methods.setdefault(package, set()).add(
+                "known-generated-postinst-output"
+            )
+        if package_list.is_file() and not package_detection_methods.get(package):
+            package_detection_methods.setdefault(package, set()).add("dpkg-file-list")
+        detection_method = "+".join(sorted(package_detection_methods.get(package, set())))
         records.append({
             "package": package,
             "version": version,
