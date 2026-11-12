@@ -102,3 +102,16 @@ def test_spdx_document_rejects_license_ref_with_placeholder_text() -> None:
     }
     with pytest.raises(ValueError, match="LicenseRef.*extracted text"):
         module.validate_spdx_document(document, licenses, exceptions)
+
+
+def test_spdx_file_license_field_uses_spdx_23_plural_name() -> None:
+    module = _module()
+    licenses, exceptions = _catalog(module)
+    document = {
+        "files": [{
+            "licenseInfoInFiles": ["x11"],
+        }],
+    }
+    module.normalize_spdx_document(document, licenses, exceptions, {"licenses": []})
+    assert document["files"][0]["licenseInfoInFiles"] == ["X11"]
+    assert "licenseInfoInFile" not in document["files"][0]

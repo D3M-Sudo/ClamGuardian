@@ -217,7 +217,7 @@ def canonicalize_named_license_refs(
         return
     groups = (
         ("packages", ("licenseDeclared", "licenseConcluded")),
-        ("files", ("licenseInfoInFile",)),
+        ("files", ("licenseInfoInFiles",)),
     )
     for group, fields in groups:
         for record in document.get(group, []):
@@ -256,7 +256,7 @@ def validate_spdx_document(
     for file_record in document.get("files", []):
         if not isinstance(file_record, dict):
             continue
-        for value in file_record.get("licenseInfoInFile", []):
+        for value in file_record.get("licenseInfoInFiles", []):
             if isinstance(value, str):
                 normalize_expression(value, licenses, exceptions, refs)
     for reference, extracted in refs.items():
@@ -293,7 +293,7 @@ def normalize_spdx_document(
             continue
         values = file_record.get("licenseInfoInFile", [])
         if isinstance(values, list):
-            file_record["licenseInfoInFile"] = [
+            file_record["licenseInfoInFiles"] = [
                 normalize_expression(value, licenses, exceptions, refs)
                 if isinstance(value, str) else value
                 for value in values
