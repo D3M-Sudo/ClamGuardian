@@ -153,3 +153,49 @@ jobs:
           name: ClamGuardian-ci-linux-${{ matrix.arch }}
           path: ClamGuardian-ci-linux-${{ matrix.arch }}.flatpak
           retention-days: 14
+
+  native-appimage:
+    name: Native AppImage packaging (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+            apt_arch: amd64
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            apt_arch: arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Install AppImage prerequisites
+        run: |
+          python -m pip install --disable-pip-version-check uv==0.9.5
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth dbus-x11
+      - name: Prepare native locked runtime wheelhouse
+        run: packaging/appimage/prepare-wheelhouse.sh
+      - name: Build AppImage
+        env:
+          APT_ARCH: ${{ matrix.apt_arch }}
+          APPIMAGE_ARCH: ${{ matrix.arch }}
+        run: |
+          APP_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
+          export APP_VERSION
+          packaging/appimage/build-appimage.sh
+      - name: Verify CLI, runtime and GTK startup
+        run: packaging/appimage/test-appimage.sh "dist/ClamGuardian-$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')-${{ matrix.arch }}.AppImage"
+      - name: Upload tested AppImage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ClamGuardian-ci-appimage-${{ matrix.arch }}
+          path: dist/ClamGuardian-*-linux-${{ matrix.arch }}.AppImage
+          if-no-files-found: error
+          retention-days: 14

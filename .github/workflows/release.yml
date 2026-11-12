@@ -3,7 +3,6 @@ name: Release candidate
 on:
   push:
     tags: ['v*']
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -82,7 +81,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-flatpak-${{ matrix.arch }}
-          path: ClamGuardian-${{ github.ref_name }}-linux-${{ matrix.arch }}.flatpak
+          path: ClamGuardian-*-linux-${{ matrix.arch }}.flatpak
           if-no-files-found: error
           retention-days: 30
 
@@ -157,5 +156,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && { echo "::error::Release already exists; refusing overwrite"; exit 1; } || true
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "::error::Release already exists; refusing overwrite"
+            exit 1
+          fi
           gh release create "$GITHUB_REF_NAME" release/* --draft --title "ClamGuardian ${GITHUB_REF_NAME}" --generate-notes

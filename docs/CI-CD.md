@@ -20,9 +20,6 @@ A tag matching vX.Y.Z starts .github/workflows/release.yml. The pipeline:
 4. Stops if any one of the four artifact checks fails.
 5. Creates a GitHub Release in Draft state with the four artifacts and SHA256SUMS.
 
-A manual workflow_dispatch of the release workflow on a branch can validate
-packaging; it builds and tests artifacts but does not create a GitHub Release.
-
 ## Single publication approval
 
 Publication is separate from candidate creation. Run Publish release

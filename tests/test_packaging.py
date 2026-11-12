@@ -413,3 +413,21 @@ def test_flatpak_manifests_install_the_native_locked_wheelhouse() -> None:
         source.get("type") == "dir" and source.get("path") == "../.."
         for source in local["sources"]
     )
+
+
+def test_appimage_packaging_recipe_and_helpers_exist() -> None:
+    """The AppImage recipe and architecture-specific build/test helpers are tracked."""
+    appimage = ROOT / "packaging" / "appimage"
+    recipe = (appimage / "AppImageBuilder.yml").read_text(encoding="utf-8")
+    launcher = appimage / "clamguardian-launcher"
+    for script in ("build-appimage.sh", "prepare-wheelhouse.sh", "test-appimage.sh"):
+        path = appimage / script
+        assert path.is_file()
+        assert path.stat().st_mode & 0o111, f"{script} must be executable"
+    assert launcher.is_file() and launcher.stat().st_mode & 0o111
+    assert "python3-gi" in recipe
+    assert "gir1.2-gtk-4.0" in recipe
+    assert "gir1.2-adw-1" in recipe
+    assert "{{APPIMAGE_ARCH}}" in recipe
+    assert "{{APT_ARCH}}" in recipe
+    assert "$SOURCE_DIR/wheelhouse/" in recipe
