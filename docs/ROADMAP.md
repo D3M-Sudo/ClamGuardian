@@ -24,7 +24,7 @@ Phase 7: M6 CI & Quality Gates [COMPLETED]
 Phase 8: M7 Packaging [COMPLETED]
 Phase 9: 1.0 Release Gate [COMPLETED 2026-10-16 — tag v1.0.0 @ 8ee8a56, installable Flatpak bundle]
     ↓
-1.0.x: Stabilization [CURRENT - documentation, desktop validation, Flatpak restore]
+1.0.x: Stabilization [v1.0.1 PUBLISHED 2026-10-24; manual D4 evidence not retained in repository]
     ↓
 Desktop Application (GTK4/Libadwaita) [D1..D4 IMPLEMENTED 2026-10-19 on `feature` — manual desktop validation pending]
     ↓
@@ -47,7 +47,7 @@ Future versions are planning targets, not implemented releases or promised dates
 | **Completed** | `v1.0.0` | Green release gate, bundle produced, promotions documented |
 | **Published** | `v1.0.1` | GitHub Release published 2026-10-24 from tag `v1.0.1` (`32c9ca6`); Flatpak asset attached. The checked-in D4 session record remains PENDING, so the repository does not retain the manual-validation evidence cited by the release description (`reports/RELEASE-1.0.1.md`, `validation/DESKTOP-TEST-D4-2026-10-19.md`). |
 | **Implemented** | Desktop App — Phases D1 + D2 + D3 + D4 | Foundations + diagnostics, Scan page, History, Quarantine, Databases, Diagnostics and Settings; window chrome, About, opt-in notifications, accent stylesheet, default-profile settings, quarantine ingest from scan results — committed on `feature`, CI smoke covers every page |
-| **Next** | Manual desktop validation | Recorded on-desktop click-through of the D4 pages (`docs/validation/DESKTOP-TEST-1.0.md`) and Flatpak restore verification |
+| **Evidence follow-up** | D4 desktop / Flatpak restore record | The published release description says D4 validation preceded the tag, but the checked-in D4 record remains PENDING and the Flatpak restore checklist has no recorded result. Recover and archive original host evidence if available; otherwise retain these as undocumented/unverified host checks. |
 | **Implemented / validation pending** | `v1.1.0` | USB mount identity checks, lifecycle cancellation and CLI/GTK integration are present on `feature`; record real-host validation before promotion. |
 | **Implemented / policy-gated** | `v1.2.0` | Public/Premium profiles, Secret Service, hash lookup, consent-gated file upload and persisted scan-linked evidence are implemented. Public API calls remain blocked pending written eligibility authorization; Premium requires entitlement. |
 | **Implemented / validation pending** | `v2.0.0` | Realtime inotify monitoring, bounded orchestration, descriptor-based scanning and lifecycle integration are on `feature`; final hardening and real-host validation remain separate gates. |
