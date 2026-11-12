@@ -354,9 +354,9 @@ def generate_appdir_sboms(appdir: Path, syft_binary: str, output_dir: Path) -> t
             "scan",
             f"dir:{appdir}",
             "--output",
-            f"spdx-json={spdx_path}",
+            f"spdx-json@2.3={spdx_path}",
             "--output",
-            f"cyclonedx-json={cdx_path}",
+            f"cyclonedx-json@1.6={cdx_path}",
         ],
         check=True,
     )
