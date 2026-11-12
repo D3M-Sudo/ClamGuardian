@@ -25,13 +25,13 @@ mkdir -p "$APPIMAGETOOL_DIR"
 curl --fail --location --retry 3 \
   "https://github.com/AppImage/appimagetool/releases/download/1.9.1/$asset" \
   --output "$APPIMAGETOOL_DIR/$asset"
-printf '%s  %s\\n' "$expected_sha256" "$APPIMAGETOOL_DIR/$asset" | sha256sum --check -
+printf '%s  %s\n' "$expected_sha256" "$APPIMAGETOOL_DIR/$asset" | sha256sum --check -
 
 chmod +x "$APPIMAGETOOL_DIR/$asset"
 
 # Extract the AppImage rather than relying on host FUSE availability.
 # This is the upstream-documented workaround for running appimagetool in CI.
-sed -i 's|AI\\x02|\\x00\\x00\\x00|' "$APPIMAGETOOL_DIR/$asset"
+sed -i 's|AI\x02|\x00\x00\x00|' "$APPIMAGETOOL_DIR/$asset"
 (
   cd "$APPIMAGETOOL_DIR"
   "./$asset" --appimage-extract
