@@ -12,7 +12,9 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - **VirusTotal API profiles and file submission:** independent Public/Premium credentials in OS Secret Service, explicit profile selection, hash-first lookup and consent-gated upload with snapshot revalidation and analysis polling.
 - **Shared scan enrichment:** centralize optional VirusTotal enrichment across pathname and descriptor-based scan workflows while preserving the local ClamAV verdict and request-time profile/provenance.
 - **Persistent intelligence evidence:** store normalized VirusTotal assessments in a scan-linked SQLite table with schema migration and retention lifecycle; expose retrieval through the HistoryStore interface.
-- **Realtime descriptor coverage:** exercise the inotify-to-descriptor scan path through enrichment and persisted evidence, without pathname fallback.
+
+### Tests
+- **Realtime descriptor round-trip:** cover inotify-to-descriptor scanning through enrichment and scan-linked evidence persistence, without pathname fallback.
 
 ### Security
 - **VirusTotal request isolation:** enforce profile-specific authorization, shared rate/quota controls, bounded retries and cooldowns; reject mismatched report digests and avoid exposing provider response bodies or credentials in logs.
@@ -26,6 +28,8 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - **VirusTotal safety and concurrency:** enforce opt-in in the CLI, preserve request-time API profile/provenance across scan workflows, cache the provider for a service lifetime, coordinate shared lookups and cache I/O across event loops/processes, bound retries and resolver shutdown, apply the shared 15.1-second minimum request interval, and keep Public network lookups blocked until written terms/product eligibility authorization is recorded.
 - **Flatpak credentials:** grant the Secret Service D-Bus name in both manifests; Secret Service availability checks now exercise the D-Bus operation and remain fail-closed.
 - **Autostart:** reject unsupported host XDG autostart writes from inside Flatpak rather than silently claiming that host autostart was installed.
+
+### Added
 
 - **USB Auto-Scan (1.1)**: Removable media mount monitoring (`clamguardian/core/usb.py`), target safety validation, symlink traversal prevention, duplicate event suppression, and device disappearance handling. Integrated into GTK Settings and CLI (`clamguardian usb status/enable/disable/scan`).
 - **Threat Intelligence (1.2)**: Opt-in VirusTotal v3 SHA-256 hash lookup integration with rate limiting, strict separation between local ClamAV verdicts and remote verdicts, OS Secret Service integration (`libsecret`), fail-closed security policy without plaintext fallback, and CLI commands (`clamguardian intel set-key/status/enable/disable/lookup`).
