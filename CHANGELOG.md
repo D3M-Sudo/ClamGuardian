@@ -13,6 +13,14 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - **Shared scan enrichment:** centralize optional VirusTotal enrichment across pathname and descriptor-based scan workflows while preserving the local ClamAV verdict and request-time profile/provenance.
 - **Persistent intelligence evidence:** store normalized VirusTotal assessments in a scan-linked SQLite table with schema migration and retention lifecycle; expose retrieval through the HistoryStore interface.
 
+- **USB Auto-Scan (1.1)**: Removable media mount monitoring (`clamguardian/core/usb.py`), target safety validation, symlink traversal prevention, duplicate event suppression, and device disappearance handling. Integrated into GTK Settings and CLI (`clamguardian usb status/enable/disable/scan`).
+- **Threat Intelligence (1.2)**: Opt-in VirusTotal v3 SHA-256 hash lookup integration with rate limiting, strict separation between local ClamAV verdicts and remote verdicts, OS Secret Service integration (`libsecret`), fail-closed security policy without plaintext fallback, and CLI commands (`clamguardian intel set-key/status/enable/disable/lookup`).
+- **Realtime Event-Driven Monitoring (2.x-A)**: Native Linux `InotifyMonitor` using libc syscalls, `RealtimeScanOrchestrator` enforcing queue bound `pending + dispatched + active <= max_queue_depth`, trailing-edge push debouncing, same-path coalescing, dirty/retrigger active scan tracking, recursive watch tracking and cleanup, explicit `IN_Q_OVERFLOW` detection, and CLI subcommands (`clamguardian monitor status/enable/disable/add/remove`).
+- **Scheduled Scans**: Unprivileged daily scheduled scan manager (`clamguardian/core/scheduler.py`) with missed-scan recovery, integrated with `ScanTaskRunner` and `HistoryStore`, exposed via GTK Settings and CLI (`clamguardian schedule status/enable/disable`).
+- **User-Session Autostart**: Optional autostart manager (`clamguardian/core/autostart.py`) installing user-session desktop entries in `~/.config/autostart`, disabled by default, exposed via GTK Settings and CLI (`clamguardian autostart status/enable/disable`).
+- **ClamUI Benchmark Evaluation**: Comprehensive evaluation matrix (`docs/reports/CLAMUI-BENCHMARK-EVALUATION.md`) detailing adopted, improved, rejected, and deferred capabilities.
+- **Engineering Handoff**: Comprehensive technical documentation in `docs/engineering/CLAMGUARDIAN-AUTONOMOUS-COMPLETION-HANDOFF.md`.
+
 ### Tests
 - **Realtime descriptor round-trip:** cover inotify-to-descriptor scanning through enrichment and scan-linked evidence persistence, without pathname fallback.
 
@@ -29,15 +37,6 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - **Flatpak credentials:** grant the Secret Service D-Bus name in both manifests; Secret Service availability checks now exercise the D-Bus operation and remain fail-closed.
 - **Autostart:** reject unsupported host XDG autostart writes from inside Flatpak rather than silently claiming that host autostart was installed.
 
-### Added
-
-- **USB Auto-Scan (1.1)**: Removable media mount monitoring (`clamguardian/core/usb.py`), target safety validation, symlink traversal prevention, duplicate event suppression, and device disappearance handling. Integrated into GTK Settings and CLI (`clamguardian usb status/enable/disable/scan`).
-- **Threat Intelligence (1.2)**: Opt-in VirusTotal v3 SHA-256 hash lookup integration with rate limiting, strict separation between local ClamAV verdicts and remote verdicts, OS Secret Service integration (`libsecret`), fail-closed security policy without plaintext fallback, and CLI commands (`clamguardian intel set-key/status/enable/disable/lookup`).
-- **Realtime Event-Driven Monitoring (2.x-A)**: Native Linux `InotifyMonitor` using libc syscalls, `RealtimeScanOrchestrator` enforcing queue bound `pending + dispatched + active <= max_queue_depth`, trailing-edge push debouncing, same-path coalescing, dirty/retrigger active scan tracking, recursive watch tracking and cleanup, explicit `IN_Q_OVERFLOW` detection, and CLI subcommands (`clamguardian monitor status/enable/disable/add/remove`).
-- **Scheduled Scans**: Unprivileged daily scheduled scan manager (`clamguardian/core/scheduler.py`) with missed-scan recovery, integrated with `ScanTaskRunner` and `HistoryStore`, exposed via GTK Settings and CLI (`clamguardian schedule status/enable/disable`).
-- **User-Session Autostart**: Optional autostart manager (`clamguardian/core/autostart.py`) installing user-session desktop entries in `~/.config/autostart`, disabled by default, exposed via GTK Settings and CLI (`clamguardian autostart status/enable/disable`).
-- **ClamUI Benchmark Evaluation**: Comprehensive evaluation matrix (`docs/reports/CLAMUI-BENCHMARK-EVALUATION.md`) detailing adopted, improved, rejected, and deferred capabilities.
-- **Engineering Handoff**: Comprehensive technical documentation in `docs/engineering/CLAMGUARDIAN-AUTONOMOUS-COMPLETION-HANDOFF.md`.
 
 ## [1.0.1] — release candidate (tag cut after the manual desktop validation)
 
