@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import sys
 from pathlib import Path
@@ -959,11 +960,11 @@ def test_native_license_collector_attributes_generated_ca_bundle_to_package_post
     info.mkdir()
     postinst = info / "ca-certificates.postinst"
     postinst.write_text(
-        "#!/bin/sh\\nupdate-ca-certificates --fresh\\n", encoding="utf-8"
+        "#!/bin/sh\nupdate-ca-certificates --fresh\n", encoding="utf-8"
     )
     (docs / "ca-certificates").mkdir(parents=True)
     (docs / "ca-certificates/copyright").write_text(
-        "CA certificate package copyright\\n", encoding="utf-8"
+        "CA certificate package copyright\n", encoding="utf-8"
     )
 
     result = module.collect_package_provenance(
@@ -985,7 +986,7 @@ def test_native_license_collector_attributes_generated_ca_bundle_to_package_post
     provenance = package["generated_output_provenance"][0]
     assert provenance["artifact_path"] == "etc/ssl/certs/ca-certificates.crt"
     assert provenance["maintainer_script"] == "/var/lib/dpkg/info/ca-certificates.postinst"
-    assert provenance["maintainer_script_sha256"] == __import__("hashlib").sha256(
+    assert provenance["maintainer_script_sha256"] == hashlib.sha256(
         postinst.read_bytes()
     ).hexdigest()
     assert provenance["required_command"] == "update-ca-certificates"
@@ -1143,7 +1144,7 @@ def test_native_license_collector_rejects_generated_ca_bundle_without_postinst(
     info.mkdir()
     (docs / "ca-certificates").mkdir(parents=True)
     (docs / "ca-certificates/copyright").write_text(
-        "CA certificate package copyright\\n", encoding="utf-8"
+        "CA certificate package copyright\n", encoding="utf-8"
     )
 
     with pytest.raises(ValueError, match="no postinst evidence"):
