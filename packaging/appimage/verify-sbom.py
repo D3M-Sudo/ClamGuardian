@@ -14,6 +14,11 @@ from typing import Any
 
 SUPPORTED_ARCHITECTURES = {"x86_64", "aarch64"}
 
+_CDX_LICENSE_NAME_ALIASES = {
+    "LicenseRef-Apache-2.0": {"Apache 2.0"},
+    "LicenseRef-Apache-License-2.0": {"Apache License 2.0"},
+}
+
 
 def _load(path: Path) -> dict[str, Any]:
     try:
@@ -78,7 +83,9 @@ def _verify_component_records(
                 elif isinstance(entry.get("license"), dict):
                     license_data = entry["license"]
                     cdx_expressions.add(license_data.get("id") or license_data.get("name"))
-            if license_expression not in cdx_expressions:
+            accepted_cdx_values = {license_expression}
+            accepted_cdx_values.update(_CDX_LICENSE_NAME_ALIASES.get(license_expression, set()))
+            if not accepted_cdx_values.intersection(cdx_expressions):
                 raise ValueError(
                     f"CycloneDX license mismatch for {name}: expected {license_expression}, "
                     f"got {sorted(str(item) for item in cdx_expressions)}"
