@@ -436,3 +436,37 @@ def test_parse_metadata_rejects_non_object_json() -> None:
     for payload in (b"[]", b"null", b'"text"'):
         with pytest.raises(ValueError, match="Invalid quarantine metadata"):
             _parse_metadata(payload, "0123456789abcdef0123456789abcdef")
+
+
+def test_list_entries_skips_corrupt_record_and_keeps_valid_items(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    source = tmp_path / "valid.bin"
+    source.write_bytes(b"valid payload")
+    vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
+    valid_entry = vault.quarantine(source)
+    (vault.directory / f"{'a' * 32}.qtn").write_bytes(b"not a quarantine record")
+
+    entries = vault.list_entries()
+
+    assert [entry.item_id for entry in entries] == [valid_entry.item_id]
+    assert "Skipping invalid quarantine record" in caplog.text
+
+
+def test_restore_rejects_oversized_chunk_geometry_before_reading(tmp_path: Path) -> None:
+    source = tmp_path / "payload.bin"
+    source.write_bytes(b"small payload")
+    vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
+    entry = vault.quarantine(source)
+    record = vault._path(entry.item_id)
+    raw = bytearray(record.read_bytes())
+    aad_length = int.from_bytes(raw[16:20], "big")
+    geometry_offset = 16 + 4 + aad_length
+    raw[geometry_offset : geometry_offset + 4] = (0xFFFFFFFF).to_bytes(4, "big")
+    record.write_bytes(raw)
+
+    with pytest.raises(ValueError, match="record geometry"):
+        vault.restore(entry.item_id, tmp_path / "restored.bin")
+
+    assert not (tmp_path / "restored.bin").exists()
+    assert record.exists()
