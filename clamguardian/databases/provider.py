@@ -12,7 +12,7 @@ from .verifier import verify_sha256
 
 class DatabaseProvider(ABC):
     @abstractmethod
-    async def download(self, source: DatabaseSource, destination: Path) -> AsyncIterator[Path]:
+    def download(self, source: DatabaseSource, destination: Path) -> AsyncIterator[Path]:
         raise NotImplementedError
 
 
