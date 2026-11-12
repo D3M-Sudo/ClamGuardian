@@ -164,6 +164,7 @@ def test_cancel_all_does_not_wait_on_a_stopped_event_loop() -> None:
 
     asyncio.run(runner.cancel_all())
 
+    assert runner.active_count == 0
     assert not task.done()
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
