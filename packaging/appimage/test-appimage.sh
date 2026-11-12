@@ -4,6 +4,12 @@ APPIMAGE="$(realpath "${1:?usage: test-appimage.sh /path/to/ClamGuardian.AppImag
 test -x "$APPIMAGE"
 expected_arch="${APPIMAGE_ARCH:-$(uname -m)}"
 actual_arch="$(uname -m)"
+file_description="$(file "$APPIMAGE")"
+case "$expected_arch" in
+  x86_64) grep -Eq 'x86-64|x86_64' <<<"$file_description" ;;
+  aarch64) grep -Eq 'ARM aarch64|AArch64' <<<"$file_description" ;;
+  *) echo "Unsupported expected architecture: $expected_arch" >&2; exit 1 ;;
+esac
 if [ "$actual_arch" != "$expected_arch" ]; then
   echo "Native runner architecture mismatch: expected $expected_arch, got $actual_arch" >&2
   exit 1
@@ -15,7 +21,12 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 deployed="$tmpdir/ClamGuardian.AppImage"
 install -m755 "$APPIMAGE" "$deployed"
-APPIMAGE_EXTRACT_AND_RUN=1 "$deployed" version
+version_output="$(APPIMAGE_EXTRACT_AND_RUN=1 "$deployed" version)"
+printf '%s\n' "$version_output"
+if [ -n "${APP_VERSION:-}" ] && ! grep -Fq "$APP_VERSION" <<<"$version_output"; then
+  echo "AppImage reports the wrong application version" >&2
+  exit 1
+fi
 APPIMAGE_EXTRACT_AND_RUN=1 "$deployed" profiles
 
 # The GTK event loop must remain alive until the bounded timeout. A clean

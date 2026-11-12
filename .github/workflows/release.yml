@@ -71,9 +71,10 @@ jobs:
       - run: flatpak-builder --force-clean --repo=flatpak-repo build-dir packaging/flatpak/io.github.clamguardian.ClamGuardian.yml
       - name: Bundle
         run: flatpak build-bundle flatpak-repo "ClamGuardian-${GITHUB_REF_NAME#v}-linux-${{ matrix.arch }}.flatpak" io.github.clamguardian.ClamGuardian
-      - name: Install and verify CLI
+      - name: Install and verify metadata and CLI
         run: |
           flatpak install --user --bundle "ClamGuardian-${GITHUB_REF_NAME#v}-linux-${{ matrix.arch }}.flatpak" -y
+          test "$(flatpak info --show-arch io.github.clamguardian.ClamGuardian)" = "${{ matrix.arch }}"
           flatpak run io.github.clamguardian.ClamGuardian version
           flatpak run io.github.clamguardian.ClamGuardian profiles
       - name: Verify GTK launch
@@ -111,11 +112,15 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
+      - name: Validate packaging shell syntax
+        run: |
+          bash -n packaging/flatpak/prepare-wheelhouse.sh packaging/appimage/*.sh
+          sh -n packaging/appimage/clamguardian-launcher
       - name: Install AppImage build dependencies
         run: |
           python -m pip install --disable-pip-version-check uv==0.9.5
           sudo apt-get update
-          sudo apt-get install -y xvfb xauth dbus-x11
+          sudo apt-get install -y xvfb xauth dbus-x11 file
       - run: packaging/appimage/prepare-wheelhouse.sh
       - name: Build AppImage
         env:
@@ -127,7 +132,9 @@ jobs:
       - name: Verify AppImage deployment and launch
         env:
           APPIMAGE_ARCH: ${{ matrix.arch }}
-        run: packaging/appimage/test-appimage.sh "dist/ClamGuardian-${GITHUB_REF_NAME#v}-${{ matrix.arch }}.AppImage"
+        run: |
+          export APP_VERSION="${GITHUB_REF_NAME#v}"
+          packaging/appimage/test-appimage.sh "dist/ClamGuardian-${GITHUB_REF_NAME#v}-${{ matrix.arch }}.AppImage"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-appimage-${{ matrix.arch }}
