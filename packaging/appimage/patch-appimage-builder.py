@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+"""Patch appimage-builder 1.0.0 to compare Debian package versions correctly.
+
+The upstream apt deploy module parses Debian versions with PEP 440. Ubuntu
+versions such as 1.22.6ubuntu6 are valid dpkg versions but invalid PEP 440.
+Use dpkg's native comparator instead; do not normalize or discard version data.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ORIGINAL_IMPORT = "from packaging import version"
+ORIGINAL_COMPARISON = "return version.parse(self.version) > version.parse(other.version)"
+PATCH_MARKER = '["dpkg", "--compare-versions", self.version, "gt", other.version]'
+
+REPLACEMENT = '''result = subprocess.run(
+                ["dpkg", "--compare-versions", self.version, "gt", other.version],
+                check=False,
+            )
+            if result.returncode not in (0, 1):
+                raise RuntimeError(
+                    f"dpkg could not compare package versions {self.version!r} "
+                    f"and {other.version!r} (exit {result.returncode})"
+                )
+            return result.returncode == 0'''
+
+
+def patch_package_module(path: Path) -> None:
+    source = path.read_text(encoding="utf-8")
+    if PATCH_MARKER in source:
+        return
+    if ORIGINAL_IMPORT not in source or ORIGINAL_COMPARISON not in source:
+        raise RuntimeError(
+            "Unexpected appimage-builder apt/package.py source; refusing an "
+            "unreviewed patch. Check the pinned appimage-builder version."
+        )
+    source = source.replace(ORIGINAL_IMPORT, "import subprocess", 1)
+    source = source.replace(ORIGINAL_COMPARISON, REPLACEMENT, 1)
+    path.write_text(source, encoding="utf-8")
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        raise SystemExit("usage: patch-appimage-builder.py BUILDER_VENV")
+    root = Path(sys.argv[1])
+    matches = list(
+        root.glob("lib/python*/site-packages/appimagebuilder/modules/deploy/apt/package.py")
+    )
+    if len(matches) != 1:
+        raise SystemExit(
+            f"expected exactly one appimage-builder apt/package.py under {root}, "
+            f"found {len(matches)}"
+        )
+    patch_package_module(matches[0])
+    print(f"Patched Debian version comparison in {matches[0]}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

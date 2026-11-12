@@ -28,3 +28,16 @@ baseline. CI proves execution on the matching Ubuntu 24.04 architecture, not
 compatibility with older glibc distributions. Older distributions require
 separate runtime validation before being listed as supported. Host graphics
 drivers, kernel, display server, D-Bus and ClamAV remain host-provided.
+
+## Debian package-version comparison
+
+The pinned `appimage-builder==1.0.0` release compares APT package versions
+using Python's PEP 440 parser. Ubuntu package versions such as
+`1.22.6ubuntu6` follow Debian version syntax and are rejected by that parser
+(upstream issue [#311](https://github.com/AppImageCrafters/appimage-builder/issues/311)).
+
+Before invoking the builder, `build-appimage.sh` applies a narrow, guarded
+patch to its APT package comparator. It delegates ordering to
+`dpkg --compare-versions`, preserving Debian epochs, revisions and Ubuntu
+suffixes rather than rewriting version strings. The patch fails closed if the
+pinned upstream source no longer matches the reviewed code.

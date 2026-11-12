@@ -74,7 +74,7 @@ jobs:
       - name: Install and verify metadata and CLI
         run: |
           flatpak install --user --bundle "ClamGuardian-${GITHUB_REF_NAME#v}-linux-${{ matrix.arch }}.flatpak" -y
-          test "$(flatpak info --show-arch io.github.clamguardian.ClamGuardian)" = "${{ matrix.arch }}"
+          test "$(flatpak info --show-ref io.github.clamguardian.ClamGuardian)" = "app/io.github.clamguardian.ClamGuardian/${{ matrix.arch }}/master"
           flatpak run io.github.clamguardian.ClamGuardian version
           flatpak run io.github.clamguardian.ClamGuardian profiles
       - name: Verify GTK launch
