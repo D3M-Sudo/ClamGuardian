@@ -2,9 +2,9 @@
 
 **Status: IMPLEMENTED ON PR / CI GREEN / NOT RELEASE-READY**  
 **Target:** PR #38, branch `ci/node24-actions` → `feature`  
-**CI-verified implementation commit:** `7b858222dd60c5fc2bb2a952f0c6fd53cd247cbb` (the later PR commits update documentation only).  
-**CI:** [run 43287780117](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43287780117) — **success**  
-**Release Gate:** [run 43287780155](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43287780155) — **success**
+**CI-verified PR head:** `e2f0214b63c55fe1dd44a4190efca42ecf348699`. This revision includes the pinned GFDL-1.2 fallback and common-license reference normalization.  
+**CI:** [run 43290602327](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43290602327) — **success**  
+**Release Gate:** [run 43290602380](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43290602380) — **success**
 
 ## Implementation delivered
 
@@ -12,7 +12,7 @@ The remediation is committed to the remote PR branch. The implementation include
 
 - Complete project GPL-3.0-or-later license text and separate project copyright notice.
 - Curated AppDir and Type 2 runtime component inventories.
-- Deterministic license staging and runtime license retrieval with pinned upstream Git blob verification.
+- Deterministic license staging and runtime license retrieval with pinned upstream Git blob verification. Ubuntu's missing GFDL-1.2 common-license file is covered by an exact bundled copy with SHA-256 verification; trailing punctuation is normalized when resolving Debian common-license references.
 - Native Debian package provenance collection based on files actually present in the AppDir, installed package/source versions and copied copyright documents.
 - Generated CA-bundle provenance: when `ca-certificates.crt` is not dpkg-listed, the collector requires the actual `ca-certificates.postinst` file, verifies that it invokes `update-ca-certificates`, and records the maintainer-script SHA-256 in `native-packages.json`.
 - Provenance matching for ELF libraries flattened by linuxdeploy into `AppDir/usr/lib/`; matching is restricted to unique system multiarch dpkg paths so unrelated copies shipped by browser packages are not misattributed.
@@ -28,9 +28,9 @@ The remediation is committed to the remote PR branch. The implementation include
 |---|---|
 | Ruff `ruff check .` | **Passed** |
 | Mypy `mypy clamguardian` | **Passed** |
-| Pytest, Python 3.11 | **559 passed, 9 skipped** |
-| Pytest, Python 3.12 | **559 passed, 9 skipped** |
-| Pytest, Python 3.13 | **559 passed, 9 skipped** |
+| Pytest, Python 3.11 | **562 passed, 9 skipped** |
+| Pytest, Python 3.12 | **562 passed, 9 skipped** |
+| Pytest, Python 3.13 | **562 passed, 9 skipped** |
 | Runtime Python 3.14 headless check | **Passed** |
 | Pinned dependency audit | **Passed** |
 | Native Flatpak x86_64 | **Passed** |
@@ -45,8 +45,8 @@ The nine pytest skips in each Python matrix are existing headless/optional-depen
 
 Both native architectures completed the extracted-artifact test successfully:
 
-- **x86_64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents validated against official schemas; GTK smoke passed; final artifact digest verified as `7c5f8357ff2f936bb80eb3ad471fd3884d422be519245653eda547ea627c769e`.
-- **aarch64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents validated against official schemas; GTK smoke passed; final artifact digest verified as `9d7af605d98266c1e64bfa7996d75e6e506381d49d56c49eb3d5e3f5f73ecd8d`.
+- **x86_64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents validated against official schemas; GTK smoke passed; final artifact digest verified as `249b938cf5fd800a912b051728ad5ac5126351b1fb9c526cc9335e29aaa221c1`.
+- **aarch64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents validated against official schemas; GTK smoke passed; final artifact digest verified as `6a672738e3fb5cae9eeb66c96b2d0be48d9d7f2ae8ebc8869fe8d4eeffce2c97`.
 
 The artifact test reports passed architecture, runtime, licenses, SBOM, CLI and GTK construction checks for both builds.
 
