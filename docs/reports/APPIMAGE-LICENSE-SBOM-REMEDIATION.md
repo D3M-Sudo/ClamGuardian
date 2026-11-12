@@ -98,3 +98,75 @@ The follow-up parser now applies these conservative rules:
 Regression tests cover header scope, partial file coverage, and exclusion of non-file paragraphs.
 The tests have been added to the branch; execution is pending CI verification. This change does
 not claim legal compliance and does not change any license declaration without supporting evidence.
+
+
+## Block B follow-up — runtime provenance and LGPL source evidence (2026-11-13)
+
+Implementation is being carried on PR #39, branch `fix/appimage-license-sbom-followup`.
+This section supersedes the earlier open findings only where the evidence below
+explicitly resolves them. CI verification for this follow-up is pending.
+
+### Embedded CPython / libmpdec
+
+- The bundled CPython package is `libpython3.12-stdlib` version
+  `3.12.3-1ubuntu0.17`; its `_decimal` extension is present in the AppDir.
+- CPython tag `v3.12.3` declares `MPD_VERSION 2.5.1` in
+  `Modules/_decimal/libmpdec/mpdecimal.h`.
+- The Debian copyright file contains a file-scoped Stefan Krah notice for
+  `Modules/_decimal/libmpdec/*`. The original copyright text is preserved.
+- The collector now recognizes BSD-2-Clause only when the notice includes
+  both source and binary redistribution conditions and the full disclaimer.
+  An incomplete or materially different notice remains `NOASSERTION`.
+- The CPython source header establishes the embedded upstream version; the
+  Debian copyright notice remains the packaged license evidence. The component
+  is represented in the SBOM with partial verification status.
+
+### Type 2 runtime inventory corrections
+
+The inventory schema now distinguishes requested/identified binary package,
+source package, upstream version and exact Alpine APK revision. Missing
+historical package database records remain null rather than being inferred.
+
+- **zstd:** version corrected to 1.5.6, based on the packaged runtime binary
+  evidence; Alpine 3.21 source metadata is consistent with that version. The
+  staged license text now comes from the v1.5.6 source tag.
+- **zlib:** upstream version 1.3.1 retained; source provenance corrected to
+  Alpine 3.21's zlib APKBUILD. The exact installed APK revision is unknown.
+- **musl:** upstream version 1.2.5 is supported by Alpine 3.21 source metadata;
+  exact installed APK revision remains unknown.
+- **mimalloc:** the upstream Dockerfile requests `mimalloc-dev`, and the
+  runtime Makefile statically links `-lmimalloc`. The exact selected provider
+  and installed APK revision were not retained; version is therefore null and
+  unknown. Alpine 3.21's `mimalloc2-dev` 2.1.7 source is included only as a
+  candidate in the source bundle, not asserted as the linked version.
+
+### libfuse LGPL source/relink package
+
+The AppImage build now creates an architecture-specific source/relink evidence
+archive containing:
+
+- the AppImage Type 2 runtime source at pinned commit
+  `dd6cebedcbddde9c82f89b011e8e1d40b6e43868`;
+- libfuse 3.15.0 source archive, SHA-256 verified, and the exact
+  `mount.c.diff` patch from that runtime commit;
+- squashfuse 0.5.2 source archive, SHA-256 verified;
+- source snapshots and upstream Alpine 3.21 APKBUILD inputs for zstd 1.5.6,
+  zlib 1.3.1, musl 1.2.5 and candidate mimalloc 2.1.7, verified against the
+  APKBUILD source checksums;
+- the runtime Makefile, Dockerfile, upstream dependency installation script,
+  source manifest, relink notes and SHA-256 manifest.
+
+The archive is included in CI AppImage artifacts and the release SBOM evidence
+archive. Its documentation explicitly says it is **not a legal-compliance
+conclusion**: the historical mimalloc provider/version and installed APK
+revision are not proven, and practical relinkability still requires review.
+The LGPL-2.1 §6 clearance therefore remains blocked pending independent
+engineering/legal assessment and confirmation that the supplied source set is
+sufficient to rebuild and relink the published runtime.
+
+### Regression coverage and verification
+
+New tests cover the exact libmpdec two-condition notice, rejection of an
+incomplete notice, unknown mimalloc version semantics, zstd version evidence,
+and source-bundle integration into build/release evidence. CI has not yet
+provided a fresh result for this follow-up; no pass is claimed here.
