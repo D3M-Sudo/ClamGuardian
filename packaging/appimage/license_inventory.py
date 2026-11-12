@@ -8,9 +8,9 @@ import json
 import re
 import sys
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
-from functools import lru_cache
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from license_expression import load_catalog, normalize_expression
