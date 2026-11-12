@@ -130,7 +130,7 @@ def test_secret_service_lookup_returns_existing_key(
 
 
 def test_key_file_is_owner_only_and_has_no_temp_leftovers(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     manager = QuarantineKeyManager(tmp_path / "quarantine")
     monkeypatch.setattr(manager, "_load_secret_service", lambda: None)
@@ -142,6 +142,20 @@ def test_key_file_is_owner_only_and_has_no_temp_leftovers(
     assert path.read_text(encoding="ascii") == key.hex()
     assert path.stat().st_mode & 0o777 == 0o600
     assert list(manager.directory.glob(".quarantine-key.*")) == []
+    assert "owner-only key file fallback" in caplog.text
+
+
+def test_corrupt_secret_service_key_refuses_to_rotate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install_fake_secret(monkeypatch)
+    _FakeSecret.stored_password = "deadbeef"
+    manager = QuarantineKeyManager(tmp_path / "quarantine")
+
+    with pytest.raises(ValueError, match="Secret Service is corrupt"):
+        manager.load_or_create()
+
+    assert not (manager.directory / "quarantine-key").exists()
 
 
 def test_corrupt_key_file_refuses_to_rotate(
