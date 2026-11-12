@@ -299,3 +299,78 @@ def normalize_spdx_document(
                 for value in values
             ]
     validate_spdx_document(document, licenses, exceptions)
+
+
+def normalize_cyclonedx_document(
+    document: dict[str, Any],
+    licenses: set[str],
+    exceptions: set[str],
+    licenses_data: dict[str, Any],
+) -> None:
+    """Validate CycloneDX license expressions and canonicalize known SPDX license names."""
+    names: dict[str, str] = {}
+    for item in licenses_data.get("licenses", []):
+        name = " ".join(str(item.get("name", "")).split()).casefold()
+        if name and name not in names:
+            names[name] = item["licenseId"]
+        elif name and names[name] != item["licenseId"]:
+            names.pop(name, None)
+    names.update(_APACHE_ALIASES)
+
+    components: list[dict[str, Any]] = []
+    metadata = document.get("metadata", {})
+    root = metadata.get("component") if isinstance(metadata, dict) else None
+    if isinstance(root, dict):
+        components.append(root)
+    components.extend(
+        item for item in document.get("components", []) if isinstance(item, dict)
+    )
+    components.extend(
+        item for item in document.get("services", []) if isinstance(item, dict)
+    )
+    visited: set[int] = set()
+    while components:
+        component = components.pop()
+        if id(component) in visited:
+            continue
+        visited.add(id(component))
+        components.extend(
+            item for item in component.get("components", []) if isinstance(item, dict)
+        )
+        for choice in component.get("licenses", []):
+            if not isinstance(choice, dict):
+                raise ValueError("CycloneDX license choice must be an object")
+            expression = choice.get("expression")
+            if isinstance(expression, str):
+                choice["expression"] = normalize_expression(
+                    expression, licenses, exceptions
+                )
+                continue
+            license_item = choice.get("license")
+            if not isinstance(license_item, dict):
+                raise ValueError("CycloneDX license choice requires expression or license")
+            identifier = license_item.get("id")
+            if isinstance(identifier, str):
+                license_item["id"] = _canonical_identifier(
+                    identifier, licenses, "license"
+                )
+                continue
+            name = license_item.get("name")
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("CycloneDX custom license requires a non-empty name")
+            canonical = names.get(" ".join(name.split()).casefold())
+            if canonical:
+                license_item["id"] = canonical
+                license_item.pop("name", None)
+                continue
+            attached = license_item.get("text")
+            text = attached.get("content") if isinstance(attached, dict) else attached
+            placeholder = (
+                not isinstance(text, str)
+                or not text.strip()
+                or text.strip().upper() in _SPECIAL
+            )
+            if placeholder:
+                raise ValueError(
+                    f"CycloneDX custom license {name} requires attached license text"
+                )

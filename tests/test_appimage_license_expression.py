@@ -115,3 +115,71 @@ def test_spdx_file_license_field_uses_spdx_23_plural_name() -> None:
     module.normalize_spdx_document(document, licenses, exceptions, {"licenses": []})
     assert document["files"][0]["licenseInfoInFiles"] == ["X11"]
     assert "licenseInfoInFile" not in document["files"][0]
+
+
+def test_cyclonedx_normalizes_spdx_names_and_expressions() -> None:
+    module = _module()
+    licenses, exceptions = _catalog(module)
+    licenses_data = json.loads(
+        (ROOT / "packaging/appimage/licenses/spdx-3.29.0-licenses.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    document = {
+        "components": [
+            {
+                "name": "aiosignal",
+                "licenses": [{"license": {"name": "Apache 2.0"}}],
+            },
+            {
+                "name": "aiohttp",
+                "licenses": [{"expression": "apache-2.0 AND mit"}],
+            },
+        ],
+    }
+    module.normalize_cyclonedx_document(
+        document, licenses, exceptions, licenses_data
+    )
+    assert document["components"][0]["licenses"][0]["license"] == {
+        "id": "Apache-2.0"
+    }
+    assert document["components"][1]["licenses"][0]["expression"] == (
+        "Apache-2.0 AND MIT"
+    )
+
+
+def test_cyclonedx_custom_license_requires_actual_text() -> None:
+    module = _module()
+    licenses, exceptions = _catalog(module)
+    licenses_data = json.loads(
+        (ROOT / "packaging/appimage/licenses/spdx-3.29.0-licenses.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    invalid = {
+        "components": [{
+            "name": "custom",
+            "licenses": [{"license": {"name": "Hylafax"}}],
+        }],
+    }
+    with pytest.raises(ValueError, match="custom license.*attached license text"):
+        module.normalize_cyclonedx_document(
+            invalid, licenses, exceptions, licenses_data
+        )
+    valid = {
+        "components": [{
+            "name": "custom",
+            "licenses": [{
+                "license": {
+                    "name": "Hylafax",
+                    "text": {"content": "Hylafax license full text"},
+                }
+            }],
+        }],
+    }
+    module.normalize_cyclonedx_document(
+        valid, licenses, exceptions, licenses_data
+    )
+    assert valid["components"][0]["licenses"][0]["license"]["text"]["content"] == (
+        "Hylafax license full text"
+    )
