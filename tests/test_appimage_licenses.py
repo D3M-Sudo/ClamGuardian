@@ -1204,13 +1204,21 @@ def test_sbom_reconciler_normalizes_syft_license_expressions_and_license_refs() 
         },
     ]
     cyclonedx = [
-        {"name": "aiosignal", "version": "1.4.0", "licenses": [{"license": {"name": "Apache 2.0"}}]},
+        {
+            "name": "aiosignal",
+            "version": "1.4.0",
+            "licenses": [{"license": {"name": "Apache 2.0"}}],
+        },
         {
             "name": "multidict",
             "version": "6.9.1",
             "licenses": [{"license": {"name": "Apache License 2.0"}}],
         },
-        {"name": "aiohttp", "version": "3.14.5", "licenses": [{"expression": "Apache-2.0 AND MIT"}]},
+        {
+            "name": "aiohttp",
+            "version": "3.14.5",
+            "licenses": [{"expression": "Apache-2.0 AND MIT"}],
+        },
         {
             "name": "cryptography",
             "version": "50.0.1",
