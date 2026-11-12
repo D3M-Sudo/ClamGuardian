@@ -319,7 +319,7 @@ async def test_rollback_restores_previous_artifact_when_install_fails(
         source_dir = self.parent.name
         if (
             Path(target).parent == database_dir
-            and source_dir.startswith(".thirdparty-")
+            and source_dir.startswith(".clamguardian-db-stage-")
             and "-backup-" not in source_dir
         ):
             raise OSError("simulated install failure")
