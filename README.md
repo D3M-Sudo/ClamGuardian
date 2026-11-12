@@ -44,7 +44,7 @@
 | ⌨️ | **Scriptable CLI** — human and `--json` output, stable exit codes, clean Ctrl+C cancellation |
 | 📦 | **Flatpak-first install** — sandboxed app that reaches your host ClamAV safely |
 | 🧪 | **Tested & gated** — full pytest suite, lint, type checks and an automated release gate |
-| 🔌 | **Optional automation (under remediation)** — removable-media scanning, realtime monitoring and scheduled scans |
+| 🔌 | **Optional automation** — removable-media scanning, realtime monitoring, scheduled scans and user-session autostart |
 | 🌐 | **Optional VirusTotal intelligence** — explicit Public/Premium profiles, hash-first lookup and separately consent-gated file submission; Public remains administratively blocked pending written eligibility authorization |
 
 ## Quick start
@@ -177,10 +177,11 @@ zombies, no orphans.
 
 ### Optional automation and threat intelligence
 
-The following commands configure optional user preferences; long-running
-USB/realtime/scheduled services run only while the GTK desktop application is
-active. They are part of the unreleased PR #18 remediation and are not included
-in the published `v1.0.0` bundle.
+The following commands configure optional user preferences. USB, realtime and
+scheduled services are managed by the GTK application lifecycle; autostart is a
+user-session desktop entry and is not a privileged system service. These
+features are present on the current `feature` branch. The published Flatpak
+artifact remains tied to the immutable release tag named in the release manifest.
 
 ```bash
 clamguardian usb status
@@ -343,11 +344,15 @@ Development flows `feature → testing → development → main`:
 
 ## Roadmap & scope
 
-This repository contains the core framework and the GTK desktop application.
-The USB, realtime, scheduling and threat-intelligence additions are under
-remediation in PR #18; their CI, Release Gate and real-host validation must pass
-before release promotion. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for current
-milestone status and [`docs/`](docs/) for reports, checklists and design notes.
+This repository contains the GTK desktop application, ClamAV scanning core,
+third-party signature database management, removable-media automation,
+realtime monitoring, scheduled scans, user-session autostart and optional
+VirusTotal intelligence. The automation and intelligence subsystems have been
+merged to `feature`; their presence does not by itself mean they are enabled or
+release-promoted. VirusTotal Public API access remains administratively blocked
+pending written eligibility authorization. See [`docs/ROADMAP.md`](docs/ROADMAP.md)
+for milestone status and [`docs/`](docs/) for design, security, validation and
+historical reports.
 
 ## License
 
