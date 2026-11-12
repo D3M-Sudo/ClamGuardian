@@ -31,6 +31,7 @@
 - [Security model](#security-model)
 - [Developing](#developing)
 - [Roadmap & scope](#roadmap--scope)
+- [Documentation map](docs/README.md)
 - [License](#license)
 
 ## Highlights
@@ -49,10 +50,10 @@
 
 ## Quick start
 
-Install the `v1.0.0` bundle (built by the release gate, ~4.7 MB) and run your first scan:
+Install the Flatpak bundle attached to the intended GitHub release and run your first scan:
 
 ```bash
-flatpak install --user ClamGuardian-v1.0.0-linux-x86_64.flatpak
+flatpak install --user ./ClamGuardian-<release-version>-linux-x86_64.flatpak
 flatpak run io.github.clamguardian.ClamGuardian
 ```
 
@@ -60,9 +61,7 @@ You'll need ClamAV installed on the host (`clamscan`, `freshclam`, optionally th
 `clamd` daemon) — the app reaches it through the sandbox — and the GNOME
 Platform 51 runtime, pulled automatically from Flathub on first run.
 
-> The `v1.0.0` bundle is the currently published artifact and is affected by
-> AUD-01 (see the security note above). `v1.0.1` is the next release; until its
-> tag is cut, run from source on `feature` or wait for the updated bundle.
+> Release artifacts are immutable snapshots and may not contain the latest `feature` changes. Check the release notes and the source tag attached to the bundle before deployment. The v1.0.0 release is affected by AUD-01; the fix is present in later source history as described above.
 
 ## Install
 
@@ -351,8 +350,8 @@ VirusTotal intelligence. The automation and intelligence subsystems have been
 merged to `feature`; their presence does not by itself mean they are enabled or
 release-promoted. VirusTotal Public API access remains administratively blocked
 pending written eligibility authorization. See [`docs/ROADMAP.md`](docs/ROADMAP.md)
-for milestone status and [`docs/`](docs/) for design, security, validation and
-historical reports.
+for milestone status and [`docs/README.md`](docs/README.md) for the documentation
+map, including design, security, validation and historical reports.
 
 ## License
 
