@@ -75,7 +75,7 @@ install -Dm644 /etc/ssl/certs/ca-certificates.crt \
     "$APPDIR/etc/ssl/certs/ca-certificates.crt"
 ca_bundle_sha256="$(sha256sum "$APPDIR/etc/ssl/certs/ca-certificates.crt" | awk '{print $1}')"
 mkdir -p "$APPDIR/usr/share/licenses/ClamGuardian"
-printf '%s\\n' "$ca_bundle_sha256" \
+printf '%s\n' "$ca_bundle_sha256" \
     > "$APPDIR/usr/share/licenses/ClamGuardian/ca-certificates-generation.sha256"
 
 # CPython's python.o is a static-link input, not a runtime object. linuxdeploy
