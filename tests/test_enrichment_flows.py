@@ -202,8 +202,13 @@ async def test_realtime_descriptor_scan_end_to_end_with_enrichment_and_history(
                 "provider": "virustotal",
                 "profile": "premium",
                 "sha256": result.metadata["sha256"],
+                "observed_at": "2026-01-01T00:00:00+00:00",
+                "provenance": "sha256_hash_lookup",
                 "status": "found",
-                "metadata": {"found": True},
+                "metadata": {
+                    "sha256": result.metadata["sha256"],
+                    "found": True,
+                },
             }
         )
 
@@ -264,3 +269,16 @@ async def test_realtime_descriptor_scan_end_to_end_with_enrichment_and_history(
     persisted = next(record for record in records if record.target == str(target))
     assert persisted.profile_id == "home"
     assert persisted.metadata.get("threat_intelligence") is not None
+
+    # Verify the normalized evidence is retrievable by the persisted scan ID,
+    # not merely copied into the generic scan metadata snapshot.
+    stored_evidence = await history_store.get_scan_intelligence(persisted.id)
+    assert stored_evidence is not None
+    assert stored_evidence.scan_id == persisted.id
+    assert stored_evidence.provider == "virustotal"
+    assert stored_evidence.profile == "premium"
+    assert stored_evidence.sha256 == result.metadata["sha256"]
+    assert stored_evidence.provenance == "sha256_hash_lookup"
+    assert stored_evidence.status == "found"
+    assert stored_evidence.metadata["sha256"] == result.metadata["sha256"]
+    assert stored_evidence.metadata["found"] is True

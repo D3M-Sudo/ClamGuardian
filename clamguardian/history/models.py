@@ -170,6 +170,24 @@ class HistoryRecord:
         return self.metadata.get("sha256")
 
 
+@dataclass(frozen=True, slots=True)
+class ThreatIntelligenceRecord:
+    """Immutable remote hash-assessment evidence linked to one local scan."""
+
+    scan_id: str
+    provider: str
+    profile: str
+    sha256: str
+    observed_at: datetime
+    provenance: str
+    status: str
+    metadata: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "observed_at", _as_utc(self.observed_at))
+        object.__setattr__(self, "metadata", _freeze_deep(self.metadata))
+
+
 def history_record_from_scan(
     result: ScanResult,
     *,
