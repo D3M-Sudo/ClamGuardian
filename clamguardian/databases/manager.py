@@ -26,6 +26,7 @@ class DatabaseUpdateError(RuntimeError):
 
 StatusCallback = Callable[[InstalledDatabase], Awaitable[None] | None]
 
+
 @asynccontextmanager
 async def _async_thread_lock(lock: LockType) -> AsyncIterator[None]:
     """Acquire a process-wide lock without blocking or binding to one event loop."""
@@ -43,7 +44,6 @@ async def _async_thread_lock(lock: LockType) -> AsyncIterator[None]:
         yield
     finally:
         lock.release()
-
 
 
 class DatabaseManager:
