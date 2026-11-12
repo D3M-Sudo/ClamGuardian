@@ -28,6 +28,8 @@ mkdir -p "$extract_root"
 extracted_appdir="$extract_root/squashfs-root"
 
 test -x "$extracted_appdir/AppRun"
+test -f "$extracted_appdir/io.github.clamguardian.ClamGuardian.svg"
+test -f "$extracted_appdir/usr/share/applications/io.github.clamguardian.ClamGuardian.desktop"
 test -x "$extracted_appdir/usr/bin/python3"
 test -x "$extracted_appdir/usr/bin/gdk-pixbuf-query-loaders"
 test -f "$extracted_appdir/lib/python3.12/encodings/__init__.py"

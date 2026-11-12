@@ -111,6 +111,7 @@ jobs:
           for script in packaging/flatpak/prepare-wheelhouse.sh packaging/appimage/*.sh; do
             bash -n "$script"
           done
+          sh -n packaging/appimage/AppRun
           python -m py_compile packaging/smoke/gtk-smoke.py
       - name: Install AppImage build dependencies
         run: |

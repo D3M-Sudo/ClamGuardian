@@ -90,7 +90,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
 
         def _build_automation_group(self) -> None:
             group = Adw.PreferencesGroup(
-                title="Automation & Protection",
+                title="Automation &amp; Protection",
                 description="Background protection and scheduled scan settings.",
             )
             usb_row = Adw.SwitchRow(

@@ -453,6 +453,8 @@ def test_appimage_manual_appdir_pipeline_is_pinned_and_complete() -> None:
     assert "/usr/bin/python3.12" in build
     assert "python3-gi" in build and "python3-cairo" in build
     assert "bundle-runtime.sh" in build
+    assert 'APPDIR/usr/share/applications/io.github.clamguardian.ClamGuardian.desktop' in build
+    assert 'APPDIR/io.github.clamguardian.ClamGuardian.svg' in build
     assert "APT_ARCH" not in build and "APT_MIRROR" not in build
 
     bundler = (appimage / "bundle-runtime.sh").read_text(encoding="utf-8")

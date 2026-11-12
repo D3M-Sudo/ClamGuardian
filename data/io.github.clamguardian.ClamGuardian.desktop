@@ -6,6 +6,6 @@ Exec=clamguardian ui
 Icon=io.github.clamguardian.ClamGuardian
 Terminal=false
 Type=Application
-Categories=Utility;Security;System;
+Categories=Utility;Security;
 Keywords=antivirus;clamav;scan;quarantine;security;
 StartupNotify=true
