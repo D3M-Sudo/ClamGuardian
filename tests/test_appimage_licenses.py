@@ -937,3 +937,45 @@ def test_syft_output_formats_pin_spdx_and_cyclonedx_schema_versions(
 
     assert any(value.startswith("spdx-json@2.3=") for value in captured)
     assert any(value.startswith("cyclonedx-json@1.6=") for value in captured)
+
+
+
+def test_native_license_collector_attributes_generated_ca_bundle_to_package_postinst(
+    tmp_path: Path,
+) -> None:
+    module_path = ROOT / "packaging" / "appimage" / "collect-licenses.py"
+    spec = importlib.util.spec_from_file_location("appimage_generated_ca_provenance", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    appdir = tmp_path / "AppDir"
+    info = tmp_path / "dpkg-info"
+    docs = tmp_path / "doc"
+    ca_bundle = appdir / "etc/ssl/certs/ca-certificates.crt"
+    ca_bundle.parent.mkdir(parents=True)
+    ca_bundle.write_text("generated CA bundle", encoding="utf-8")
+    info.mkdir()
+    (docs / "ca-certificates").mkdir(parents=True)
+    (docs / "ca-certificates/copyright").write_text(
+        "CA certificate package copyright\\n", encoding="utf-8"
+    )
+
+    result = module.collect_package_provenance(
+        appdir,
+        info,
+        docs,
+        appdir / "usr/share/licenses/ClamGuardian",
+        package_metadata_resolver=lambda package: {
+            "version": "20260816ubuntu0.24.04.2",
+            "source_package": "ca-certificates",
+            "source_version": "20260816ubuntu0.24.04.2",
+        },
+    )
+
+    package = next(item for item in result["packages"] if item["package"] == "ca-certificates")
+    assert package["version"] == "20260816ubuntu0.24.04.2"
+    assert package["detection_method"] == "known-generated-postinst-output"
+    assert "/var/lib/dpkg/info/ca-certificates.postinst" in package["source_paths"]
+    assert "etc/ssl/certs/ca-certificates.crt" in package["artifact_paths"]
