@@ -150,8 +150,9 @@ def _debian_license_expression(content: bytes) -> tuple[str, str]:
     current: dict[str, str] = {}
     for line in text.splitlines() + [""]:
         if not line.strip():
-            if "Files" in current and "License" in current:
-                expressions.append(current["License"].splitlines()[0].strip())
+            license_value = current.get("License", "").strip()
+            if "Files" in current and license_value:
+                expressions.append(license_value.splitlines()[0].strip())
             current = {}
             continue
         if line[:1].isspace() and current:
@@ -237,9 +238,10 @@ def _debian_license_evidence(
     current: dict[str, str] = {}
 
     def flush() -> None:
-        if "License" not in current:
+        license_value = current.get("License", "").strip()
+        if not license_value:
             return
-        license_lines = current["License"].splitlines()
+        license_lines = license_value.splitlines()
         declaration = license_lines[0].strip()
         license_text = "\n".join(license_lines[1:]).strip()
         file_patterns = [

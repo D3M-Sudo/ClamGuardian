@@ -1502,3 +1502,26 @@ def test_release_workflow_requires_architecture_sbom_evidence_archives() -> None
     assert "sha256sum --check SHA256SUMS" in workflow
     assert 'tar -C "$APPDIR/usr/share/licenses"' in build
     assert '"$sbom_dir/native-packages.json"' in build
+
+
+def test_native_license_evidence_ignores_empty_license_fields() -> None:
+    module_path = ROOT / "packaging" / "appimage" / "collect-licenses.py"
+    spec = importlib.util.spec_from_file_location(
+        "appimage_empty_license_evidence", module_path
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    content = (
+        "Files: src/empty.c\n"
+        "License:\n"
+        "\n"
+        "Files: src/mit.c\n"
+        "License: MIT\n"
+        " MIT license text.\n"
+    ).encode()
+    evidence = module._debian_license_evidence(content, "native/foo/copyright")
+    assert len(evidence) == 1
+    assert evidence[0]["license_declaration"] == "MIT"
+    assert module._debian_license_expression(content) == ("MIT", "verified")
