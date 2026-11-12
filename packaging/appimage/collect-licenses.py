@@ -143,28 +143,28 @@ def _stage_referenced_common_licenses(
     return evidence
 
 
-def _debian_license_expression(content: bytes) -> tuple[str, str]:
-    """Extract a conservative SPDX expression from Debian copyright stanzas."""
+def _dep5_paragraphs(content: bytes) -> list[dict[str, str]]:
+    """Parse DEP-5 paragraphs while keeping continuation lines with their field."""
     text = content.decode("utf-8", errors="replace")
-    expressions: list[str] = []
+    paragraphs: list[dict[str, str]] = []
     current: dict[str, str] = {}
     for line in text.splitlines() + [""]:
         if not line.strip():
-            license_value = current.get("License", "").strip()
-            if "Files" in current and license_value:
-                expressions.append(license_value.splitlines()[0].strip())
-            current = {}
+            if current:
+                paragraphs.append(current)
+                current = {}
             continue
         if line[:1].isspace() and current:
-            last_key = next(reversed(current))
-            current[last_key] += "\n" + line.strip()
+            key = next(reversed(current))
+            current[key] += "\n" + line.strip()
             continue
         if ":" in line:
             key, value = line.split(":", 1)
             current[key.strip()] = value.strip()
-    if not expressions:
-        return "NOASSERTION", "unknown"
+    return paragraphs
 
+
+def _normalize_debian_license_value(expression: str) -> str | None:
     aliases = {
         "gpl-2+": "GPL-2.0-or-later",
         "gpl-2": "GPL-2.0-only",
@@ -189,45 +189,82 @@ def _debian_license_expression(content: bytes) -> tuple[str, str]:
         "isc": "ISC",
         "cc0-1.0": "CC0-1.0",
     }
-    normalized: list[str] = []
-    for expression in expressions:
-        value = expression.casefold()
-        for debian_name, spdx_name in aliases.items():
-            pattern = rf"(?<![a-z0-9.+-]){re.escape(debian_name)}(?![a-z0-9.+-])"
-            value = re.sub(pattern, spdx_name, value)
-        value = re.sub(r"(?<![A-Za-z0-9.+-])or(?![A-Za-z0-9.+-])", "OR", value, flags=re.IGNORECASE)
-        value = re.sub(
-            r"(?<![A-Za-z0-9.+-])and(?![A-Za-z0-9.+-])",
-            "AND",
-            value,
-            flags=re.IGNORECASE,
+    value = expression.casefold()
+    for debian_name, spdx_name in aliases.items():
+        pattern = rf"(?<![a-z0-9.+-]){re.escape(debian_name)}(?![a-z0-9.+-])"
+        value = re.sub(pattern, spdx_name, value)
+    value = re.sub(r"(?<![A-Za-z0-9.+-])or(?![A-Za-z0-9.+-])", "OR", value, flags=re.IGNORECASE)
+    value = re.sub(
+        r"(?<![A-Za-z0-9.+-])and(?![A-Za-z0-9.+-])",
+        "AND",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(r"\s+", " ", value).strip()
+    if not value or re.search(r"[^A-Za-z0-9.+() -]", value):
+        return None
+    tokens = value.replace("(", " ( ").replace(")", " ) ").split()
+    if any(
+        token not in {"AND", "OR", "WITH", "(", ")"}
+        and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.+-]*", token)
+        for token in tokens
+    ):
+        return None
+    try:
+        licenses, exceptions = load_catalog(
+            Path(__file__).resolve().parent / "licenses" / "spdx-3.29.0-licenses.json",
+            Path(__file__).resolve().parent / "licenses" / "spdx-3.29.0-exceptions.json",
         )
-        value = re.sub(r"\s+", " ", value).strip()
-        # SPDX identifiers and operators are case-sensitive; aliases above
-        # normalize common Debian names. Unknown syntax remains unasserted.
-        if not value or re.search(r"[^A-Za-z0-9.+() -]", value):
-            return "NOASSERTION", "unknown"
-        tokens = value.replace("(", " ( ").replace(")", " ) ").split()
-        if any(
-            token not in {"AND", "OR", "WITH", "(", ")"}
-            and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.+-]*", token)
-            for token in tokens
-        ):
-            return "NOASSERTION", "unknown"
-        try:
-            licenses, exceptions = load_catalog(
-                Path(__file__).resolve().parent / "licenses" / "spdx-3.29.0-licenses.json",
-                Path(__file__).resolve().parent / "licenses" / "spdx-3.29.0-exceptions.json",
-            )
-            value = normalize_expression(value, licenses, exceptions)
-        except (OSError, ValueError):
+        return normalize_expression(value, licenses, exceptions)
+    except (OSError, ValueError):
+        return None
+
+
+def _debian_license_expression(content: bytes) -> tuple[str, str]:
+    """Resolve only an explicit DEP-5 package declaration or a safe catch-all."""
+    paragraphs = _dep5_paragraphs(content)
+    if not paragraphs:
+        return "NOASSERTION", "unknown"
+
+    header = paragraphs[0]
+    format_value = header.get("Format", "").rstrip("/")
+    if not format_value.endswith("/copyright-format/1.0"):
+        return "NOASSERTION", "unknown"
+
+    # DEP-5 header License describes the package as a whole. Stand-alone
+    # License paragraphs only supply referenced license text and are ignored.
+    header_license = header.get("License", "").splitlines()[0].strip()
+    if header_license:
+        normalized = _normalize_debian_license_value(header_license)
+        return (normalized, "verified") if normalized else ("NOASSERTION", "unknown")
+
+    file_paragraphs = [
+        paragraph for paragraph in paragraphs
+        if "Files" in paragraph and paragraph.get("License", "").strip()
+    ]
+    if not file_paragraphs:
+        return "NOASSERTION", "unknown"
+
+    # Without a package-level declaration, require an explicit Files: * default
+    # and identical normalized declarations across every Files stanza. This
+    # deliberately rejects partial coverage and mixed-license packages.
+    has_catch_all = any(
+        "*" in paragraph["Files"].split()
+        for paragraph in file_paragraphs
+    )
+    if not has_catch_all:
+        return "NOASSERTION", "unknown"
+
+    normalized = []
+    for paragraph in file_paragraphs:
+        declaration = paragraph["License"].splitlines()[0].strip()
+        value = _normalize_debian_license_value(declaration)
+        if value is None:
             return "NOASSERTION", "unknown"
         normalized.append(value)
     if len(set(normalized)) != 1:
         return "NOASSERTION", "unknown"
     return normalized[0], "verified"
-
-
 
 def _debian_license_evidence(
     content: bytes, copyright_artifact_path: str
@@ -238,6 +275,9 @@ def _debian_license_evidence(
     current: dict[str, str] = {}
 
     def flush() -> None:
+        # Header and stand-alone License paragraphs are not file-level evidence.
+        if "Files" not in current:
+            return
         license_value = current.get("License", "").strip()
         if not license_value:
             return

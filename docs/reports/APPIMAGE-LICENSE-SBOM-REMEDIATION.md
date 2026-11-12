@@ -76,3 +76,25 @@ No legal-compliance conclusion is made. The remaining items above are not CI fai
 PR #38 remains **open and Draft**, with base `feature`. All implementation commits are on `ci/node24-actions`. No merge, tag, release or publication was performed, and `feature` was not modified.
 
 This is an engineering execution report, not legal advice.
+
+
+## Follow-up audit — DEP-5 parser scope (2026-11-13)
+
+The post-merge follow-up identified that the original native-license collector aggregated the
+first line of every `Files` paragraph and could treat identical file-scoped declarations as
+a package-wide license conclusion. DEP-5 distinguishes the package header, `Files` paragraphs,
+and stand-alone `License` paragraphs; their declarations are not interchangeable.
+
+The follow-up parser now applies these conservative rules:
+
+- An explicit `License` field in a valid DEP-5 header is treated as the package-level declaration.
+- Without a header declaration, a package-level conclusion requires a `Files: *` catch-all
+  and identical normalized expressions across all `Files` paragraphs.
+- Partial file coverage, mixed expressions, unsupported syntax, and non-DEP-5 documents
+  remain `NOASSERTION`.
+- File-level evidence includes only `Files` paragraphs; header declarations and stand-alone
+  license-text paragraphs are excluded from the file evidence list.
+
+Regression tests cover header scope, partial file coverage, and exclusion of non-file paragraphs.
+The tests have been added to the branch; execution is pending CI verification. This change does
+not claim legal compliance and does not change any license declaration without supporting evidence.

@@ -8,6 +8,10 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## [Unreleased]
 
+### Changed
+
+- **AppImage Debian copyright parsing:** distinguish DEP-5 package-level header declarations from file-scoped `Files` declarations and stand-alone license-text paragraphs; retain `NOASSERTION` for partial coverage or mixed file-level licenses.
+
 ### Added
 
 - **Industrial CI/CD release pipeline:** native x86_64/aarch64 Flatpak and AppImage builds, lockfile-hash-verified runtime wheelhouses, per-artifact install/launch gates, Draft GitHub Releases, SHA-256 checksums and one explicit manual publication workflow.
