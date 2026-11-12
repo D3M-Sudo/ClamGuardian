@@ -113,7 +113,6 @@ def test_shutdown_always_closes_intelligence_worker(
 
 
 def test_shutdown_cancels_ui_scans_when_service_loop_never_started(gtk_app) -> None:
-    import asyncio
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, Mock
 
