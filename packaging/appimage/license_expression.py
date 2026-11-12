@@ -291,7 +291,7 @@ def normalize_spdx_document(
     for file_record in document.get("files", []):
         if not isinstance(file_record, dict):
             continue
-        values = file_record.get("licenseInfoInFile", [])
+        values = file_record.get("licenseInfoInFiles", [])
         if isinstance(values, list):
             file_record["licenseInfoInFiles"] = [
                 normalize_expression(value, licenses, exceptions, refs)
