@@ -1018,3 +1018,45 @@ def test_native_curated_components_require_package_and_copyright_provenance(
     native_inventory["packages"][0]["artifact_paths"] = ["etc/ssl/certs/other.crt"]
     with pytest.raises(ValueError, match="no native package provenance"):
         module._verify_native_component_coverage(appdir_inventory, native_inventory, license_root)
+
+
+
+def test_native_license_collector_resolves_symlink_target_for_dpkg_ownership(
+    tmp_path: Path,
+) -> None:
+    module_path = ROOT / "packaging" / "appimage" / "collect-licenses.py"
+    spec = importlib.util.spec_from_file_location("appimage_symlink_package_ownership", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    appdir = tmp_path / "AppDir"
+    info = tmp_path / "dpkg-info"
+    docs = tmp_path / "doc"
+    libdir = appdir / "usr/lib/x86_64-linux-gnu"
+    libdir.mkdir(parents=True)
+    (libdir / "libexample.so.2.0.0").write_bytes(b"ELF fixture")
+    (libdir / "libexample.so.2").symlink_to("libexample.so.2.0.0")
+    info.mkdir()
+    (info / "libexample1:amd64.list").write_text(
+        "/usr/lib/x86_64-linux-gnu/libexample.so.2.0.0\\n", encoding="utf-8"
+    )
+    (docs / "libexample1").mkdir(parents=True)
+    (docs / "libexample1/copyright").write_text(
+        "Files: *\\nLicense: MIT\\n", encoding="utf-8"
+    )
+
+    result = module.collect_package_provenance(
+        appdir,
+        info,
+        docs,
+        appdir / "usr/share/licenses/ClamGuardian",
+        package_metadata_resolver=lambda package: {
+            "version": "2.0-1", "source_package": "libexample1", "source_version": "2.0-1",
+        },
+    )
+
+    package = next(item for item in result["packages"] if item["package"] == "libexample1:amd64")
+    assert "usr/lib/x86_64-linux-gnu/libexample.so.2" in package["artifact_paths"]
+    assert package["copyright_status"] == "present"
