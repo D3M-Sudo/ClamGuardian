@@ -25,7 +25,7 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ### Changed
 
-- **GitHub Actions runtime compatibility:** replace all seven deprecated `upload-artifact` v4 references across CI, Release Gate and tagged-release workflows with the immutable Node.js 24-compatible v7.0.2 release pin.
+- **GitHub Actions runtime compatibility:** replace all seven `actions/upload-artifact` v4 references that targeted deprecated Node.js 20 across CI, Release Gate and tagged-release workflows with the immutable Node.js 24-compatible v7.0.2 release pin.
 
 ### Fixed
 
