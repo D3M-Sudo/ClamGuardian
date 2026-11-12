@@ -1,54 +1,67 @@
 # AppImage License & SBOM Remediation — Execution Report
 
-**Status: IMPLEMENTED LOCALLY / NOT RELEASE-READY**
-**Target:** PR #38, branch `ci/node24-actions`
-**Remote PR head at last check:** `59bec2db722e8b0f04e2c40a398a585f5dcc1b10`
-**Local source:** ZIP snapshot without `.git`; changes have not been committed or pushed.
+**Status: IMPLEMENTED ON PR / NATIVE CI GREEN / NOT RELEASE-READY**  
+**Target:** PR #38, branch `ci/node24-actions` → `feature`  
+**Verified PR head:** `0e31cd3bd6b89c9028fb4dc6d01ab4de496d51cd`  
+**CI:** [run 43285081892](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43285081892) — **success**  
+**Release Gate:** [run 43285081896](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43285081896) — **success**
 
-## Implemented in the local worktree
+## Implementation delivered
 
-- Added the complete GPL-3.0-or-later license text and project copyright notice.
-- Added curated AppDir and Type 2 runtime component inventories.
-- Added deterministic staging of project and third-party license documents.
-- Added upstream runtime license retrieval with pinned Git blob IDs for the Type 2 runtime, musl, libfuse, squashfuse, zstd, zlib and mimalloc.
-- Added a Debian package provenance collector that maps files actually present in AppDir to the runner's dpkg file lists, captures installed package/source versions and stages the corresponding copyright documents.
-- Added conservative Debian copyright `License:` parsing. Ambiguous or unsupported expressions remain `NOASSERTION`.
-- Added `_decimal`/libmpdec detection. The build requires a copyright stanza identifying both Stefan Krah and the `_decimal`/libmpdec source; the embedded library version remains explicitly unknown unless source evidence establishes it.
-- Added Syft AppDir SPDX 2.3 and CycloneDX 1.6 generation, curated runtime/native package aggregation, detached final-artifact SHA-256 manifest and reconciliation checks.
-- Added official SPDX 2.3 and CycloneDX 1.6 schema validation using pinned upstream schema refs and Git blob IDs.
-- Extended extracted-AppImage tests and CI/release artifact uploads to include license and SBOM evidence.
-- Updated AppImage documentation and CHANGELOG.
+The remediation is committed to the remote PR branch. The implementation includes:
 
-The native CI run exposed and resolved two integration issues before this report was finalized: Syft 1.57.1 now receives explicit SPDX 2.3/CycloneDX 1.6 output selectors, and the generated CA certificate bundle is attributed to the `ca-certificates.postinst` maintainer-script output rather than an absent dpkg `.list` entry. Regression tests cover both cases.
+- Complete project GPL-3.0-or-later license text and separate project copyright notice.
+- Curated AppDir and Type 2 runtime component inventories.
+- Deterministic license staging and runtime license retrieval with pinned upstream Git blob verification.
+- Native Debian package provenance collection based on files actually present in the AppDir, installed package/source versions and copied copyright documents.
+- Explicit provenance for the generated `ca-certificates.crt` output through the `ca-certificates.postinst` hook.
+- Provenance matching for ELF libraries flattened by linuxdeploy into `AppDir/usr/lib/`; matching is restricted to unique system multiarch dpkg paths so unrelated copies shipped by browser packages are not misattributed.
+- Embedded `_decimal`/libmpdec evidence gate. Its version remains unknown because the available package copyright evidence does not establish a separate embedded library version.
+- Syft-generated AppDir SPDX 2.3 and CycloneDX 1.6 SBOMs, aggregate SBOMs with Type 2 runtime components, and detached artifact SHA-256 manifests.
+- Official SPDX 2.3 and CycloneDX 1.6 schema validation using pinned upstream schema refs and Git blob IDs.
+- Extracted-AppImage verification for architecture, CLI, GTK construction, license tree, native/runtime provenance, SBOM contents and final artifact digest.
+- CI and release-gate integration, artifact upload, README, CHANGELOG and this evidence report.
 
-## Local verification completed
+## Remote verification results
 
 | Check | Result |
 |---|---|
-| Full pytest suite | **525 passed, 19 skipped** |
-| AppDir/runtime inventory validator | Passed |
-| CHANGELOG validation | Passed |
-| Bash syntax for `packaging/appimage/*.sh` | Passed |
-| `AppRun` shell syntax | Passed |
-| Python compilation for AppImage scripts | Passed |
-| GitHub Actions YAML parsing | Passed |
+| Ruff `ruff check .` | **Passed** |
+| Mypy `mypy clamguardian` | **Passed** |
+| Pytest, Python 3.11 | **557 passed, 9 skipped** |
+| Pytest, Python 3.12 | **557 passed, 9 skipped** |
+| Pytest, Python 3.13 | **557 passed, 9 skipped** |
+| Runtime Python 3.14 headless check | **Passed** |
+| Pinned dependency audit | **Passed** |
+| Native Flatpak x86_64 | **Passed** |
+| Native Flatpak aarch64 | **Passed** |
+| Native AppImage x86_64 | **Passed** |
+| Native AppImage aarch64 | **Passed** |
+| Release Gate: preflight, GTK smoke, AppStream, Flatpak local build, real ClamAV scan | **Passed** |
 
-The 19 skipped tests require GTK/PyGObject and/or a display server unavailable in this environment.
+The nine pytest skips in each Python matrix are existing headless/optional-dependency skips; the build-time AppImage pipeline separately installs and exercises the GTK runtime and validates the official SBOM schemas.
 
-## Evidence still required before declaring R1–R8 complete
+### Native AppImage evidence
 
-1. Run the native x86_64 and aarch64 CI builds and inspect the actual AppImages.
-2. Execute the pinned runtime-license downloads and verify all Git blob IDs in CI.
-3. Run Syft against each actual AppDir and validate all four generated SBOM documents against the downloaded official schemas.
-4. Confirm the package collector on both Ubuntu runner architectures, especially the exact `ca-certificates` copyright and the `_decimal`/libmpdec copyright stanza.
-5. Reconcile all 13 Python wheel versions and license metadata against the generated Syft SBOMs; their curated license expressions remain `NOASSERTION` until verified.
-6. Alpine 3.21 APKBUILD revisions provide declared candidate versions for musl, zstd, zlib and mimalloc, but the Type 2 runtime build did not retain its exact installed APK database. These versions are therefore marked `declared`, not `verified`.
-7. Review the static-linking implications of libfuse's LGPL-2.1 license, including source and relinkability obligations. The presence of the license text alone does not settle those obligations; no legal-compliance conclusion is made here.
-8. Perform the independent aarch64 artifact extraction and license/SBOM audit required by R8.
-9. Run Ruff and mypy; those executables are not installed in the available work environment.
+Both native architectures completed the extracted-artifact test successfully:
 
-## Repository/PR status
+- **x86_64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents validated against official schemas; GTK smoke passed; final artifact digest verified as `bfc31444b0ebeed3a5b4d5203cb0e606f2d0b7c80a9cfc6579dfd92b2679f7ac`.
+- **aarch64:** 117 bundled Debian package copyright records collected; seven Type 2 runtime license documents fetched and verified; four SBOM documents validated against official schemas; GTK smoke passed; final artifact digest verified as `c6e35ed0cc08fb031501e0fbdada3f7f0d1172da9db1d6a66930968f58d197bc`.
 
-The available source was an archive without Git metadata. The shell also could not resolve `github.com`, and `gh` is unavailable. Consequently, this report and implementation changes exist only in the local worktree. **PR #38 has not been updated by this work; no commit, push, merge, tag or release was performed.**
+The artifact test reports passed architecture, runtime, licenses, SBOM, CLI and GTK construction checks for both builds. This verifies native CI packaging and extraction on both architectures; it is not a substitute for a separate independent review of the resulting evidence.
 
-The work must remain classified as incomplete until the native CI and unresolved evidence above are satisfied. This report is an engineering status record, not legal advice.
+## Remaining release-readiness blockers
+
+1. **Python wheel license classification:** 13 curated Python wheel entries still use `NOASSERTION` / unknown license status. Reconcile the wheel metadata and notices against the generated Syft records before making a complete license-coverage claim.
+2. **Type 2 runtime versions:** musl, zstd, zlib and mimalloc candidate versions are marked `declared` from Alpine 3.21 APKBUILD evidence. The runtime build did not retain the exact installed APK database, so these are not verified installed versions.
+3. **libmpdec version:** the embedded library version remains unknown. The copyright evidence establishes the relevant `_decimal`/libmpdec notice, not an independently versioned libmpdec component.
+4. **LGPL-2.1 / libfuse:** the static-linking implications, including source and relinkability obligations, still require engineering/legal review. Including the license text is not itself proof that every applicable obligation is met.
+5. **Independent review:** perform a separate review of the x86_64 and aarch64 evidence bundles and a final whole-branch review for material omissions. Native CI has exercised both artifacts, but this independent review has not been recorded as complete.
+
+No legal-compliance conclusion is made. The remaining items above are not CI failures; they are evidence and review gaps that prevent calling the remediation release-ready.
+
+## PR state and change control
+
+PR #38 remains **open and Draft**, with base `feature`. All implementation commits are on `ci/node24-actions`. No merge, tag, release or publication was performed, and `feature` was not modified.
+
+This is an engineering execution report, not legal advice.
