@@ -271,6 +271,11 @@ def _debian_license_evidence(
 ) -> list[dict[str, Any]]:
     """Preserve DEP-5 file-level license declarations without package aggregation."""
     text = content.decode("utf-8", errors="replace")
+    paragraphs = _dep5_paragraphs(content)
+    if not paragraphs or not paragraphs[0].get("Format", "").rstrip("/").endswith(
+        "/copyright-format/1.0"
+    ):
+        return []
     evidence: list[dict[str, Any]] = []
     current: dict[str, str] = {}
 
