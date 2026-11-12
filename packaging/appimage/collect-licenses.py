@@ -192,7 +192,7 @@ def collect_package_provenance(
     owners_by_library_filename: dict[str, dict[str, set[str]]] = {}
     for source_path, packages in owners_by_path.items():
         filename = Path(source_path).name
-        if re.fullmatch(r"lib[^/]+\\.so\\.\\d+(?:\\.\\d+)*", filename):
+        if re.fullmatch(r"lib[^/]+\.so\.\d+(?:\.\d+)*", filename):
             for package in packages:
                 owners_by_library_filename.setdefault(filename, {}).setdefault(
                     package, set()
@@ -236,7 +236,7 @@ def collect_package_provenance(
         if (
             not matched
             and relative.parts[:2] == ("usr", "lib")
-            and re.fullmatch(r"lib[^/]+\\.so\\.\\d+(?:\\.\\d+)*", relative.name)
+            and re.fullmatch(r"lib[^/]+\.so\.\d+(?:\.\d+)*", relative.name)
             and appdir_path.is_file()
         ):
             with appdir_path.open("rb") as handle:
