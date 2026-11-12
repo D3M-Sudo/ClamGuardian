@@ -453,6 +453,96 @@ def test_list_entries_skips_corrupt_record_and_keeps_valid_items(
     assert "Skipping invalid quarantine record" in caplog.text
 
 
+
+def test_quarantine_preserves_replacement_racing_with_source_detach(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A pathname replacement immediately before detach is not deleted."""
+    import os
+
+    source = tmp_path / "raced.bin"
+    source.write_bytes(b"original payload")
+    replacement = tmp_path / "replacement.tmp"
+    replacement.write_bytes(b"attacker replacement")
+    vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
+
+    real_rename = os.rename
+    raced = False
+
+    def replace_then_rename(src, dst, *, src_dir_fd=None, dst_dir_fd=None):
+        nonlocal raced
+        if (
+            src == source.name
+            and isinstance(dst, str)
+            and dst.endswith(".clamguardian-pending")
+            and not raced
+        ):
+            raced = True
+            os.replace(replacement, source)
+        return real_rename(
+            src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd
+        )
+
+    monkeypatch.setattr(os, "rename", replace_then_rename)
+
+    with pytest.raises(ValueError, match="Source path changed"):
+        vault.quarantine(source)
+
+    assert raced
+    assert source.read_bytes() == b"attacker replacement"
+    assert list(vault.directory.glob("*.qtn")) == []
+    assert not list(tmp_path.glob("*.clamguardian-pending"))
+
+
+def test_restore_rejects_parent_replaced_by_symlink_after_validation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A parent swapped after path validation cannot redirect restored bytes."""
+    from contextlib import contextmanager
+
+    import clamguardian.core.quarantine as quarantine_module
+
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"quarantined payload")
+    vault = QuarantineVault(tmp_path / "vault", QuarantineVault.generate_key())
+    entry = vault.quarantine(source)
+
+    parent = tmp_path / "restore-parent"
+    parent.mkdir()
+    moved_parent = tmp_path / "restore-parent-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    real_open_chain = quarantine_module._open_directory_chain
+    swapped = False
+
+    @contextmanager
+    def swap_then_open(path, *, create):
+        nonlocal swapped
+        if Path(path) == parent and not swapped:
+            swapped = True
+            os.rename(parent, moved_parent)
+            parent.symlink_to(outside, target_is_directory=True)
+        try:
+            with real_open_chain(path, create=create) as descriptor:
+                yield descriptor
+        finally:
+            if swapped and parent.is_symlink():
+                parent.unlink()
+                os.rename(moved_parent, parent)
+
+    import os
+
+    monkeypatch.setattr(quarantine_module, "_open_directory_chain", swap_then_open)
+
+    with pytest.raises(ValueError, match="Too many levels of symbolic links"):
+        vault.restore(entry.item_id, parent / "restored.bin")
+
+    assert swapped
+    assert list(outside.iterdir()) == []
+    assert list(parent.iterdir()) == []
+    assert vault._path(entry.item_id).exists()
+
 def test_restore_rejects_oversized_chunk_geometry_before_reading(tmp_path: Path) -> None:
     source = tmp_path / "payload.bin"
     source.write_bytes(b"small payload")
