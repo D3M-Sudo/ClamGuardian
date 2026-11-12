@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import hashlib
 import json
 import os
 import re
@@ -321,8 +322,30 @@ def collect_package_provenance(
         )
         source_paths.extend(sorted(package_source_paths.get(package, set())))
         generated_paths = generated_paths_by_package.get(package, [])
+        generated_output_provenance: list[dict[str, str]] = []
         if generated_paths:
-            source_paths.append(f"/var/lib/dpkg/info/{package}.postinst")
+            postinst_path = dpkg_info_dir / f"{package}.postinst"
+            if not postinst_path.is_file():
+                raise ValueError(
+                    f"generated AppDir output for {package} has no postinst evidence"
+                )
+            postinst_content = postinst_path.read_bytes()
+            if b"update-ca-certificates" not in postinst_content:
+                raise ValueError(
+                    f"{package}.postinst does not invoke update-ca-certificates"
+                )
+            postinst_source_path = f"/var/lib/dpkg/info/{package}.postinst"
+            source_paths.append(postinst_source_path)
+            postinst_sha256 = hashlib.sha256(postinst_content).hexdigest()
+            generated_output_provenance = [
+                {
+                    "artifact_path": generated_path.lstrip("/"),
+                    "maintainer_script": postinst_source_path,
+                    "maintainer_script_sha256": postinst_sha256,
+                    "required_command": "update-ca-certificates",
+                }
+                for generated_path in generated_paths
+            ]
             package_detection_methods.setdefault(package, set()).add(
                 "known-generated-postinst-output"
             )
@@ -337,6 +360,7 @@ def collect_package_provenance(
             "architecture": architecture,
             "artifact_paths": sorted(set(package_paths[package])),
             "source_paths": source_paths,
+            "generated_output_provenance": generated_output_provenance,
             "detection_method": detection_method,
             "copyright_status": copyright_status,
             "copyright_source": source_document,
