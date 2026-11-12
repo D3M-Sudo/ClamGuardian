@@ -53,7 +53,7 @@
 Install the Flatpak bundle attached to the intended GitHub release and run your first scan:
 
 ```bash
-flatpak install --user ./ClamGuardian-<release-version>-linux-x86_64.flatpak
+flatpak install --user ./ClamGuardian-vX.Y.Z-linux-x86_64.flatpak
 flatpak run io.github.clamguardian.ClamGuardian
 ```
 
