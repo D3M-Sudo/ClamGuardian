@@ -59,7 +59,7 @@ jobs:
           python-version: "3.14"
       - name: Install build tools
         run: |
-          python -m pip install --disable-pip-version-check uv==0.9.5 pyyaml==6.0.3
+          python -m pip install --disable-pip-version-check uv==0.9.5
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder xvfb xauth dbus-x11
       - run: packaging/flatpak/prepare-wheelhouse.sh
@@ -114,7 +114,9 @@ jobs:
           python-version: "3.12"
       - name: Validate packaging shell syntax
         run: |
-          bash -n packaging/flatpak/prepare-wheelhouse.sh packaging/appimage/*.sh
+          for script in packaging/flatpak/prepare-wheelhouse.sh packaging/appimage/*.sh; do
+            bash -n "$script"
+          done
           sh -n packaging/appimage/clamguardian-launcher
       - name: Install AppImage build dependencies
         run: |
