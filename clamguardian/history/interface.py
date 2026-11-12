@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ..core.base import ScanResult
-from .models import HistoryRecord
+from .models import HistoryRecord, ThreatIntelligenceRecord
 
 if TYPE_CHECKING:
     from ..core.profiles import ScanProfile
@@ -44,7 +44,9 @@ class HistoryStore(Protocol):
 
     History is append-oriented; there is deliberately no ``update``, ``watch``,
     ``subscribe`` or ``get_statistics``. ``list_scans`` does not load threat
-    details; use :meth:`get_scan` for the full record. ``purge`` is the sole
+    details; use :meth:`get_scan` for the full record and
+    :meth:`get_scan_intelligence` for its separate remote assessment.
+    ``purge`` is the sole
     destructive management operation: it requires at least one selection
     criterion so it can never silently clear the whole history.
     """
@@ -54,6 +56,10 @@ class HistoryStore(Protocol):
     ) -> HistoryRecord: ...
 
     async def get_scan(self, scan_id: str) -> HistoryRecord | None: ...
+
+    async def get_scan_intelligence(
+        self, scan_id: str
+    ) -> ThreatIntelligenceRecord | None: ...
 
     async def list_scans(
         self,
