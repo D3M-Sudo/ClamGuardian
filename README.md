@@ -169,6 +169,7 @@ with deterministic keys:
 | 3 | engine or runtime error |
 | 4 | scan timeout |
 | 5 | scan cancelled (Ctrl+C) |
+| 6 | `doctor`: one or more critical scan dependencies are missing |
 
 Pressing **Ctrl+C** during a scan shuts the ClamAV subprocess group down cleanly
 (`SIGTERM`, then `SIGKILL` after a grace period) and exits with code 5 — no
