@@ -233,7 +233,8 @@ def _debian_license_expression(content: bytes) -> tuple[str, str]:
 
     # DEP-5 header License describes the package as a whole. Stand-alone
     # License paragraphs only supply referenced license text and are ignored.
-    header_license = header.get("License", "").splitlines()[0].strip()
+    header_license_lines = header.get("License", "").splitlines()
+    header_license = header_license_lines[0].strip() if header_license_lines else ""
     if header_license:
         normalized = _normalize_debian_license_value(header_license)
         return (normalized, "verified") if normalized else ("NOASSERTION", "unknown")

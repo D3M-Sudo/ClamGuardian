@@ -1489,7 +1489,8 @@ def test_debian_non_spdx_license_identifiers_remain_unasserted() -> None:
     spec.loader.exec_module(module)
     for identifier in ("BSD-3-snowball", "Hylafax"):
         content = (
-            "Files: src/example.c\n"
+            "Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n"
+            "Files: *\n"
             f"License: {identifier}\n"
             " Full license text.\n"
         ).encode()
@@ -1498,7 +1499,8 @@ def test_debian_non_spdx_license_identifiers_remain_unasserted() -> None:
             "unknown",
         )
     assert module._debian_license_expression(
-        b"Files: src/example.c\nLicense: X11\n"
+        b"Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n"
+        b"Files: *\nLicense: X11\n"
     ) == ("X11", "verified")
 
 def test_release_workflow_requires_architecture_sbom_evidence_archives() -> None:
@@ -1532,10 +1534,11 @@ def test_native_license_evidence_ignores_empty_license_fields() -> None:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     content = (
+        b"Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n"
         b"Files: src/empty.c\n"
         b"License:\n"
         b"\n"
-        b"Files: src/mit.c\n"
+        b"Files: *\n"
         b"License: MIT\n"
         b" MIT license text.\n"
     )
