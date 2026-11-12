@@ -20,21 +20,49 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-      - name: Install YAML parser
-        run: python -m pip install --disable-pip-version-check pyyaml==6.0.3
-      - name: Verify tag, package version and Flatpak pin agree
+      - name: Install release metadata validators
+        run: |
+          python -m pip install --disable-pip-version-check pyyaml==6.0.3
+          sudo apt-get update
+          sudo apt-get install -y appstream
+      - name: Validate AppStream metadata
+        run: appstreamcli validate data/io.github.clamguardian.ClamGuardian.metainfo.xml
+      - name: Verify tag, package version, AppStream release and Flatpak pin agree
         env:
           RELEASE_REF: ${{ github.ref_name }}
         run: |
           python3 - <<'PY'
-          import pathlib, tomllib, yaml, os
+          import os
+          import pathlib
+          import tomllib
+          import xml.etree.ElementTree as ET
+
+          import yaml
+
           root = pathlib.Path(".")
           version = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
           tag = os.environ["RELEASE_REF"]
           if tag != f"v{version}":
               raise SystemExit(f"tag {tag} does not match pyproject version v{version}")
-          manifest = yaml.safe_load((root / "packaging/flatpak/io.github.clamguardian.ClamGuardian.yml").read_text())
-          source = next(s for m in manifest["modules"] for s in m.get("sources", []) if s.get("type") == "git")
+
+          metainfo = ET.parse(root / "data/io.github.clamguardian.ClamGuardian.metainfo.xml").getroot()
+          releases = metainfo.findall("releases/release")
+          if not releases:
+              raise SystemExit("AppStream metainfo has no release entries")
+          latest_version = releases[0].get("version")
+          if latest_version != version:
+              raise SystemExit(
+                  f"latest AppStream release {latest_version!r} does not match "
+                  f"pyproject version {version}"
+              )
+
+          manifest = yaml.safe_load(
+              (root / "packaging/flatpak/io.github.clamguardian.ClamGuardian.yml").read_text()
+          )
+          source = next(
+              s for m in manifest["modules"] for s in m.get("sources", [])
+              if s.get("type") == "git"
+          )
           if source.get("tag") != tag:
               raise SystemExit(f"Flatpak source tag {source.get('tag')} does not match {tag}")
           PY
