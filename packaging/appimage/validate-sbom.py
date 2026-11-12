@@ -73,6 +73,10 @@ def validate_documents(sbom_dir: Path, schema_dir: Path, architecture: str) -> d
 
     report = {
         "schema_validation": "passed",
+        "semantic_validation": {
+            "spdx_license_expressions": "passed",
+            "cyclonedx_license_declarations": "passed",
+        },
         "architecture": architecture,
         "schemas": {
             "spdx": "SPDX 2.3 (spdx/spdx-spec v2.3)",

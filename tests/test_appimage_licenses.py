@@ -638,6 +638,10 @@ def test_sbom_schema_validator_checks_all_four_documents(tmp_path: Path) -> None
     report = module.validate_documents(sbom_dir, schema_dir, "x86_64")
 
     assert report["schema_validation"] == "passed"
+    assert report["semantic_validation"] == {
+        "spdx_license_expressions": "passed",
+        "cyclonedx_license_declarations": "passed",
+    }
     assert len(report["documents"]) == 4
     assert (sbom_dir / "schema-validation-x86_64.json").is_file()
 
