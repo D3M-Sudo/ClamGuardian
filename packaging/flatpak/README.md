@@ -9,8 +9,7 @@ Two manifests are kept side by side on purpose:
 
 Both manifests target `org.gnome.Platform//51` (runtime target concordato per Flathub; GNOME 46 è EOL). `org.gnome.Sdk//51` è disponibile su Flathub e viene installato dal workflow di release gate.
 
-The `v1.0.1` tag referenced by the release manifest is the immutable source pin for the current release manifest (`docs/ROADMAP.md`, Phase 9). When a new release is cut, update `tag` and
-add the resulting `commit` so that a moved tag cannot silently change the build.
+The release manifest currently pins source to `v1.0.1` (see the manifest itself). This is a source-build pin, not by itself proof that a GitHub Release was published or that manual desktop validation was completed. When a new release is cut, update `tag` and add the resulting `commit` so that a moved tag cannot silently change the build.
 
 ## What the module installs
 
