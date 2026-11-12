@@ -1257,7 +1257,7 @@ def test_native_license_collector_stages_referenced_common_license_text(
     (docs / "libexample1").mkdir(parents=True)
     (docs / "libexample1/copyright").write_text(
         "Files: *\nLicense: GPL-2+\n "
-        "Full text: /usr/share/common-licenses/GPL-2\n",
+        "Full text: /usr/share/common-licenses/GPL-2.\n",
         encoding="utf-8",
     )
     common.mkdir()
@@ -1314,7 +1314,7 @@ def test_native_license_collector_uses_pinned_gfdl_12_when_system_copy_is_missin
     (docs / "libexample1").mkdir(parents=True)
     (docs / "libexample1/copyright").write_text(
         "Files: *\\nLicense: GPL-2+\\n"
-        "Full text: /usr/share/common-licenses/GFDL-1.2\\n",
+        "Full text: /usr/share/common-licenses/GFDL-1.2.\n",
         encoding="utf-8",
     )
     common.mkdir()
@@ -1369,7 +1369,7 @@ def test_native_license_collector_fails_closed_for_missing_common_license_text(
     (docs / "libexample1").mkdir(parents=True)
     (docs / "libexample1/copyright").write_text(
         "Files: *\nLicense: GPL-2+\n "
-        "Full text: /usr/share/common-licenses/GPL-2\n",
+        "Full text: /usr/share/common-licenses/GPL-2.\n",
         encoding="utf-8",
     )
     common.mkdir()
