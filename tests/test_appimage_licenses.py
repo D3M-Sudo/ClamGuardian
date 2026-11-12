@@ -957,6 +957,10 @@ def test_native_license_collector_attributes_generated_ca_bundle_to_package_post
     ca_bundle.parent.mkdir(parents=True)
     ca_bundle.write_text("generated CA bundle", encoding="utf-8")
     info.mkdir()
+    postinst = info / "ca-certificates.postinst"
+    postinst.write_text(
+        "#!/bin/sh\\nupdate-ca-certificates --fresh\\n", encoding="utf-8"
+    )
     (docs / "ca-certificates").mkdir(parents=True)
     (docs / "ca-certificates/copyright").write_text(
         "CA certificate package copyright\\n", encoding="utf-8"
@@ -978,6 +982,13 @@ def test_native_license_collector_attributes_generated_ca_bundle_to_package_post
     assert package["version"] == "20260816ubuntu0.24.04.2"
     assert package["detection_method"] == "known-generated-postinst-output"
     assert "/var/lib/dpkg/info/ca-certificates.postinst" in package["source_paths"]
+    provenance = package["generated_output_provenance"][0]
+    assert provenance["artifact_path"] == "etc/ssl/certs/ca-certificates.crt"
+    assert provenance["maintainer_script"] == "/var/lib/dpkg/info/ca-certificates.postinst"
+    assert provenance["maintainer_script_sha256"] == __import__("hashlib").sha256(
+        postinst.read_bytes()
+    ).hexdigest()
+    assert provenance["required_command"] == "update-ca-certificates"
     assert "etc/ssl/certs/ca-certificates.crt" in package["artifact_paths"]
 
 
@@ -1108,3 +1119,42 @@ def test_native_license_collector_attributes_flattened_elf_by_unique_soname_file
     assert "/usr/lib/x86_64-linux-gnu/libexample.so.2.0.0" in package["source_paths"]
     assert package["detection_method"] == "dpkg-file-list-unique-soname-filename"
     assert package["copyright_status"] == "present"
+
+
+
+def test_native_license_collector_rejects_generated_ca_bundle_without_postinst(
+    tmp_path: Path,
+) -> None:
+    module_path = ROOT / "packaging" / "appimage" / "collect-licenses.py"
+    spec = importlib.util.spec_from_file_location(
+        "appimage_generated_ca_missing_postinst", module_path
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    appdir = tmp_path / "AppDir"
+    info = tmp_path / "dpkg-info"
+    docs = tmp_path / "doc"
+    ca_bundle = appdir / "etc/ssl/certs/ca-certificates.crt"
+    ca_bundle.parent.mkdir(parents=True)
+    ca_bundle.write_text("generated CA bundle", encoding="utf-8")
+    info.mkdir()
+    (docs / "ca-certificates").mkdir(parents=True)
+    (docs / "ca-certificates/copyright").write_text(
+        "CA certificate package copyright\\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="no postinst evidence"):
+        module.collect_package_provenance(
+            appdir,
+            info,
+            docs,
+            appdir / "usr/share/licenses/ClamGuardian",
+            package_metadata_resolver=lambda package: {
+                "version": "20260816ubuntu0.24.04.2",
+                "source_package": "ca-certificates",
+                "source_version": "20260816ubuntu0.24.04.2",
+            },
+        )
