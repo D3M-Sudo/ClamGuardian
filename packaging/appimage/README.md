@@ -36,8 +36,7 @@ separate runtime validation before being listed as supported.
 
 The AppImage build stages the complete project GPL-3.0-or-later text and project
 copyright into `usr/share/licenses/ClamGuardian`. After native runtime assembly,
-`collect-licenses.py` maps bundled files to the runner's dpkg file lists and
-copies the corresponding package copyright documents. The generated
+`collect-licenses.py` maps bundled files to the runner's dpkg file lists and copies the corresponding package copyright documents. It follows symlink targets and handles libraries flattened by linuxdeploy into `usr/lib` only when their SONAME filename maps uniquely to a system multiarch dpkg file; the source path and detection method are recorded in `native-packages.json`. The generated
 `/etc/ssl/certs/ca-certificates.crt` bundle is attributed explicitly to
 `ca-certificates` through its `postinst` hook because dpkg does not list this
 generated output as a packaged file. Both the generated artifact path and the
