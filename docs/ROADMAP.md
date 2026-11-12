@@ -45,7 +45,7 @@ Future versions are planning targets, not implemented releases or promised dates
 | Status | Milestone | Exit criterion |
 |---|---|---|
 | **Completed** | `v1.0.0` | Green release gate, bundle produced, promotions documented |
-| **Current** | `1.0.x` | Release engineering and manual desktop validation tracked separately; `v1.0.1` is the release-manifest source pin. Do not infer a published release from the manifest pin alone (`reports/RELEASE-1.0.1.md`). |
+| **Published** | `v1.0.1` | GitHub Release published 2026-10-24 from tag `v1.0.1` (`32c9ca6`); Flatpak asset attached. The checked-in D4 session record remains PENDING, so the repository does not retain the manual-validation evidence cited by the release description (`reports/RELEASE-1.0.1.md`, `validation/DESKTOP-TEST-D4-2026-10-19.md`). |
 | **Implemented** | Desktop App — Phases D1 + D2 + D3 + D4 | Foundations + diagnostics, Scan page, History, Quarantine, Databases, Diagnostics and Settings; window chrome, About, opt-in notifications, accent stylesheet, default-profile settings, quarantine ingest from scan results — committed on `feature`, CI smoke covers every page |
 | **Next** | Manual desktop validation | Recorded on-desktop click-through of the D4 pages (`docs/validation/DESKTOP-TEST-1.0.md`) and Flatpak restore verification |
 | **Implemented / validation pending** | `v1.1.0` | USB mount identity checks, lifecycle cancellation and CLI/GTK integration are present on `feature`; record real-host validation before promotion. |
