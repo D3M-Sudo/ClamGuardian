@@ -36,7 +36,7 @@ separate runtime validation before being listed as supported.
 
 The AppImage build stages the complete project GPL-3.0-or-later text and project
 copyright into `usr/share/licenses/ClamGuardian`. After native runtime assembly,
-`collect-licenses.py` maps bundled files to the runner's dpkg file lists and copies the corresponding package copyright documents. It follows symlink targets and handles libraries flattened by linuxdeploy into `usr/lib` only when their SONAME filename maps uniquely to a system multiarch dpkg file; the source path and detection method are recorded in `native-packages.json`. The generated
+`collect-licenses.py` maps bundled files to the runner's dpkg file lists and copies the corresponding package copyright documents. Debian common-license references are normalized for trailing punctuation. Ubuntu runners may not ship `GFDL-1.2` under `/usr/share/common-licenses`, so the collector uses the repository-bundled verbatim text only as a fallback and verifies its pinned SHA-256 before staging it. It follows symlink targets and handles libraries flattened by linuxdeploy into `usr/lib` only when their SONAME filename maps uniquely to a system multiarch dpkg file; the source path and detection method are recorded in `native-packages.json`. The generated
 `/etc/ssl/certs/ca-certificates.crt` bundle is attributed explicitly to
 `ca-certificates` through its `postinst` hook when dpkg does not list the output
 as a packaged file. The collector requires the actual maintainer script and
