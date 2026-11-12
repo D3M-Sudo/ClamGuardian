@@ -586,7 +586,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 controller = getattr(self._window, "_scan_controller", None)
                 runner = getattr(controller, "_runner", None)
 
-            if loop is not None and not loop.is_closed():
+            if loop is not None and loop.is_running() and not loop.is_closed():
 
                 async def stop_services() -> None:
                     for service in (
