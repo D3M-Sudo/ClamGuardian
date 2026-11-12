@@ -35,6 +35,8 @@ for architecture in x86_64 aarch64; do
         "schema-validation-${architecture}.json"
         "native-packages.json"
         "license-evidence-${architecture}.tar.gz"
+        "runtime-source-bundle-${architecture}.tar.gz"
+        "runtime-source-bundle-${architecture}.tar.gz.sha256"
     )
     staging="$(mktemp -d "$release_dir/.sbom-${architecture}.XXXXXX")"
     cleanup() { rm -rf -- "$staging"; }
