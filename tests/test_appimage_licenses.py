@@ -1619,3 +1619,49 @@ def test_release_assembly_script_fails_when_required_evidence_is_missing(tmp_pat
         check=False,
     )
     assert result.returncode != 0
+
+
+def test_extracted_appimage_sbom_report_requires_semantic_validation(
+    tmp_path: Path,
+) -> None:
+    module_path = ROOT / "packaging/appimage/verify-sbom-report.py"
+    assert module_path.is_file(), "SBOM report validator is not implemented"
+    spec = importlib.util.spec_from_file_location("appimage_sbom_report_validator", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    valid = {
+        "schema_validation": "passed",
+        "semantic_validation": {
+            "spdx_license_expressions": "passed",
+            "cyclonedx_license_declarations": "passed",
+        },
+        "documents": {
+            "appdir-spdx": {"status": "passed"},
+            "aggregate-spdx": {"status": "passed"},
+            "appdir-cyclonedx": {"status": "passed"},
+            "aggregate-cyclonedx": {"status": "passed"},
+        },
+    }
+    report_path = tmp_path / "schema-validation-x86_64.json"
+    report_path.write_text(json.dumps(valid), encoding="utf-8")
+    assert module.validate_report(report_path)["semantic_validation"] == valid[
+        "semantic_validation"
+    ]
+
+    invalid = dict(valid)
+    invalid.pop("semantic_validation")
+    report_path.write_text(json.dumps(invalid), encoding="utf-8")
+    with pytest.raises(ValueError, match="semantic license validation"):
+        module.validate_report(report_path)
+
+    invalid = dict(valid)
+    invalid["semantic_validation"] = {
+        "spdx_license_expressions": "failed",
+        "cyclonedx_license_declarations": "passed",
+    }
+    report_path.write_text(json.dumps(invalid), encoding="utf-8")
+    with pytest.raises(ValueError, match="semantic license validation"):
+        module.validate_report(report_path)
