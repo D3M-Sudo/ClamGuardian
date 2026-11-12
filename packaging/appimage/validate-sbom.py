@@ -104,7 +104,10 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"SBOM schema validation failed: {exc}", file=sys.stderr)
         return 1
-    print(f"Validated {len(report['documents'])} SBOM documents against official schemas")
+    print(
+        f"Validated {len(report['documents'])} SBOM documents: SPDX/CycloneDX "
+        "license semantics and official JSON schemas"
+    )
     return 0
 
 
