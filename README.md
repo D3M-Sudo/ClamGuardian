@@ -8,16 +8,17 @@
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
 [![Code style: ruff](https://img.shields.io/badge/lint-ruff-261230.svg)](https://github.com/astral-sh/ruff)
 
-> **v1.0.0 released** (2026-10-16, tag `v1.0.0` @ `8ee8a56`): the release gate is
-> closed — both Flatpak manifests build offline against `org.gnome.Platform//51`,
-> AppStream validates, and real ClamAV scans plus the GTK smoke test pass in CI.
-> Evidence: `docs/reports/RELEASE-GATE-1.0.md`.
+> **Latest published release: v1.0.1** (2026-10-24, tag `v1.0.1`). The GitHub
+> release includes a Flatpak artifact. The release description states that
+> desktop validation preceded publication; however, the checked-in D4 session
+> record remains `PENDING`, so this repository does not retain that manual-test
+> evidence. See [`docs/reports/RELEASE-1.0.1.md`](docs/reports/RELEASE-1.0.1.md).
 >
 > **Security note:** `v1.0.0` is affected by AUD-01 — a directory scan served by
 > `clamd` could report `clean` for a directory that contains an infected file.
-> The fix is merged on `feature` and ships in `v1.0.1`, whose tag is cut after the
-> manual desktop validation (`docs/reports/RELEASE-1.0.1.md`). Details and
-> reporting process: [`SECURITY.md`](SECURITY.md).
+> The fix is included in published `v1.0.1`. Later USB, realtime and VirusTotal
+> integration changes on `feature` are not implied to be part of that release.
+> Details and reporting process: [`SECURITY.md`](SECURITY.md).
 
 ## Contents
 
@@ -31,6 +32,7 @@
 - [Security model](#security-model)
 - [Developing](#developing)
 - [Roadmap & scope](#roadmap--scope)
+- [Documentation map](docs/README.md)
 - [License](#license)
 
 ## Highlights
@@ -44,15 +46,15 @@
 | ⌨️ | **Scriptable CLI** — human and `--json` output, stable exit codes, clean Ctrl+C cancellation |
 | 📦 | **Flatpak-first install** — sandboxed app that reaches your host ClamAV safely |
 | 🧪 | **Tested & gated** — full pytest suite, lint, type checks and an automated release gate |
-| 🔌 | **Optional automation (under remediation)** — removable-media scanning, realtime monitoring and scheduled scans |
+| 🔌 | **Optional automation** — removable-media scanning, realtime monitoring, scheduled scans and user-session autostart |
 | 🌐 | **Optional VirusTotal intelligence** — explicit Public/Premium profiles, hash-first lookup and separately consent-gated file submission; Public remains administratively blocked pending written eligibility authorization |
 
 ## Quick start
 
-Install the `v1.0.0` bundle (built by the release gate, ~4.7 MB) and run your first scan:
+Install the Flatpak bundle attached to the intended GitHub release and run your first scan:
 
 ```bash
-flatpak install --user ClamGuardian-v1.0.0-linux-x86_64.flatpak
+flatpak install --user ./ClamGuardian-vX.Y.Z-linux-x86_64.flatpak
 flatpak run io.github.clamguardian.ClamGuardian
 ```
 
@@ -60,9 +62,7 @@ You'll need ClamAV installed on the host (`clamscan`, `freshclam`, optionally th
 `clamd` daemon) — the app reaches it through the sandbox — and the GNOME
 Platform 51 runtime, pulled automatically from Flathub on first run.
 
-> The `v1.0.0` bundle is the currently published artifact and is affected by
-> AUD-01 (see the security note above). `v1.0.1` is the next release; until its
-> tag is cut, run from source on `feature` or wait for the updated bundle.
+> Release artifacts are immutable snapshots and may not contain the latest `feature` changes. Check the release notes and the source tag attached to the bundle before deployment. The v1.0.0 release is affected by AUD-01; the fix is present in later source history as described above.
 
 ## Install
 
@@ -170,6 +170,7 @@ with deterministic keys:
 | 3 | engine or runtime error |
 | 4 | scan timeout |
 | 5 | scan cancelled (Ctrl+C) |
+| 6 | `doctor`: one or more critical scan dependencies are missing |
 
 Pressing **Ctrl+C** during a scan shuts the ClamAV subprocess group down cleanly
 (`SIGTERM`, then `SIGKILL` after a grace period) and exits with code 5 — no
@@ -177,10 +178,11 @@ zombies, no orphans.
 
 ### Optional automation and threat intelligence
 
-The following commands configure optional user preferences; long-running
-USB/realtime/scheduled services run only while the GTK desktop application is
-active. They are part of the unreleased PR #18 remediation and are not included
-in the published `v1.0.0` bundle.
+The following commands configure optional user preferences. USB, realtime and
+scheduled services are managed by the GTK application lifecycle; autostart is a
+user-session desktop entry and is not a privileged system service. These
+features are present on the current `feature` branch. The published Flatpak
+artifact remains tied to the immutable release tag named in the release manifest.
 
 ```bash
 clamguardian usb status
@@ -343,11 +345,15 @@ Development flows `feature → testing → development → main`:
 
 ## Roadmap & scope
 
-This repository contains the core framework and the GTK desktop application.
-The USB, realtime, scheduling and threat-intelligence additions are under
-remediation in PR #18; their CI, Release Gate and real-host validation must pass
-before release promotion. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for current
-milestone status and [`docs/`](docs/) for reports, checklists and design notes.
+This repository contains the GTK desktop application, ClamAV scanning core,
+third-party signature database management, removable-media automation,
+realtime monitoring, scheduled scans, user-session autostart and optional
+VirusTotal intelligence. The automation and intelligence subsystems have been
+merged to `feature`; their presence does not by itself mean they are enabled or
+release-promoted. VirusTotal Public API access remains administratively blocked
+pending written eligibility authorization. See [`docs/ROADMAP.md`](docs/ROADMAP.md)
+for milestone status and [`docs/README.md`](docs/README.md) for the documentation
+map, including design, security, validation and historical reports.
 
 ## License
 

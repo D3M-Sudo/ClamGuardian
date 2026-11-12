@@ -53,8 +53,11 @@ before the result is returned to the caller or persisted in scan history.
 The hook performs only the opt-in SHA-256 lookup; it never submits file
 contents and never initiates an upload.
 
-The remote assessment is serialized as a JSON evidence envelope in the
-scan's supplemental metadata. It records the provider, selected API profile,
+The runner attaches the remote assessment as a JSON evidence envelope in the
+scan result's supplemental metadata. When the result is persisted, `HistoryStore`
+validates the envelope and writes normalized evidence to the dedicated
+`scan_intelligence` table linked to `scan_history` by `scan_id` (schema v2).
+It records the provider, selected API profile,
 SHA-256, observation timestamp, lookup provenance, normalized response and
 one of `found`, `not_found` or `error`. The local scan status, threats and
 ClamAV engine identity remain authoritative and are not rewritten by the

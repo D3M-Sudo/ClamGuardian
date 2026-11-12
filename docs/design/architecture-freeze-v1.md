@@ -1,5 +1,7 @@
 # Architecture Freeze v1 (post M0.5 — Core Hardening)
 
+> **Historical baseline:** this document freezes the original M0.5/M2 core contracts. It is not a complete description of the current application architecture. Later subsystems and extensions include USB automation, VirusTotal intelligence/enrichment, realtime descriptor scanning, and scan-linked intelligence persistence. See `../ROADMAP.md`, `threat-intelligence.md`, and `../security/` for current extensions.
+
 > **M2 addendum (Scan Profiles):** `BaseAVEngine.scan`, `ScanTaskRunner.submit/create_task`
 > e `ShieldTaskController.scan` accettano ora un parametro opzionale
 > `profile: ScanProfile | None`. Il default `None` preserva esattamente il

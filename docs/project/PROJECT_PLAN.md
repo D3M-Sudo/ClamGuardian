@@ -61,8 +61,8 @@ Key objectives:
 5. **UI (`clamguardian/ui`):**
    - GTK4 / Libadwaita presentation controller and views.
    - Must be import-safe on headless systems without PyGObject.
-6. **Realtime (`clamguardian/realtime`) — deferred, not part of the 1.0 branch:**
-   - Target ownership: `inotify` event-driven filesystem monitoring, debouncing, deduplication, and policy filtering. Reuses `ScanTaskRunner`. The implementation was removed from the 1.0 branch because it was unwired and still carried open P1 defects; it returns with the 2.x-A gate.
+6. **Realtime (`clamguardian/realtime`):**
+   - Implemented on `feature` as the 2.x-A event-driven subsystem: native inotify monitoring, policy filtering, bounded orchestration, descriptor-based scan submission and lifecycle integration. Treat release readiness separately from implementation presence; consult `docs/ROADMAP.md` and current CI/Release Gate evidence.
 
 ---
 
@@ -96,9 +96,9 @@ Key objectives:
 
 ## 6. Post-1.0 Evolution & Boundaries
 
-- **1.1 USB Auto-Scan:** Automatic detection and scanning of mounted removable volumes using existing `ScanTaskRunner`. Deferred out of 1.0 (no call site yet).
-- **1.x Threat Intelligence:** VirusTotal SHA-256 lookup integration using content-hash seam with explicit user opt-in. Deferred out of 1.0; the Core seam (`BaseThreatProvider`) is already in place.
-- **2.x-A Event-Driven Monitoring:** Native Linux `inotify` event monitoring behind `FileMonitor` and `RealtimeScanOrchestrator`. Deferred out of 1.0 (see component 6 above).
+- **1.1 USB Auto-Scan:** Automatic detection and scanning of mounted removable volumes using existing `ScanTaskRunner`. Implemented on `feature`; see `clamguardian/core/usb.py` and the current roadmap for validation and release status.
+- **1.x Threat Intelligence:** VirusTotal SHA-256 lookup integration using content-hash seam with explicit user opt-in. Implemented on `feature` with Public/Premium profiles, Secret Service credentials, hash lookup, consent-gated file submission and scan-linked evidence persistence. Public API use remains administratively gated pending written eligibility authorization.
+- **2.x-A Event-Driven Monitoring:** Native Linux `inotify` event monitoring behind `FileMonitor` and `RealtimeScanOrchestrator`. Implemented on `feature` as described in component 6 above.
 - **Explicit Non-Goals / Deferred Features:**
   - No `Maldet`/`LMD` dependencies.
   - No root daemon / Polkit / systemd system service in 2.x-A.

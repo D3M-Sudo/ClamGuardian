@@ -1,7 +1,7 @@
 # Development manifest: builds the current working tree instead of a pinned
-# revision. Use io.github.clamguardian.ClamGuardian.yml (pinned to the v1.0.0
-# tag) for release and Flathub submission builds; see README.md in this
-# directory for the differences and for the open release-gate items.
+# revision. Use io.github.clamguardian.ClamGuardian.yml for release and Flathub
+# submission builds; that manifest pins the immutable v1.0.1 source tag.
+# See README.md in this directory for the differences and release-gate status.
 app-id: io.github.clamguardian.ClamGuardian
 runtime: org.gnome.Platform
 runtime-version: '51'

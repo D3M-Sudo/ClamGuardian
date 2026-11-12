@@ -1,5 +1,7 @@
 # ClamGuardian D4 — Manual Desktop Test Session
 
+> **Evidence status reviewed 2026-11-12:** GitHub records the `v1.0.1` release as published on 2026-10-24, and its release description says the tag followed this desktop validation. This checked-in session record still has `PENDING` status and blank outcomes. No PASS is asserted here: the repository currently lacks the completed manual-test evidence. Reconcile this record from the original test evidence if available; otherwise retain the gap explicitly.
+
 Session record for the desktop phase **D4** (Settings, About, notifications,
 theme, window chrome, quarantine ingest). The authoritative step-by-step
 checklist is [`DESKTOP-TEST-1.0.md`](DESKTOP-TEST-1.0.md); this file only

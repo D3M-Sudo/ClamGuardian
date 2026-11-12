@@ -1,4 +1,6 @@
-# D4 release-gate patch — applyable patch
+# D4 release-gate patch — historical implementation record
+
+> Historical note: this document describes the original D4 smoke-test patch and the workflow permission constraints observed at that time. Do not apply the archived patch blindly; inspect the current `.github/workflows/release-gate.yml` first. Current validation status is tracked in `../ROADMAP.md`.
 
 ## What this is
 
