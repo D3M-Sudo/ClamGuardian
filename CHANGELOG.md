@@ -9,7 +9,7 @@
 - Store VirusTotal reports independently by SHA-256 and API profile; migrate existing v1 cache databases transactionally while preserving acquisition and expiry timestamps.
 - Serialize provider rate reservations safely across distinct asyncio event loops; bound cross-process quota-lock waits and keep cache reads/writes and rate-state operations out of the worker's default executor.
 - Resolve VirusTotal DNS through a process-bounded daemon-thread resolver with a timeout, so a stuck system DNS/NSS lookup cannot prevent the service-owned event loop from shutting down.
-- Route optional VirusTotal hash enrichment through the shared scan runner for interactive, scheduled, USB and realtime path-based scans; preserve the ClamAV verdict and attach a provenance envelope to scan metadata.
+- Route optional VirusTotal hash enrichment through the shared scan runner for interactive, scheduled, USB and realtime scans using both pathname-based `submit()` and descriptor-based `submit_fd()` execution; descriptor scans have no pathname fallback. Preserve the ClamAV verdict and attach a provenance envelope to scan metadata.
 
 ### Fixed
 - Keep VirusTotal cache reads and writes off asyncio caller and service loops using a single bounded daemon worker; cache persistence no longer delays completed lookups.
