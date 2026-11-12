@@ -164,12 +164,13 @@ R1–R8 and LIC-001–LIC-020 have evidence; both architectures have independent
 
 ## PR execution snapshot (2026-11-12)
 
-The remediation is committed to PR #38 on `ci/node24-actions`, currently at `0e31cd3bd6b89c9028fb4dc6d01ab4de496d51cd`. PR #38 remains open and Draft, targeting `feature`; no merge, tag, release or publication was performed.
+The remediation is committed to PR #38 on `ci/node24-actions`, currently at `7b858222dd60c5fc2bb2a952f0c6fd53cd247cbb`. PR #38 remains open and Draft, targeting `feature`; no merge, tag, release or publication was performed.
 
-- Remote implementation: project and runtime license payloads, curated inventories, native Debian package/copyright collector, CA post-install provenance, flattened ELF SONAME provenance, libmpdec evidence gate, Syft AppDir/aggregate SBOM generation, pinned official schema validation, detached artifact digest manifests, extracted-AppImage verification, CI/release evidence uploads, README, CHANGELOG and execution report.
-- CI run [43285081892](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43285081892): success. Ruff and mypy passed; Python 3.11/3.12/3.13 each reported 557 passed and 9 skipped; runtime Python 3.14 check and pinned dependency audit passed.
+- Remote implementation: project and runtime license payloads, curated inventories, native Debian package/copyright collector, CA post-install provenance with maintainer-script SHA-256, flattened ELF SONAME provenance, Syft AppDir/aggregate SBOM generation, pinned official schema validation, detached artifact digest manifests, extracted-AppImage verification, CI/release evidence uploads, README, CHANGELOG and execution report.
+- CI run [43287780117](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43287780117): success. Ruff and mypy passed; Python 3.11/3.12/3.13 each reported 559 passed and 9 skipped; runtime Python 3.14 check and pinned dependency audit passed.
 - Native x86_64 and aarch64 AppImage builds and extracted-artifact checks passed. Each architecture collected copyright evidence for 117 bundled Debian packages, fetched/verified seven Type 2 runtime license documents, validated four SBOM documents against official schemas, passed GTK smoke and verified its final artifact SHA-256.
-- Native Flatpak x86_64/aarch64 checks passed. Release Gate [43285081896](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43285081896) passed preflight, GTK smoke, AppStream, local Flatpak build and real ClamAV scan.
-- Remaining blockers: 13 Python wheel license entries remain `NOASSERTION`; musl/zstd/zlib/mimalloc versions remain declared rather than verified installed versions; libmpdec version remains unknown; libfuse LGPL static-linking obligations require engineering/legal review; separate independent artifact and whole-branch review remains outstanding.
+- Native Flatpak x86_64/aarch64 checks passed. Release Gate [43287780155](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43287780155) passed preflight, GTK smoke, AppStream, local Flatpak build and real ClamAV scan.
+- SBOM coverage review: each aggregate SPDX document contains 142 package records, of which 108 still have `licenseDeclared: NOASSERTION`. The 13 Python wheel declarations are now aligned with Syft metadata and reconciled across SPDX/CycloneDX. The remaining native/system declarations need evidence-backed classification.
+- Remaining blockers: native/system `NOASSERTION` declarations; unverified installed versions for musl/zstd/zlib/mimalloc; unknown libmpdec version; libfuse LGPL static-linking obligations requiring engineering/legal review; separate independent artifact and whole-branch review.
 
 See `docs/reports/APPIMAGE-LICENSE-SBOM-REMEDIATION.md` for the detailed evidence and release-readiness verdict.
