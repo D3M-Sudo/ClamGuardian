@@ -267,7 +267,7 @@ def test_syft_installer_rejects_checksum_mismatch(
     assert result.returncode != 0
     assert "checksums file" in result.stderr.lower()
     captured = capture.read_text(encoding="utf-8")
-    assert f"syft_1.57.1_checksums.txt" in captured
+    assert "syft_1.57.1_checksums.txt" in captured
     assert f"syft_1.57.1_linux_{asset_arch}.tar.gz" not in captured
     assert not (install_dir / "syft").exists()
 
@@ -597,6 +597,7 @@ def test_native_license_collector_records_embedded_libmpdec_with_unknown_library
 
 
 def test_sbom_schema_validator_checks_all_four_documents(tmp_path: Path) -> None:
+    pytest.importorskip("jsonschema")
     import importlib.util
     import json
 
