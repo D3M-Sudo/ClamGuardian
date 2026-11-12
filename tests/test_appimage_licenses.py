@@ -83,6 +83,11 @@ def test_valid_appdir_and_runtime_inventories_are_accepted() -> None:
     appdir, runtime = _valid_inventories()
 
     assert validator.validate_inventories(appdir, runtime) == []
+    components = {item["id"]: item for item in appdir["components"]}
+    assert components["python-aiosignal"]["license"] == "Apache-2.0"
+    assert components["python-multidict"]["license"] == "Apache-2.0"
+    assert components["native-adwaita-icon-theme"]["license"] == "NOASSERTION"
+    assert components["native-adwaita-icon-theme"]["license_status"] == "unknown"
 
 
 def test_component_missing_required_field_is_rejected() -> None:
