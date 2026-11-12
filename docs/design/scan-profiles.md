@@ -1,7 +1,8 @@
 # M2 — Scan Profiles Design
 
 Questo documento descrive l'astrazione **ScanProfile** introdotta in M2 e le
-garanzie che la separano da ClamAV, dalla GTK UI e dal futuro CLI.
+garanzie che la separano da ClamAV e dai front-end GTK/CLI. La CLI è stata
+implementata successivamente; entrambi i front-end usano lo stesso registry Core.
 
 ## Flusso architetturale
 
@@ -33,7 +34,7 @@ garanzie che la separano da ClamAV, dalla GTK UI e dal futuro CLI.
               clamd                       clamscan
 ```
 
-**Principio: UI ≠ ClamAV CLI options.** La UI conosce `ScanProfile` e
+**Principio: front-end ≠ ClamAV CLI options.** GTK e CLI conoscono `ScanProfile` e
 `ScanProfileRegistry`; i flag come `--max-filesize` esistono solo dentro
 `clamguardian/engines/clamav.py`.
 
