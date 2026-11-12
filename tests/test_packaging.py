@@ -419,12 +419,17 @@ def test_appimage_packaging_recipe_and_helpers_exist() -> None:
     """The AppImage recipe and architecture-specific build/test helpers are tracked."""
     appimage = ROOT / "packaging" / "appimage"
     recipe = (appimage / "AppImageBuilder.yml").read_text(encoding="utf-8")
-    launcher = appimage / "clamguardian-launcher"
+    launcher = appimage / "clamguardian-launcher.c"
     for script in ("build-appimage.sh", "prepare-wheelhouse.sh", "test-appimage.sh"):
         path = appimage / script
         assert path.is_file()
         assert path.stat().st_mode & 0o111, f"{script} must be executable"
-    assert launcher.is_file() and launcher.stat().st_mode & 0o111
+    assert launcher.is_file()
+    launcher_source = launcher.read_text(encoding="utf-8")
+    assert "execv(python, python_argv)" in launcher_source
+    assert "APPDIR is not set" in launcher_source
+    assert "GI_TYPELIB_PATH" in launcher_source
+    assert 'cc -O2 -Wall -Wextra -Werror' in recipe
     assert "python3-gi" in recipe
     assert "gir1.2-gtk-4.0" in recipe
     assert "gir1.2-adw-1" in recipe

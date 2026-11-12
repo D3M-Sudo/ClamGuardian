@@ -9,8 +9,8 @@ and the application's locked Python runtime dependencies.
 1. Export runtime dependencies from uv.lock without development packages.
 2. Download only wheels compatible with the native Python 3.12 runner, verifying
    every wheel against the lockfile hashes.
-3. Package the Python application and GTK runtime using appimage-builder.
-4. Execute CLI smoke checks and start the GTK event loop under Xvfb/DBus.
+3. Compile a small native ELF launcher for the target architecture; it configures the bundled Python/GTK environment and forwards CLI arguments.\n4. Package the Python application and GTK runtime using appimage-builder.
+5. Execute CLI smoke checks and start the GTK event loop under Xvfb/DBus.
    The test requires the event loop to remain alive until the bounded timeout.
 
 No x86_64 artifact is relabelled as aarch64. Each architecture is built and
