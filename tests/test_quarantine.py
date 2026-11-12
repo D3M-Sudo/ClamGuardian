@@ -535,8 +535,10 @@ def test_restore_rejects_parent_replaced_by_symlink_after_validation(
 
     monkeypatch.setattr(quarantine_module, "_open_directory_chain", swap_then_open)
 
-    with pytest.raises(ValueError, match="Too many levels of symbolic links"):
+    with pytest.raises(OSError) as exc_info:
         vault.restore(entry.item_id, parent / "restored.bin")
+
+    assert exc_info.value.errno in {errno.ELOOP, errno.ENOTDIR}
 
     assert swapped
     assert list(outside.iterdir()) == []
