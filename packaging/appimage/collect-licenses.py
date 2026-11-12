@@ -192,7 +192,13 @@ def collect_package_provenance(
     owners_by_library_filename: dict[str, dict[str, set[str]]] = {}
     for source_path, packages in owners_by_path.items():
         filename = Path(source_path).name
-        if re.fullmatch(r"lib[^/]+\.so\.\d+(?:\.\d+)*", filename):
+        is_system_multiarch_library = re.fullmatch(
+            r"/(?:lib|usr/lib)/[^/]+/lib[^/]+\.so\.\d+(?:\.\d+)*",
+            source_path,
+        )
+        if is_system_multiarch_library and re.fullmatch(
+            r"lib[^/]+\.so\.\d+(?:\.\d+)*", filename
+        ):
             for package in packages:
                 owners_by_library_filename.setdefault(filename, {}).setdefault(
                     package, set()
