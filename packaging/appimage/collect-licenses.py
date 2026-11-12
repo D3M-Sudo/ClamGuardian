@@ -80,6 +80,41 @@ def _safe_name(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9.+_-]+", "_", value)
 
 
+def _stage_referenced_common_licenses(
+    content: bytes,
+    common_licenses_dir: Path,
+    output_dir: Path,
+) -> list[dict[str, str]]:
+    text = content.decode("utf-8", errors="replace")
+    names = sorted(set(re.findall(
+        r"(?:/usr/share/)?common-licenses/([A-Za-z0-9.+_-]+)",
+        text,
+    )))
+    evidence: list[dict[str, str]] = []
+    for name in names:
+        source = common_licenses_dir / name
+        if not source.is_file():
+            raise ValueError(
+                f"copyright document references missing common license text: {source}"
+            )
+        license_content = source.read_bytes()
+        relative = f"third-party/native/common-licenses/{name}"
+        destination = output_dir / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.exists() and destination.read_bytes() != license_content:
+            raise ValueError(
+                f"refusing to overwrite different common license evidence: {destination}"
+            )
+        destination.write_bytes(license_content)
+        evidence.append({
+            "name": name,
+            "source_path": str(source),
+            "artifact_path": relative,
+            "sha256": hashlib.sha256(license_content).hexdigest(),
+        })
+    return evidence
+
+
 def _debian_license_expression(content: bytes) -> tuple[str, str]:
     """Extract a conservative SPDX expression from Debian copyright stanzas."""
     text = content.decode("utf-8", errors="replace")
@@ -176,6 +211,7 @@ def collect_package_provenance(
     output_dir: Path,
     package_metadata_resolver: Callable[[str], dict[str, str | None]] = query_package_metadata,
     architecture: str = "unknown",
+    common_licenses_dir: Path = Path("/usr/share/common-licenses"),
 ) -> dict[str, Any]:
     """Map AppDir files to installed Debian packages and stage their copyright.
 
@@ -309,6 +345,7 @@ def collect_package_provenance(
             if content is not None
             else ("NOASSERTION", "unknown")
         )
+        referenced_common_licenses: list[dict[str, str]] = []
         if content is not None:
             destination.parent.mkdir(parents=True, exist_ok=True)
             if destination.exists() and destination.read_bytes() != content:
@@ -318,6 +355,9 @@ def collect_package_provenance(
             destination.write_bytes(content)
             package_evidence[package] = destination_relative
             package_copyright[package] = content
+            referenced_common_licenses = _stage_referenced_common_licenses(
+                content, common_licenses_dir, output_dir
+            )
         else:
             missing.append(package)
         package_list = dpkg_info_dir / f"{package}.list"
@@ -325,6 +365,9 @@ def collect_package_provenance(
             [f"/var/lib/dpkg/info/{package}.list"] if package_list.is_file() else []
         )
         source_paths.extend(sorted(package_source_paths.get(package, set())))
+        source_paths.extend(
+            item["source_path"] for item in referenced_common_licenses
+        )
         generated_paths = generated_paths_by_package.get(package, [])
         generated_output_provenance: list[dict[str, str]] = []
         if generated_paths:
@@ -364,6 +407,7 @@ def collect_package_provenance(
             "architecture": architecture,
             "artifact_paths": sorted(set(package_paths[package])),
             "source_paths": source_paths,
+            "referenced_common_licenses": referenced_common_licenses,
             "generated_output_provenance": generated_output_provenance,
             "detection_method": detection_method,
             "copyright_status": copyright_status,
@@ -440,6 +484,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--appdir", type=Path, required=True)
     parser.add_argument("--dpkg-info-dir", type=Path, default=Path("/var/lib/dpkg/info"))
     parser.add_argument("--doc-root", type=Path, default=Path("/usr/share/doc"))
+    parser.add_argument("--common-licenses-dir", type=Path, default=Path("/usr/share/common-licenses"))
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--architecture", required=True, choices=("x86_64", "aarch64"))
     args = parser.parse_args(argv)
@@ -447,6 +492,7 @@ def main(argv: list[str] | None = None) -> int:
         result = collect_package_provenance(
             args.appdir, args.dpkg_info_dir, args.doc_root, args.output_dir,
             architecture=args.architecture,
+            common_licenses_dir=args.common_licenses_dir,
         )
     except (OSError, ValueError) as exc:
         print(f"native license collection failed: {exc}", file=sys.stderr)
