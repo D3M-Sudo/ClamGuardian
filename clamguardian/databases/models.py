@@ -34,9 +34,10 @@ class DatabaseSource:
     added_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self):
+        if not isinstance(self.id, str) or not self.id.strip():
+            raise ValueError("Database source id cannot be empty")
         if (
-            not isinstance(self.id, str)
-            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", self.id) is None
+            re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", self.id) is None
             or ".." in self.id
         ):
             raise ValueError("Database source id must be a safe 1-64 character identifier")
