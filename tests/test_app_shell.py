@@ -110,3 +110,24 @@ def test_shutdown_always_closes_intelligence_worker(
     app._on_shutdown(app)
 
     intelligence_service.close.assert_called_once_with(timeout=8)
+
+
+def test_shutdown_cancels_ui_scans_when_service_loop_never_started(gtk_app) -> None:
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+
+    app = gtk_app
+    runner = SimpleNamespace(cancel_all=AsyncMock())
+    intelligence_service = Mock()
+    app._window = SimpleNamespace(
+        _intelligence_service=intelligence_service,
+        _scan_controller=SimpleNamespace(_runner=runner),
+    )
+    app._service_loop = None
+    app._service_runner = None
+
+    app._on_shutdown(app)
+
+    runner.cancel_all.assert_awaited_once()
+    intelligence_service.close.assert_called_once_with(timeout=8)
