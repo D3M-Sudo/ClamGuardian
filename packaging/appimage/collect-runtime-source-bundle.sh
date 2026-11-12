@@ -56,9 +56,10 @@ cp "$WORK/type2-runtime/scripts/common/install-dependencies.sh" "$ROOT/build-inp
 cp "$WORK/type2-runtime/scripts/docker/Dockerfile" "$ROOT/build-inputs/type2-runtime/"
 test -s "$WORK/type2-runtime/patches/libfuse/mount.c.diff"
 cp -a "$WORK/type2-runtime/patches" "$ROOT/build-inputs/type2-runtime/"
-for item in zstd zlib musl; do
+for item in zstd zlib; do
     fetch "https://raw.githubusercontent.com/alpinelinux/aports/v3.21.0/main/$item/APKBUILD" "$ROOT/build-inputs/alpine-3.21/$item.APKBUILD"
 done
+fetch "https://raw.githubusercontent.com/alpinelinux/aports/f2036bfe000ab05e1f300c6fce57be3da9db426e/main/musl/APKBUILD" "$ROOT/build-inputs/alpine-3.21/musl.APKBUILD"
 fetch "https://raw.githubusercontent.com/alpinelinux/aports/v3.21.0/community/mimalloc2/APKBUILD" "$ROOT/build-inputs/alpine-3.21/mimalloc2.APKBUILD"
 
 cat > "$ROOT/README-RELINK.md" <<'EOF'
