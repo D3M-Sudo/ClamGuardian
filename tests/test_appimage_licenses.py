@@ -1161,10 +1161,10 @@ def test_native_license_collector_rejects_generated_ca_bundle_without_postinst(
         )
 
 
-def test_sbom_reconciler_accepts_explicit_syft_license_ref_names() -> None:
+def test_sbom_reconciler_normalizes_syft_license_expressions_and_license_refs() -> None:
     module_path = ROOT / "packaging" / "appimage" / "verify-sbom.py"
     spec = importlib.util.spec_from_file_location(
-        "appimage_license_ref_reconciliation", module_path
+        "appimage_license_expression_reconciliation", module_path
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -1178,6 +1178,12 @@ def test_sbom_reconciler_accepts_explicit_syft_license_ref_names() -> None:
             "version": "6.9.1",
             "license": "LicenseRef-Apache-License-2.0",
         },
+        {"name": "aiohttp", "version": "3.14.5", "license": "(Apache-2.0 AND MIT)"},
+        {
+            "name": "cryptography",
+            "version": "50.0.1",
+            "license": "(Apache-2.0 OR BSD-3-Clause)",
+        },
     ]
     spdx = [
         {"name": "aiosignal", "versionInfo": "1.4.0", "licenseDeclared": "LicenseRef-Apache-2.0"},
@@ -1186,18 +1192,32 @@ def test_sbom_reconciler_accepts_explicit_syft_license_ref_names() -> None:
             "versionInfo": "6.9.1",
             "licenseDeclared": "LicenseRef-Apache-License-2.0",
         },
+        {
+            "name": "aiohttp",
+            "versionInfo": "3.14.5",
+            "licenseDeclared": "(Apache-2.0 AND MIT)",
+        },
+        {
+            "name": "cryptography",
+            "versionInfo": "50.0.1",
+            "licenseDeclared": "(Apache-2.0 OR BSD-3-Clause)",
+        },
     ]
     cyclonedx = [
-        {
-            "name": "aiosignal",
-            "version": "1.4.0",
-            "licenses": [{"license": {"name": "Apache 2.0"}}],
-        },
+        {"name": "aiosignal", "version": "1.4.0", "licenses": [{"license": {"name": "Apache 2.0"}}]},
         {
             "name": "multidict",
             "version": "6.9.1",
             "licenses": [{"license": {"name": "Apache License 2.0"}}],
         },
+        {"name": "aiohttp", "version": "3.14.5", "licenses": [{"expression": "Apache-2.0 AND MIT"}]},
+        {
+            "name": "cryptography",
+            "version": "50.0.1",
+            "licenses": [{"expression": "Apache-2.0 OR BSD-3-Clause"}],
+        },
     ]
 
     module._verify_component_records(expected, spdx, cyclonedx, "AppDir")
+
+
