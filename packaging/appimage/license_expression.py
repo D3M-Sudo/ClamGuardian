@@ -164,6 +164,12 @@ class _ExpressionParser:
         while self.peek() == "OR":
             self.take()
             values.append(self.and_expr())
+        if len(values) > 1 and any(
+            token in _SPECIAL
+            for value in values
+            for token in self._tokenize(value)
+        ):
+            raise ValueError("NONE or NOASSERTION cannot be used with OR")
         return " OR ".join(values)
 
     def parse(self) -> str:
