@@ -240,7 +240,7 @@ def collect_package_provenance(
             and appdir_path.is_file()
         ):
             with appdir_path.open("rb") as handle:
-                is_elf = handle.read(4) == b"\\x7fELF"
+                is_elf = handle.read(4) == b"\x7fELF"
             if is_elf:
                 candidates = {
                     filename: package_map
