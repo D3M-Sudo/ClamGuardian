@@ -109,7 +109,7 @@ jobs:
         env:
           GTK_A11Y: none
         run: xvfb-run -a dbus-run-session -- flatpak run --command=python3 io.github.clamguardian.ClamGuardian /app/share/clamguardian/gtk-smoke.py
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-flatpak-${{ matrix.arch }}
           path: ClamGuardian-*-linux-${{ matrix.arch }}.flatpak
@@ -159,7 +159,7 @@ jobs:
         run: |
           export APP_VERSION="${GITHUB_REF_NAME#v}"
           packaging/appimage/test-appimage.sh "dist/ClamGuardian-${GITHUB_REF_NAME#v}-${{ matrix.arch }}.AppImage"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-appimage-${{ matrix.arch }}
           path: dist/ClamGuardian-*-${{ matrix.arch }}.AppImage
