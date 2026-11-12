@@ -655,6 +655,7 @@ def test_sbom_build_pipeline_runs_schema_validation() -> None:
     assert "install-sbom-validator.sh" in build
     assert "validate-sbom.py" in build
     assert "schema-validation-$expected_arch.json" in test_script
+    assert "verify-sbom-report.py" in test_script
 
 
 def test_runtime_inventory_has_explicit_mimalloc_and_upstream_license_evidence() -> None:

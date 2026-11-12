@@ -144,16 +144,7 @@ python3 "$ROOT/packaging/appimage/verify-sbom.py" \
     --runtime-inventory "$ROOT/packaging/appimage/licenses/runtime-type2.json" \
     --native-inventory "$license_dir/native-packages.json" \
     --appdir-inventory "$license_dir/components.json"
-python3 - "$SBOM_DIR/schema-validation-$expected_arch.json" <<'PYTHON'
-import json
-import sys
-from pathlib import Path
-report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-documents = report.get("documents", {})
-if report.get("schema_validation") != "passed" or len(documents) != 4:
-    raise SystemExit("SBOM schema validation report is incomplete or unsuccessful")
-if any(item.get("status") != "passed" for item in documents.values()):
-    raise SystemExit("SBOM schema validation report contains a non-passing document")
-PYTHON
+python3 "$ROOT/packaging/appimage/verify-sbom-report.py" \
+    "$SBOM_DIR/schema-validation-$expected_arch.json"
 
 echo "AppImage architecture, runtime, licenses, SBOM, CLI and GTK construction checks passed"
