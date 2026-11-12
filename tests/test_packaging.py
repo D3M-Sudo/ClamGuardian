@@ -452,6 +452,12 @@ def test_appimage_packaging_recipe_and_helpers_exist() -> None:
     assert "type2-runtime/releases/download/20251108" in installer
     assert "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d" in installer
     assert "00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444" in installer
+    assert 'printf \'%s  %s\\n\' "$runtime_sha256" "$APPIMAGETOOL_DIR/$runtime_asset"' in installer
+    assert 'export APPIMAGETOOL_BINARY="$APPIMAGETOOL_DIR/$asset"' in installer
+    assert 'export APPIMAGETOOL_RUNTIME="$APPIMAGETOOL_DIR/$runtime_asset"' in installer
+    assert ': "${APPIMAGETOOL_BINARY:?missing pinned appimagetool binary}"' in installer
+    assert ': "${APPIMAGETOOL_RUNTIME:?missing pinned type2 runtime}"' in installer
+    assert "APPIMAGETOOL_DIR_PLACEHOLDER" not in installer
     assert 'if [ "$arg" = "--runtime-file" ]' in installer
     assert 'export APPIMAGE_EXTRACT_AND_RUN=1' in installer
     assert 'export PATH="$APPIMAGETOOL_DIR:$PATH"' in installer

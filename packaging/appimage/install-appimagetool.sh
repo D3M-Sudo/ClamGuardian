@@ -38,14 +38,19 @@ chmod +x "$APPIMAGETOOL_DIR/$asset"
 # AppImageKit runtime downloaded by appimage-builder cannot read this format.
 runtime_url="https://github.com/AppImage/type2-runtime/releases/download/20251108/$runtime_asset"
 curl --fail --location --retry 3 "$runtime_url" --output "$APPIMAGETOOL_DIR/$runtime_asset"
-printf '%s  %s\n' "$expected_sha256" "$APPIMAGETOOL_DIR/$asset" | sha256sum --check -
+printf '%s  %s\n' "$runtime_sha256" "$APPIMAGETOOL_DIR/$runtime_asset" | sha256sum --check -
 chmod +x "$APPIMAGETOOL_DIR/$runtime_asset"
 
 # appimage-builder passes its own legacy --runtime-file. Replace it with the
-# pinned type2-runtime while preserving every other argument.
+# pinned type2-runtime while preserving every other argument. Keep paths in
+# exported variables instead of generating shell code with sed substitutions.
+export APPIMAGETOOL_BINARY="$APPIMAGETOOL_DIR/$asset"
+export APPIMAGETOOL_RUNTIME="$APPIMAGETOOL_DIR/$runtime_asset"
 cat > "$APPIMAGETOOL_DIR/appimagetool" <<'WRAPPER'
 #!/usr/bin/env bash
 set -euo pipefail
+: "${APPIMAGETOOL_BINARY:?missing pinned appimagetool binary}"
+: "${APPIMAGETOOL_RUNTIME:?missing pinned type2 runtime}"
 args=()
 skip_next=0
 for arg in "$@"; do
@@ -63,14 +68,9 @@ if [ "$skip_next" -eq 1 ]; then
   echo "appimagetool received --runtime-file without a value" >&2
   exit 2
 fi
-exec env APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGETOOL_DIR_PLACEHOLDER/$ASSET_PLACEHOLDER" \
-  --runtime-file "$APPIMAGETOOL_DIR_PLACEHOLDER/$RUNTIME_ASSET_PLACEHOLDER" "${args[@]}"
+exec env APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGETOOL_BINARY" \
+  --runtime-file "$APPIMAGETOOL_RUNTIME" "${args[@]}"
 WRAPPER
-sed -i \
-  -e "s|APPIMAGETOOL_DIR_PLACEHOLDER|$APPIMAGETOOL_DIR|g" \
-  -e "s|ASSET_PLACEHOLDER|$asset|g" \
-  -e "s|RUNTIME_ASSET_PLACEHOLDER|$runtime_asset|g" \
-  "$APPIMAGETOOL_DIR/appimagetool"
 chmod +x "$APPIMAGETOOL_DIR/appimagetool"
 
 export APPIMAGE_EXTRACT_AND_RUN=1
