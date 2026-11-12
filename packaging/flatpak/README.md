@@ -1,82 +1,59 @@
 # Flatpak packaging
 
-Two manifests are kept side by side on purpose:
+Two manifests are kept side by side:
 
 | File | Source | Use |
 |---|---|---|
-| `io.github.clamguardian.ClamGuardian.yml` | wheel sources (offline build) + `type: git` pinned to the `v1.0.1` tag | Release and Flathub submission: reproducible, no moving branch |
-| `io.github.clamguardian.ClamGuardian.local.yml` | wheel sources (offline build) + `type: dir`, `path: ../..` | Development: builds the current working tree |
+| \`io.github.clamguardian.ClamGuardian.yml\` | GNOME 51 runtime, source Git tag pinned to the current package version, plus a native generated wheelhouse | Release builds |
+| \`io.github.clamguardian.ClamGuardian.local.yml\` | GNOME 51 runtime and current working tree | CI and development builds |
 
-Both manifests target `org.gnome.Platform//51` (runtime target concordato per Flathub; GNOME 46 è EOL). `org.gnome.Sdk//51` è disponibile su Flathub e viene installato dal workflow di release gate.
+## Native architecture wheelhouse
 
-The release manifest currently pins source to `v1.0.1` (see the manifest itself). This is a source-build pin, not by itself proof that a GitHub Release was published or that manual desktop validation was completed. When a new release is cut, update `tag` and add the resulting `commit` so that a moved tag cannot silently change the build.
+The previous manifests embedded x86_64-only binary wheels. The current CI
+prepares a wheelhouse separately on each native runner from the checked-in
+\`uv.lock\`:
 
-## What the module installs
+\`\`\`sh
+python -m pip install uv==0.9.5
+packaging/flatpak/prepare-wheelhouse.sh
+\`\`\`
 
-`pip3 install --no-build-isolation --no-deps --no-index --prefix=/app .` builds
-the wheel from the vendored `hatchling` wheel (no network during build, as
-required by Flathub), then `pip3 install --no-index --no-deps --prefix=/app`
-installs the runtime wheels (`cryptography`, `aiohttp` + transitive) also
-vendored as `type: file` sources with pinned `sha256`. Finally the desktop
-entry, the AppStream metainfo and the scalable icon are installed into
-`/app/share/{applications,metainfo,icons/hicolor/scalable/apps}`. The wheel
-itself ships the same three files through `[tool.hatch.build.targets.wheel.shared-data]`
-in `pyproject.toml`.
+The script exports the locked runtime set without development dependencies,
+then runs \`pip download --require-hashes --only-binary=:all:\` using the native
+Python 3.14 interpreter. Each downloaded wheel is checked against the hashes
+in \`uv.lock\`. The Flatpak build itself installs only from that wheelhouse
+with \`--no-index --no-deps\`, so no dependency is fetched from PyPI during
+the sandbox build.
 
-## Vendored wheels & maintenance (re-pin)
+The local manifest obtains the generated wheelhouse as part of the working
+tree source. The release manifest adds the generated directory as a separate
+source at \`packaging/flatpak/wheelhouse\` and obtains application source from
+the immutable Git tag. The tag, \`pyproject.toml\` version and AppStream
+release version must be updated together before creating a new release tag.
 
-The build is fully offline: every wheel (the `hatchling` backend + its
-dependencies + the runtime dependencies) is a `type: file` source with a pinned
-`sha256`. Two invariants must hold:
+## Offline build and platform
 
-- **Runtime wheels must match `uv.lock`.** `tests/test_packaging.py::
-  test_vendored_runtime_wheels_match_uv_lock` enforces it, so a `uv lock`
-  update that moves a version fails the test instead of silently building a
-  different dependency set than `uv lock --check` / `pip-audit` verify.
-- **Platform tags must match the runtime.** The `org.gnome.Sdk//51` sandbox
-  runs Python 3.14, so binary wheels are pinned to `cp314` (e.g. `cffi`,
-  `aiohttp`); `py3-none-any` and `abi3` wheels are also fine. x86_64
-  `manylinux` only (the Flathub/CI build arch).
+Both manifests target \`org.gnome.Platform//51\` and \`org.gnome.Sdk//51\`.
+The runtime wheelhouse is architecture-native: x86_64 builds run on
+\`ubuntu-24.04\`; aarch64 builds run on \`ubuntu-24.04-arm\`. No binary wheel is
+cross-labelled or reused between architectures.
 
-To re-pin after a `uv lock` bump (or a cffi/aiohttp release), for each changed
-package fetch the wheel URL + `sha256` from the PyPI JSON API and update **both**
-manifests (the `sources` entry *and* the filename in the build-command):
-
-```sh
-PKG=<name>; VER=<version>   # from uv.lock
-curl -s "https://pypi.org/pypi/$PKG/$VER/json" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(u['filename'], u['url'], u['digests']['sha256']) for u in d['urls'] if u['packagetype']=='bdist_wheel' and ('none-any' in u['filename'] or ('cp314' in u['filename'] and 'x86_64' in u['filename']))]"
-pytest tests/test_packaging.py   # the uv-lock test confirms the re-pin
-```
-
-`hatchling`, `packaging`, `pathspec`, `pluggy`, `tomlkit` and
-`trove-classifiers` are backend-only (hatchling is declared in
-`[build-system]`; the others are its own runtime deps) and are exempt from
-the lock check; they only need a re-pin when hatchling itself is bumped.
+The application installs its desktop entry, AppStream metainfo and scalable
+icon under \`/app/share\`. Runtime dependencies are installed offline into
+\`/app\`; the build backend and its dependencies remain separately vendored
+and SHA-256 pinned in both manifests.
 
 ## finish-args rationale
 
 | Argument | Why |
 |---|---|
-| `--socket=fallback-x11`, `--socket=wayland`, `--device=dri`, `--share=ipc` | GTK4/Libadwaita presentation |
-| `--talk-name=org.freedesktop.Flatpak` | `flatpak-spawn --host` is how `clamscan`/`freshclam` run on the host |
-| `--filesystem=host:ro` | read the host ClamAV definitions and reach the clamd UNIX socket |
-| `--share=network` | user-initiated third-party database downloads over HTTPS only |
-| `--filesystem=xdg-data/clamguardian:create` | quarantine vault, scan history and database state |
+| \`--socket=fallback-x11\`, \`--socket=wayland\`, \`--device=dri\`, \`--share=ipc\` | GTK4/Libadwaita presentation |
+| \`--talk-name=org.freedesktop.Flatpak\` | \`flatpak-spawn --host\` executes host ClamAV tools |
+| \`--talk-name=org.freedesktop.secrets\` | Secret Service credentials |
+| \`--filesystem=host:ro\` | Read host ClamAV definitions and clamd socket |
+| \`--share=network\` | Explicit user-initiated database downloads |
+| \`--filesystem=xdg-data/clamguardian:create\` | Quarantine, scan history and database state |
 
-## 4. Post-verification status (2026-10-16)
-
-Three items from §4 were closed by the Release Gate CI (final tag run `38977065253`,
-`v1.0.0` @ `8ee8a56`); the remaining host-side validation items are tracked separately:
-
-1. `appstreamcli validate` on the metainfo — **CLOSED** (job green in CI).
-2. **Build offline — CLOSED**: the manifests use vendored wheels (`hatchling`,
-   `cryptography`, `aiohttp` + transitive) con `sha256` pinned, installate con
-   `pip3 install --no-index --no-build-isolation` via `PYTHONPATH=.pep517-build`;
-   nessun download da PyPI avviene durante i `build-commands`. Entrambi i
-   manifest sono stati costruiti realmente in CI.
-3. ClamAV inside the sandbox: `flatpak-spawn --host` reaching a host `clamscan`,
-   the clamd socket permissions and the definition paths — verified in CI at
-   build level; a full on-desktop run remains a post-1.0 follow-up.
-4. Restoring a quarantined file to the host filesystem (`--filesystem=host:ro`
-   is read-only; restoring to an arbitrary host path needs a portal or a
-   narrower, writable path) — **OPEN (residual, post-1.0)**.
+The sandbox permission set is unchanged by the multi-architecture packaging
+work. The existing residuals remain: host-side ClamAV integration and
+quarantine restore destinations require real-desktop validation.
