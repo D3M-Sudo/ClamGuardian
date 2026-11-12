@@ -1,4 +1,6 @@
-# CLI / Headless design (M3)
+# CLI / Headless design
+
+> Original M3 design note, reconciled with the current parser and command families on 2026-11-12.
 
 ## Positioning
 
@@ -128,7 +130,7 @@ Ctrl+C (SIGINT)
 code 5 preserves the M0.5 distinction between *caller-requested
 cancellation* and *engine failure*.
 
-## Why no `databases` command in M3
+## Why there is no `databases` command
 
 `DatabaseManager` requires explicit `database_dir` / `state_file` paths and
 is designed around UI-driven flows (providers, status callbacks, confirmed
@@ -136,8 +138,12 @@ removals). Inventing CLI-default paths now would be an arbitrary policy
 choice outside the Core; the command is deferred until a Headless-approved
 configuration surface exists.
 
-## Future hooks (M4+, not implemented here)
+## Current command-family boundaries
 
-The `ScanResult` produced by `scan` is the natural input for a history
-database and reporting layer; the JSON contract above is designed to stay
-stable so M4 can consume it without CLI changes.
+The original M3 design anticipated history and reporting as future consumers. Those capabilities are now implemented:
+
+- `history` reads and manages the SQLite scan-history store, including scan-linked VirusTotal evidence retrieval through the HistoryStore API.
+- `intel` configures Public/Premium profiles, stores credentials in Secret Service, performs hash lookup and exposes consent-gated file submission.
+- `usb`, `monitor`, `schedule` and `autostart` expose the corresponding optional automation controls.
+
+The `scan --json` table above documents the scan-result contract only. Other command families define their own output and interaction contracts; use each subcommand's argparse help for the current options.
