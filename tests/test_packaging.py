@@ -94,6 +94,12 @@ def test_metainfo_matches_the_desktop_entry_and_the_declared_release() -> None:
     assert clamguardian.__version__ in released
 
 
+def test_latest_metainfo_release_matches_declared_version(pyproject: dict) -> None:
+    releases = _metainfo().findall("releases/release")
+    assert releases, "AppStream metainfo must declare at least one release"
+    assert releases[0].get("version") == pyproject["project"]["version"]
+
+
 def test_metainfo_has_the_elements_a_desktop_application_requires() -> None:
     root = _metainfo()
     assert root.findtext("developer/name"), "AppStream requires a developer block"
@@ -511,6 +517,13 @@ def test_packaging_workflows_use_finite_gtk_construction_smoke() -> None:
 
     release_gate = (ROOT / ".github/workflows/release-gate.yml").read_text(encoding="utf-8")
     assert "packaging/smoke/gtk-smoke.py" in release_gate
+
+
+def test_tag_release_workflow_validates_appstream_version_and_metadata() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "appstreamcli validate data/io.github.clamguardian.ClamGuardian.metainfo.xml" in workflow
+    assert 'ET.parse(root / "data/io.github.clamguardian.ClamGuardian.metainfo.xml")' in workflow
+    assert 'latest_version != version' in workflow
 
 
 def test_release_pipeline_prepares_a_draft_for_single_manual_publication() -> None:

@@ -85,6 +85,7 @@ def test_virustotal_controls_reflect_settings_and_credentials_ui(tmp_path: Path)
     assert page._intel_upload_button.get_sensitive() is True
 
 
-def test_automation_preferences_title_escapes_markup_ampersand() -> None:
+def test_automation_preferences_title_uses_plain_ampersand() -> None:
     source = Path(settings_page_module.__file__).read_text(encoding="utf-8")
-    assert 'title="Automation &amp; Protection"' in source
+    assert 'title="Automation & Protection"' in source
+    assert 'title="Automation &amp; Protection"' not in source
