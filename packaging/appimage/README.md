@@ -50,6 +50,27 @@ being staged. The mimalloc notice is included explicitly because the upstream
 runtime Makefile statically links `-lmimalloc` although the runtime's own
 `LICENSE` list does not mention it.
 
+The curated Type 2 inventory separates the requested Alpine binary package,
+source package, upstream version and exact APK revision. The upstream build did
+not retain its installed APK database: unknown package revisions remain null,
+and the mimalloc version is deliberately unasserted. The zstd license document
+is fetched from the v1.5.6 source tag to match the version identified in the
+packaged runtime evidence. The embedded CPython 3.12.3 `_decimal` extension is
+also represented as libmpdec 2.5.1 based on CPython's version header; its
+scoped Debian copyright notice is classified as BSD-2-Clause only when both
+source and binary redistribution conditions and the complete disclaimer are
+present.
+
+The build additionally creates an architecture-specific
+`runtime-source-bundle-*.tar.gz` containing the pinned Type 2 runtime source,
+libfuse 3.15.0 and its patch, squashfuse, static dependency source snapshots,
+the upstream build recipe and checksums. The bundle explicitly marks the
+mimalloc source version as a candidate because the historical provider and
+installed APK revision are unavailable. It is useful engineering evidence,
+but **does not itself establish LGPL-2.1 §6 compliance**. Keep the legal
+clearance blocked until source/binary identity and practical relinkability are
+independently reviewed.
+
 Syft is installed at a pinned version and SHA-256 per architecture. It generates
 AppDir SPDX 2.3 and CycloneDX 1.6 documents. The curated Type 2 runtime inventory
 is added to separate aggregate SBOMs because the runtime executable is outside
