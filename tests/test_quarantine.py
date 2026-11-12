@@ -1,5 +1,6 @@
 """Security-focused quarantine vault tests."""
 
+import errno
 from pathlib import Path
 
 import pytest
