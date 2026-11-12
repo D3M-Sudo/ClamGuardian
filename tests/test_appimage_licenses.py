@@ -1163,7 +1163,9 @@ def test_native_license_collector_rejects_generated_ca_bundle_without_postinst(
 
 def test_sbom_reconciler_accepts_explicit_syft_license_ref_names() -> None:
     module_path = ROOT / "packaging" / "appimage" / "verify-sbom.py"
-    spec = importlib.util.spec_from_file_location("appimage_license_ref_reconciliation", module_path)
+    spec = importlib.util.spec_from_file_location(
+        "appimage_license_ref_reconciliation", module_path
+    )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -1186,7 +1188,11 @@ def test_sbom_reconciler_accepts_explicit_syft_license_ref_names() -> None:
         },
     ]
     cyclonedx = [
-        {"name": "aiosignal", "version": "1.4.0", "licenses": [{"license": {"name": "Apache 2.0"}}]},
+        {
+            "name": "aiosignal",
+            "version": "1.4.0",
+            "licenses": [{"license": {"name": "Apache 2.0"}}],
+        },
         {
             "name": "multidict",
             "version": "6.9.1",
