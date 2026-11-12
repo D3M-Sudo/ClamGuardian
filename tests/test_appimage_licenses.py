@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import subprocess
 import sys
+import tarfile
 from pathlib import Path
 from typing import Any
 
@@ -1540,3 +1542,81 @@ def test_native_license_evidence_ignores_empty_license_fields() -> None:
     assert len(evidence) == 1
     assert evidence[0]["license_declaration"] == "MIT"
     assert module._debian_license_expression(content) == ("MIT", "verified")
+
+
+def test_release_assembly_script_packages_all_required_evidence(tmp_path: Path) -> None:
+    assets = tmp_path / "assets"
+    release = tmp_path / "release"
+    for filename in (
+        "ClamGuardian-1.0.1-linux-x86_64.flatpak",
+        "ClamGuardian-1.0.1-linux-aarch64.flatpak",
+        "ClamGuardian-1.0.1-x86_64.AppImage",
+        "ClamGuardian-1.0.1-aarch64.AppImage",
+    ):
+        subdir = "flatpak" if filename.endswith(".flatpak") else "appimage"
+        target = assets / subdir / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(filename.encode())
+    for architecture in ("x86_64", "aarch64"):
+        sbom = assets / f"release-appimage-{architecture}" / "sbom" / architecture
+        sbom.mkdir(parents=True)
+        for filename in (
+            f"aggregate-{architecture}.spdx.json",
+            f"aggregate-{architecture}.cdx.json",
+            "appdir.spdx.json",
+            "appdir.cdx.json",
+            f"artifact-{architecture}.json",
+            f"schema-validation-{architecture}.json",
+            "native-packages.json",
+            f"license-evidence-{architecture}.tar.gz",
+        ):
+            (sbom / filename).write_text(filename, encoding="utf-8")
+
+    script = ROOT / "packaging/appimage/assemble-release-evidence.sh"
+    result = subprocess.run(
+        ["bash", str(script), str(assets), str(release), "1.0.1"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    expected = {
+        "ClamGuardian-1.0.1-linux-x86_64.flatpak",
+        "ClamGuardian-1.0.1-linux-aarch64.flatpak",
+        "ClamGuardian-1.0.1-x86_64.AppImage",
+        "ClamGuardian-1.0.1-aarch64.AppImage",
+        "ClamGuardian-1.0.1-sbom-x86_64.tar.gz",
+        "ClamGuardian-1.0.1-sbom-aarch64.tar.gz",
+        "SHA256SUMS",
+    }
+    assert {path.name for path in release.iterdir()} == expected
+    for architecture in ("x86_64", "aarch64"):
+        archive = release / f"ClamGuardian-1.0.1-sbom-{architecture}.tar.gz"
+        with tarfile.open(archive, "r:gz") as handle:
+            names = set(handle.getnames())
+        assert f"aggregate-{architecture}.spdx.json" in names
+        assert f"aggregate-{architecture}.cdx.json" in names
+        assert "native-packages.json" in names
+        assert f"license-evidence-{architecture}.tar.gz" in names
+    checksum = subprocess.run(
+        ["sha256sum", "--check", "SHA256SUMS"],
+        cwd=release,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert checksum.returncode == 0, checksum.stdout + checksum.stderr
+
+
+def test_release_assembly_script_fails_when_required_evidence_is_missing(tmp_path: Path) -> None:
+    assets = tmp_path / "assets"
+    release = tmp_path / "release"
+    assets.mkdir()
+    script = ROOT / "packaging/appimage/assemble-release-evidence.sh"
+    result = subprocess.run(
+        ["bash", str(script), str(assets), str(release), "1.0.1"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
