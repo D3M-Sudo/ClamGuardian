@@ -5,7 +5,9 @@ import json
 import os
 import shutil
 import tempfile
-from collections.abc import Awaitable, Callable
+import threading
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,6 +21,25 @@ class DatabaseUpdateError(RuntimeError):
 
 
 StatusCallback = Callable[[InstalledDatabase], Awaitable[None] | None]
+
+@asynccontextmanager
+async def _async_thread_lock(lock: threading.Lock) -> AsyncIterator[None]:
+    """Acquire a process-wide lock without blocking or binding to one event loop."""
+    if not lock.acquire(blocking=False):
+        acquisition = asyncio.create_task(asyncio.to_thread(lock.acquire))
+        try:
+            await asyncio.shield(acquisition)
+        except asyncio.CancelledError:
+            # The executor thread cannot be cancelled. Wait until it acquires
+            # the lock, then release it here instead of leaking the lock.
+            await asyncio.shield(acquisition)
+            lock.release()
+            raise
+    try:
+        yield
+    finally:
+        lock.release()
+
 
 
 class DatabaseManager:
@@ -38,40 +59,51 @@ class DatabaseManager:
         self.status_callback = status_callback
         self._sources: dict[str, DatabaseSource] = {}
         self._installed: dict[str, InstalledDatabase] = {}
-        self._locks: dict[str, asyncio.Lock] = {}
+        self._locks: dict[str, threading.Lock] = {}
+        self._locks_guard = threading.Lock()
+        self._state_lock = threading.RLock()
+        self._updating_sources: set[str] = set()
         self._load_state()
 
     @property
     def sources(self):
-        return tuple(self._sources.values())
+        with self._state_lock:
+            return tuple(self._sources.values())
 
     @property
     def installed(self):
-        return tuple(self._installed.values())
+        with self._state_lock:
+            return tuple(self._installed.values())
 
     def add_source(self, source: DatabaseSource) -> None:
-        if source.id in self._sources:
-            raise ValueError(f"Database source already exists: {source.id}")
-        self._ensure_artifact_names_available(source)
-        self._sources[source.id] = source
-        self._persist()
+        with self._state_lock:
+            if source.id in self._sources:
+                raise ValueError(f"Database source already exists: {source.id}")
+            self._ensure_artifact_names_available(source)
+            self._sources[source.id] = source
+            self._persist()
 
     def remove_source(self, source_id: str) -> None:
-        source = self._require(source_id)
-        remaining = [
-            candidate for candidate_id, candidate in self._sources.items()
-            if candidate_id != source_id
-        ]
-        for artifact in source.artifacts:
-            if not any(
-                other.filename == artifact.filename
-                for candidate in remaining
-                for other in candidate.artifacts
-            ):
-                (self.database_dir / artifact.filename).unlink(missing_ok=True)
-        self._sources.pop(source_id)
-        self._installed.pop(source_id, None)
-        self._persist()
+        with self._state_lock:
+            if source_id in self._updating_sources:
+                raise RuntimeError(
+                    f"Cannot remove database source while its update is in progress: {source_id}"
+                )
+            source = self._require(source_id)
+            remaining = [
+                candidate for candidate_id, candidate in self._sources.items()
+                if candidate_id != source_id
+            ]
+            for artifact in source.artifacts:
+                if not any(
+                    other.filename == artifact.filename
+                    for candidate in remaining
+                    for other in candidate.artifacts
+                ):
+                    (self.database_dir / artifact.filename).unlink(missing_ok=True)
+            self._sources.pop(source_id)
+            self._installed.pop(source_id, None)
+            self._persist()
 
     def _ensure_artifact_names_available(
         self, source: DatabaseSource, *, excluding_source_id: str | None = None
@@ -92,46 +124,72 @@ class DatabaseManager:
                 )
 
     def set_enabled(self, source_id, enabled):
-        s = self._require(source_id)
-        self._sources[source_id] = DatabaseSource(
-            s.id, s.name, s.description, s.artifacts, enabled, s.auto_update, s.added_at
-        )
-        current = self._installed.get(source_id)
-        if current:
-            self._installed[source_id] = InstalledDatabase(
-                self._sources[source_id],
-                DatabaseStatus.INSTALLED if enabled else DatabaseStatus.DISABLED,
-                current.installed_at,
-                current.last_error,
-                current.artifact_files,
+        with self._state_lock:
+            if source_id in self._updating_sources:
+                raise RuntimeError(
+                    f"Cannot change database source state while its update is in progress: {source_id}"
+                )
+            s = self._require(source_id)
+            self._sources[source_id] = DatabaseSource(
+                s.id, s.name, s.description, s.artifacts, enabled, s.auto_update, s.added_at
             )
-        self._persist()
+            current = self._installed.get(source_id)
+            if current:
+                self._installed[source_id] = InstalledDatabase(
+                    self._sources[source_id],
+                    DatabaseStatus.INSTALLED if enabled else DatabaseStatus.DISABLED,
+                    current.installed_at,
+                    current.last_error,
+                    current.artifact_files,
+                )
+            self._persist()
 
     def set_auto_update(self, source_id, enabled):
-        s = self._require(source_id)
-        self._sources[source_id] = DatabaseSource(
-            s.id, s.name, s.description, s.artifacts, s.enabled, enabled, s.added_at
-        )
-        self._persist()
+        with self._state_lock:
+            if source_id in self._updating_sources:
+                raise RuntimeError(
+                    f"Cannot change database source state while its update is in progress: {source_id}"
+                )
+            s = self._require(source_id)
+            self._sources[source_id] = DatabaseSource(
+                s.id, s.name, s.description, s.artifacts, s.enabled, enabled, s.added_at
+            )
+            self._persist()
 
     def status(self, source_id):
-        s = self._require(source_id)
-        return self._installed.get(source_id, InstalledDatabase(s, DatabaseStatus.AVAILABLE))
+        with self._state_lock:
+            s = self._require(source_id)
+            return self._installed.get(
+                source_id, InstalledDatabase(s, DatabaseStatus.AVAILABLE)
+            )
 
     async def update(self, source_id: str) -> InstalledDatabase:
-        source = self._require(source_id)
-        if not source.enabled:
-            raise DatabaseUpdateError(f"Database source is disabled: {source.name}")
-        lock = self._locks.setdefault(source_id, asyncio.Lock())
-        async with lock:
-            previous = self._installed.get(source_id)
+        with self._state_lock:
+            source = self._require(source_id)
+            if not source.enabled:
+                raise DatabaseUpdateError(f"Database source is disabled: {source.name}")
+        with self._locks_guard:
+            lock = self._locks.setdefault(source_id, threading.Lock())
+
+        async with _async_thread_lock(lock):
+            with self._state_lock:
+                source = self._require(source_id)
+                if not source.enabled:
+                    raise DatabaseUpdateError(
+                        f"Database source is disabled: {source.name}"
+                    )
+                previous = self._installed.get(source_id)
+                self._updating_sources.add(source_id)
+
             staging: Path | None = None
             backup: Path | None = None
             moved: list[tuple[Path, Path]] = []
+            rollback_complete = False
             try:
-                self._ensure_artifact_names_available(
-                    source, excluding_source_id=source_id
-                )
+                with self._state_lock:
+                    self._ensure_artifact_names_available(
+                        source, excluding_source_id=source_id
+                    )
                 # The parent may not exist on first run. Create it before using
                 # it as the parent of the private staging and rollback dirs.
                 self.database_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -172,15 +230,34 @@ class DatabaseManager:
                     None,
                     tuple(a.filename for a in source.artifacts),
                 )
-                self._installed[source_id] = result
-                self._persist()
+                with self._state_lock:
+                    self._installed[source_id] = result
+                    self._persist()
                 await self._emit(result)
+                rollback_complete = True
                 return result
+            except asyncio.CancelledError:
+                rollback_complete = self._rollback_moved(moved)
+                with self._state_lock:
+                    if previous is None:
+                        self._installed.pop(source_id, None)
+                        restored_status = InstalledDatabase(
+                            source, DatabaseStatus.AVAILABLE
+                        )
+                    else:
+                        self._installed[source_id] = previous
+                        restored_status = previous
+                    try:
+                        self._persist()
+                    except Exception:
+                        logger.exception(
+                            "Could not persist database state after cancelled update"
+                        )
+                with contextlib.suppress(BaseException):
+                    await self._emit(restored_status)
+                raise
             except Exception as exc:
-                for destination, backup_path in moved:
-                    destination.unlink(missing_ok=True)
-                    if backup_path.exists():
-                        backup_path.replace(destination)
+                rollback_complete = self._rollback_moved(moved)
                 result = InstalledDatabase(
                     source,
                     DatabaseStatus.ERROR,
@@ -188,15 +265,45 @@ class DatabaseManager:
                     str(exc),
                     previous.artifact_files if previous else (),
                 )
-                self._installed[source_id] = result
-                self._persist()
+                with self._state_lock:
+                    self._installed[source_id] = result
+                    self._persist()
                 await self._emit(result)
-                raise DatabaseUpdateError(f"Update failed for {source.name}: {exc}") from exc
+                raise DatabaseUpdateError(
+                    f"Update failed for {source.name}: {exc}"
+                ) from exc
             finally:
                 if staging is not None:
                     shutil.rmtree(staging, ignore_errors=True)
                 if backup is not None:
-                    shutil.rmtree(backup, ignore_errors=True)
+                    if rollback_complete:
+                        shutil.rmtree(backup, ignore_errors=True)
+                    else:
+                        logger.error(
+                            "Database rollback was incomplete; preserving recovery "
+                            "artifacts at %s",
+                            backup,
+                        )
+                with self._state_lock:
+                    self._updating_sources.discard(source_id)
+
+    @staticmethod
+    def _rollback_moved(moved: list[tuple[Path, Path]]) -> bool:
+        """Restore replaced artifacts; preserve backups if any rollback step fails."""
+        complete = True
+        for destination, backup_path in reversed(moved):
+            try:
+                destination.unlink(missing_ok=True)
+                if backup_path.exists():
+                    backup_path.replace(destination)
+            except OSError:
+                complete = False
+                logger.exception(
+                    "Could not roll back database artifact %s from %s",
+                    destination,
+                    backup_path,
+                )
+        return complete
 
     async def update_enabled(self):
         results = []
@@ -220,19 +327,25 @@ class DatabaseManager:
         return self._sources[source_id]
 
     def _persist(self):
-        self.state_file.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "sources": [self._source_dict(s) for s in self.sources],
-            "installed": {k: self._installed_dict(v) for k, v in self._installed.items()},
-        }
-        fd, temp = tempfile.mkstemp(prefix=self.state_file.name + ".", dir=self.state_file.parent)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(payload, handle, indent=2, sort_keys=True)
-                handle.write("\n")
-            os.replace(temp, self.state_file)
-        finally:
-            Path(temp).unlink(missing_ok=True)
+        with self._state_lock:
+            self.state_file.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "sources": [self._source_dict(s) for s in self._sources.values()],
+                "installed": {
+                    key: self._installed_dict(value)
+                    for key, value in self._installed.items()
+                },
+            }
+            fd, temp = tempfile.mkstemp(
+                prefix=self.state_file.name + ".", dir=self.state_file.parent
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(payload, handle, indent=2, sort_keys=True)
+                    handle.write("\n")
+                os.replace(temp, self.state_file)
+            finally:
+                Path(temp).unlink(missing_ok=True)
 
     def _load_state(self):
         if not self.state_file.exists():
