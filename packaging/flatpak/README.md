@@ -69,7 +69,7 @@ Three items from §4 were closed by the Release Gate CI (final tag run `38977065
 `v1.0.0` @ `8ee8a56`); the remaining host-side validation items are tracked separately:
 
 1. `appstreamcli validate` on the metainfo — **CLOSED** (job green in CI).
-2. **Build offline — CLOSED**: i manifest usano ora wheel vendute (`hatchling`,
+2. **Build offline — CLOSED**: the manifests use vendored wheels (`hatchling`,
    `cryptography`, `aiohttp` + transitive) con `sha256` pinned, installate con
    `pip3 install --no-index --no-build-isolation` via `PYTHONPATH=.pep517-build`;
    nessun download da PyPI avviene durante i `build-commands`. Entrambi i
