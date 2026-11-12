@@ -1252,16 +1252,16 @@ def test_native_license_collector_stages_referenced_common_license_text(
     (appdir / "usr/lib/libexample.so").write_bytes(b"ELF fixture")
     info.mkdir()
     (info / "libexample1:amd64.list").write_text(
-        "/usr/lib/libexample.so\\n", encoding="utf-8"
+        "/usr/lib/libexample.so\n", encoding="utf-8"
     )
     (docs / "libexample1").mkdir(parents=True)
     (docs / "libexample1/copyright").write_text(
-        "Files: *\\nLicense: GPL-2+\\n "
-        "Full text: /usr/share/common-licenses/GPL-2\\n",
+        "Files: *\nLicense: GPL-2+\n "
+        "Full text: /usr/share/common-licenses/GPL-2\n",
         encoding="utf-8",
     )
     common.mkdir()
-    license_text = "GNU General Public License version 2 full text\\n"
+    license_text = "GNU General Public License version 2 full text\n"
     (common / "GPL-2").write_text(license_text, encoding="utf-8")
 
     result = module.collect_package_provenance(
@@ -1307,12 +1307,12 @@ def test_native_license_collector_fails_closed_for_missing_common_license_text(
     (appdir / "usr/lib/libexample.so").write_bytes(b"ELF fixture")
     info.mkdir()
     (info / "libexample1:amd64.list").write_text(
-        "/usr/lib/libexample.so\\n", encoding="utf-8"
+        "/usr/lib/libexample.so\n", encoding="utf-8"
     )
     (docs / "libexample1").mkdir(parents=True)
     (docs / "libexample1/copyright").write_text(
-        "Files: *\\nLicense: GPL-2+\\n "
-        "Full text: /usr/share/common-licenses/GPL-2\\n",
+        "Files: *\nLicense: GPL-2+\n "
+        "Full text: /usr/share/common-licenses/GPL-2\n",
         encoding="utf-8",
     )
     common.mkdir()
