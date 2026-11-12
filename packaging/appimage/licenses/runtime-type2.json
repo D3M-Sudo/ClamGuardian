@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "runtime": {
+    "release": "20251108",
+    "upstream_commit": "dd6cebedcbddde9c82f89b011e8e1d40b6e43868",
+    "artifacts": {
+      "x86_64": "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d",
+      "aarch64": "00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444"
+    },
+    "build_environment": "Alpine Linux 3.21; Docker/chroot build recipes use apk add without exact package-version pins",
+    "package_version_evidence": "Alpine 3.21 aports APKBUILD revisions preceding the 2025-11-08 release; exact installed APK database records were not retained in the upstream release logs",
+    "build_recipe_paths": [
+      "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/src/runtime/Makefile",
+      "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/common/install-dependencies.sh",
+      "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/chroot/build.sh",
+      "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/docker/Dockerfile"
+    ]
+  },
+  "components": [
+    {
+      "id": "runtime-type2-appimage",
+      "name": "AppImage Type 2 runtime",
+      "version": "20251108",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "MIT",
+      "license_status": "verified",
+      "source": "AppImage/type2-runtime release 20251108 at commit dd6cebedcbddde9c82f89b011e8e1d40b6e43868",
+      "source_package": "AppImage/type2-runtime",
+      "artifact_paths": [
+        "AppImage Type 2 runtime executable"
+      ],
+      "source_paths": [
+        "https://github.com/AppImage/type2-runtime/tree/dd6cebedcbddde9c82f89b011e8e1d40b6e43868"
+      ],
+      "evidence_paths": [
+        "usr/share/licenses/ClamGuardian/third-party/runtime/AppImage-type2-runtime-MIT.txt"
+      ],
+      "detection_method": "upstream-release-and-source",
+      "verification_status": "verified"
+    },
+    {
+      "id": "runtime-musl",
+      "name": "musl",
+      "version": "1.2.5",
+      "version_status": "declared",
+      "architecture": "both",
+      "license": "MIT",
+      "license_status": "verified",
+      "source": "Alpine 3.21 musl APKBUILD declares 1.2.5-r21 at f2036bfe000ab05e1f300c6fce57be3da9db426e; exact installed package record unavailable",
+      "source_package": "musl-dev",
+      "artifact_paths": [
+        "AppImage Type 2 runtime executable"
+      ],
+      "evidence_paths": [
+        "usr/share/licenses/ClamGuardian/third-party/runtime/musl-COPYRIGHT.txt"
+      ],
+      "detection_method": "upstream-build-recipe",
+      "verification_status": "partial",
+      "source_paths": [
+        "https://github.com/alpinelinux/aports/blob/f2036bfe000ab05e1f300c6fce57be3da9db426e/main/musl/APKBUILD",
+        "https://github.com/ifduyue/musl/tree/v1.2.5"
+      ]
+    },
+    {
+      "id": "runtime-libfuse",
+      "name": "libfuse",
+      "version": "3.15.0",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "LGPL-2.1-only",
+      "license_status": "verified",
+      "source": "libfuse 3.15.0 source archive SHA-256 70589cfd5e1cff7ccd6ac91c86c01be340b227285c5e200baa284e401eea2ca0; patched mount.c from the pinned runtime source commit",
+      "source_package": null,
+      "artifact_paths": [
+        "AppImage Type 2 runtime executable"
+      ],
+      "evidence_paths": [
+        "usr/share/licenses/ClamGuardian/third-party/runtime/libfuse-LGPL2.txt"
+      ],
+      "detection_method": "upstream-build-recipe",
+      "verification_status": "verified",
+      "source_paths": [
+        "https://github.com/libfuse/libfuse/releases/tag/fuse-3.15.0",
+        "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/common/install-dependencies.sh"
+      ]
+    },
+    {
+      "id": "runtime-squashfuse",
+      "name": "squashfuse",
+      "version": "0.5.2",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "BSD-2-Clause",
+      "license_status": "verified",
+      "source": "squashfuse 0.5.2 source archive SHA-256 db0238c5981dabbd80ee09ae15387f390091668ca060a7bc38047912491443d3",
+      "source_package": null,
+      "artifact_paths": [
+        "AppImage Type 2 runtime executable"
+      ],
+      "evidence_paths": [
+        "usr/share/licenses/ClamGuardian/third-party/runtime/squashfuse-LICENSE.txt"
+      ],
+      "detection_method": "upstream-build-recipe",
+      "verification_status": "verified",
+      "source_paths": [
+        "https://github.com/vasi/squashfuse/tree/0.5.2",
+        "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/common/install-dependencies.sh"
+      ]
+    },
+    {
+      "id": "runtime-zstd",
+      "name": "zstd",
+      "version": "1.5.7",
+      "version_status": "declared",
+      "architecture": "both",
+      "license": "BSD-3-Clause",
+      "license_status": "verified",
+      "source": "Alpine 3.21 zstd APKBUILD declares 1.5.7-r2 at 3c6e2ee2b16f403d53eab39c4426eb61f003c322; exact installed package record unavailable; BSD-3-Clause option selected",
+      "source_package": "zstd-static",
+      "artifact_paths": [
+        "AppImage Type 2 runtime executable"
+      ],
+      "evidence_paths": [
+        "usr/share/licenses/ClamGuardian/third-party/runtime/zstd-LICENSE.txt"
+      ],
+      "detection_method": "upstream-build-recipe",
+      "verification_status": "partial",
+      "source_paths": [
+        "https://github.com/alpinelinux/aports/blob/3c6e2ee2b16f403d53eab39c4426eb61f003c322/main/zstd/APKBUILD",
+        "https://github.com/meta/zstd/tree/v1.5.7",
+        "https://github.com/facebook/zstd/tree/v1.5.7"
+      ]
+    },
+    {
+      "id": "runtime-zlib",
+      "name": "zlib",
+      "version": "1.3.1",
+      "version_status": "declared",
+      "architecture": "both",
+      "license": "Zlib",
+      "license_status": "verified",
+      "source": "Alpine 3.21 zlib APKBUILD declares 1.3.1-r2 at 4c2722e7ecc1c5e3ba882429044a101497121223; exact installed package record unavailable",
+      "source_package": "zlib-static",
+      "artifact_paths": [
+        "AppImage Type 2 runtime executable"
+      ],
+      "evidence_paths": [
+        "usr/share/licenses/ClamGuardian/third-party/runtime/zlib-LICENSE.txt"
+      ],
+      "detection_method": "upstream-build-recipe",
+      "verification_status": "partial",
+      "source_paths": [
+        "https://github.com/alpinelinux/aports/blob/4c2722e7ecc1c5e3ba882429044a101497121223/main/zlib/APKBUILD",
+        "https://github.com/madler/zlib/tree/v1.3.1"
+      ]
+    },
+    {
+      "id": "runtime-mimalloc",
+      "name": "mimalloc",
+      "version": "2.2.3",
+      "version_status": "declared",
+      "architecture": "both",
+      "license": "MIT",
+      "license_status": "verified",
+      "source": "Alpine 3.21 mimalloc2 APKBUILD declares 2.2.3-r2 at 254024f3b0572339fd24fae8865a4e313239ba71; exact installed package record unavailable; statically linked by src/runtime/Makefile but omitted from upstream LICENSE list",
+      "source_package": "mimalloc2-dev",
+      "artifact_paths": [
+        "AppImage Type 2 runtime executable"
+      ],
+      "evidence_paths": [
+        "usr/share/licenses/ClamGuardian/third-party/runtime/mimalloc-LICENSE.txt"
+      ],
+      "detection_method": "upstream-build-recipe",
+      "verification_status": "partial",
+      "source_paths": [
+        "https://github.com/alpinelinux/aports/blob/254024f3b0572339fd24fae8865a4e313239ba71/community/mimalloc2/APKBUILD",
+        "https://github.com/microsoft/mimalloc/tree/v2.2.3",
+        "https://github.com/microsoft/mimalloc/tree/v2.2.3"
+      ]
+    }
+  ]
+}

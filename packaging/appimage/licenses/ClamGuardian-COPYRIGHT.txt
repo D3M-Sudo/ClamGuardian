@@ -1,0 +1,5 @@
+Copyright (C) 2026 ClamGuardian contributors.
+
+ClamGuardian is licensed under the GNU General Public License, version 3 or
+(at your option) any later version. The complete license text is provided in
+GPL-3.0-or-later.txt.

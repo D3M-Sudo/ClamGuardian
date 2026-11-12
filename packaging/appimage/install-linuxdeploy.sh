@@ -36,7 +36,10 @@ fi
 chmod +x "$binary"
 export LINUXDEPLOY_BINARY="$binary"
 export APPIMAGE_EXTRACT_AND_RUN=1
-"$LINUXDEPLOY_BINARY" --help 2>&1 | grep -q -- '--library' || {
-    echo "Pinned linuxdeploy binary does not expose the required --library option" >&2
-    exit 1
-}
+help_output="$("$LINUXDEPLOY_BINARY" --help 2>&1)"
+for option in --library --desktop-file --custom-apprun; do
+    grep -q -- "$option" <<<"$help_output" || {
+        echo "Pinned linuxdeploy binary does not expose the required $option option" >&2
+        exit 1
+    }
+done

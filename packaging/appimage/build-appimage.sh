@@ -36,7 +36,7 @@ sudo apt-get install -y \
 
 SYSTEM_PYTHON=/usr/bin/python3.12
 test "$("$SYSTEM_PYTHON" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')" = "3.12"
-"$SYSTEM_PYTHON" -c 'import gi, cairo; from gi.repository import Gtk, Adw, Secret; print("System GTK/GI runtime OK")'
+"$SYSTEM_PYTHON" -c 'import gi, cairo; gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1"); gi.require_version("Secret", "1"); from gi.repository import Gtk, Adw, Secret; print("System GTK/GI runtime OK")'
 test -d /usr/lib/python3.12/encodings
 
 APPDIR="$ROOT/build/appimage/AppDir"
@@ -47,6 +47,11 @@ mkdir -p \
     "$APPDIR/usr/lib/python3/dist-packages" \
     "$APPDIR/opt/python" \
     "$APPDIR/usr/share/clamguardian"
+
+"$ROOT/packaging/appimage/collect-runtime-licenses.sh" \
+    "$ROOT/packaging/appimage/licenses/third-party/runtime"
+"$ROOT/packaging/appimage/stage-license-documents.sh" \
+    "$ROOT/packaging/appimage/licenses" "$APPDIR"
 
 # Copy native Ubuntu 24.04 CPython 3.12. PYTHONHOME points to AppDir; the
 # relative lib/python3.12 symlink maps the standard library into /usr/lib.
@@ -60,8 +65,8 @@ ln -sfn ../usr/lib/python3.12 "$APPDIR/lib/python3.12"
 python -m pip install --no-index --no-deps --target "$APPDIR/opt/python" "$WHEELHOUSE"/*.whl
 cp -a "$ROOT/clamguardian" "$APPDIR/opt/python/"
 
-# The AppRun is a small, auditable shell entrypoint; no generated AppRun patch.
-install -Dm755 "$ROOT/packaging/appimage/AppRun" "$APPDIR/AppRun"
+# linuxdeploy installs the reviewed custom AppRun via --custom-apprun.
+# Do not pre-create AppDir/AppRun: that makes linuxdeploy replace it noisily.
 install -Dm644 "$ROOT/data/io.github.clamguardian.ClamGuardian.desktop" \
     "$APPDIR/io.github.clamguardian.ClamGuardian.desktop"
 sed -i 's/^Exec=.*/Exec=AppRun ui/' "$APPDIR/io.github.clamguardian.ClamGuardian.desktop"
@@ -79,6 +84,10 @@ install -Dm755 "$ROOT/packaging/smoke/gtk-smoke.py" \
 
 export APPIMAGE_ARCH
 "$ROOT/packaging/appimage/bundle-runtime.sh" "$APPDIR"
+python3 "$ROOT/packaging/appimage/collect-licenses.py" \
+    --appdir "$APPDIR" \
+    --output-dir "$APPDIR/usr/share/licenses/ClamGuardian" \
+    --architecture "$APPIMAGE_ARCH"
 
 # Validate the AppDir before creating the single-file artifact.
 "$APPDIR/AppRun" version
@@ -93,4 +102,26 @@ rm -f "$output"
 appimagetool "$APPDIR" "$output"
 chmod +x "$output"
 test -s "$output"
+
+# Generate AppDir SBOMs and aggregate whole-artifact SBOMs after packaging so
+# the detached artifact manifest can bind the evidence to the final SHA-256.
+. "$ROOT/packaging/appimage/install-syft.sh"
+sbom_dir="$ROOT/dist/sbom/$APPIMAGE_ARCH"
+python3 "$ROOT/packaging/appimage/generate-sbom.py" \
+    --appdir "$APPDIR" \
+    --runtime-inventory "$ROOT/packaging/appimage/licenses/runtime-type2.json" \
+    --artifact "$output" \
+    --architecture "$APPIMAGE_ARCH" \
+    --syft "$SYFT_INSTALL_DIR/syft" \
+    --native-inventory "$APPDIR/usr/share/licenses/ClamGuardian/native-packages.json" \
+    --output-dir "$sbom_dir"
+. "$ROOT/packaging/appimage/install-sbom-validator.sh"
+python3 "$ROOT/packaging/appimage/validate-sbom.py" \
+    --sbom-dir "$sbom_dir" \
+    --schema-dir "$SBOM_SCHEMA_DIR" \
+    --architecture "$APPIMAGE_ARCH"
+cp "$APPDIR/usr/share/licenses/ClamGuardian/native-packages.json" \
+    "$sbom_dir/native-packages.json"
+tar -C "$APPDIR/usr/share/licenses" \
+    -czf "$sbom_dir/license-evidence-$APPIMAGE_ARCH.tar.gz" ClamGuardian
 echo "Built native AppImage: $output"

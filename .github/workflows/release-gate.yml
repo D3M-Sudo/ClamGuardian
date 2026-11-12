@@ -191,7 +191,7 @@ jobs:
         # Named after the branch under test: on the feature → testing
         # promotion PR this artifact is the testable build for the testing
         # branch (same local manifest, same offline GNOME 51 build).
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ (github.event_name == 'pull_request' && github.base_ref == 'testing' && 'ClamGuardian-testing-linux-x86_64.flatpak') || 'ClamGuardian-feature-linux-x86_64.flatpak' }}
           path: io.github.clamguardian.ClamGuardian.flatpak
@@ -228,7 +228,7 @@ jobs:
       - name: Bundle release build as installable .flatpak
         run: flatpak build-bundle flatpak-repo io.github.clamguardian.ClamGuardian.flatpak io.github.clamguardian.ClamGuardian
       - name: Upload release Flatpak bundle
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ClamGuardian-${{ github.ref_name }}-linux-x86_64.flatpak
           path: io.github.clamguardian.ClamGuardian.flatpak
@@ -284,7 +284,7 @@ jobs:
             fi
           } > gate-evidence.txt
       - name: Upload evidence artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-gate-evidence
           path: gate-evidence.txt

@@ -458,18 +458,26 @@ def test_appimage_manual_appdir_pipeline_is_pinned_and_complete() -> None:
     assert "appimage-builder" not in build.lower()
     assert "/usr/bin/python3.12" in build
     assert "python3-gi" in build and "python3-cairo" in build
+    for version_guard in (
+        'gi.require_version("Gtk", "4.0")',
+        'gi.require_version("Adw", "1")',
+        'gi.require_version("Secret", "1")',
+    ):
+        assert version_guard in build, "the system GTK probe must select GI versions before import"
     assert "bundle-runtime.sh" in build
     assert 'APPDIR/usr/share/applications/io.github.clamguardian.ClamGuardian.desktop' in build
+    assert 'install -Dm755 "$ROOT/packaging/appimage/AppRun" "$APPDIR/AppRun"' not in build
     assert 'APPDIR/io.github.clamguardian.ClamGuardian.svg' in build
     assert 'APPDIR/usr/share/metainfo/io.github.clamguardian.ClamGuardian.appdata.xml' in build
     assert "APT_ARCH" not in build and "APT_MIRROR" not in build
 
     bundler = (appimage / "bundle-runtime.sh").read_text(encoding="utf-8")
     for marker in (
-        "linuxdeploy", "--library", "libgtk-4.so.1", "libadwaita-1.so.0",
+        "linuxdeploy", "--library", "--desktop-file", "--custom-apprun",
+        "libgtk-4.so.1", "libadwaita-1.so.0",
         "libsecret-1.so.0", "Gtk-4.0.typelib", "Adw-1.typelib",
         "Secret-1.typelib", "glib-compile-schemas", "gdk-pixbuf-query-loaders",
-        "ca-certificates.crt", "ldd",
+        "ca-certificates.crt", "ldd", "python.o",
     ):
         assert marker in bundler
 
@@ -478,6 +486,11 @@ def test_appimage_manual_appdir_pipeline_is_pinned_and_complete() -> None:
     assert "df908b19f1ed1cdafa79508d415aa12d6c56ce4d56d4149aa8c09286718706e5" in linuxdeploy
     assert "f38e4d7cebf20d8073ec4e00e0a167ac146cd8585fe2f8fe82df27d74f2bd8e1" in linuxdeploy
     assert "sha256sum --check" in linuxdeploy
+    assert bundler.index("rm -f \"$static_object\"") < bundler.index(
+        '"$LINUXDEPLOY_BINARY"'
+    )
+    for option in ("--library", "--desktop-file", "--custom-apprun"):
+        assert option in linuxdeploy
 
     installer = (appimage / "install-appimagetool.sh").read_text(encoding="utf-8")
     assert "appimagetool-aarch64.AppImage" in installer
@@ -545,3 +558,29 @@ def test_shared_gtk_smoke_constructs_the_complete_application() -> None:
         "build_about_dialog", "CLAMGUARDIAN_GTK_SMOKE_OK",
     ):
         assert marker in smoke
+
+@pytest.mark.parametrize(
+    ("workflow_name", "expected_uploads"),
+    [
+        (".github/workflows/ci.yml", 2),
+        (".github/workflows/release-gate.yml", 3),
+        (".github/workflows/release.yml", 2),
+    ],
+)
+def test_artifact_uploads_use_the_reviewed_node24_action(
+    workflow_name: str, expected_uploads: int
+) -> None:
+    """Every workflow upload must use the reviewed immutable Node.js 24 action pin."""
+    workflow = yaml.safe_load((ROOT / workflow_name).read_text(encoding="utf-8"))
+    upload_steps = [
+        step
+        for job in workflow["jobs"].values()
+        for step in job.get("steps", [])
+        if step.get("uses", "").startswith("actions/upload-artifact@")
+    ]
+
+    assert len(upload_steps) == expected_uploads
+    assert {step["uses"] for step in upload_steps} == {
+        "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+    }
+

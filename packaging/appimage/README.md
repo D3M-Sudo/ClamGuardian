@@ -31,3 +31,35 @@ intentionally relies on the host kernel, glibc baseline, graphics drivers,
 display server, D-Bus session, Secret Service daemon and ClamAV installation.
 The compatibility baseline is Ubuntu 24.04; older distributions require
 separate runtime validation before being listed as supported.
+
+## License and SBOM evidence
+
+The AppImage build stages the complete project GPL-3.0-or-later text and project
+copyright into `usr/share/licenses/ClamGuardian`. After native runtime assembly,
+`collect-licenses.py` maps bundled files to the runner's dpkg file lists and copies the corresponding package copyright documents. Debian common-license references are normalized for trailing punctuation. Ubuntu runners may not ship `GFDL-1.2` under `/usr/share/common-licenses`, so the collector uses the repository-bundled verbatim text only as a fallback and verifies its pinned SHA-256 before staging it. It follows symlink targets and handles libraries flattened by linuxdeploy into `usr/lib` only when their SONAME filename maps uniquely to a system multiarch dpkg file; the source path and detection method are recorded in `native-packages.json`. The generated
+`/etc/ssl/certs/ca-certificates.crt` bundle is attributed explicitly to
+`ca-certificates` through its `postinst` hook when dpkg does not list the output
+as a packaged file. The collector requires the actual maintainer script and
+checks that it invokes `update-ca-certificates`; it records the generated
+artifact path, script path and script SHA-256 in `native-packages.json`. The build
+fails when a bundled Debian package has no readable copyright document. Python wheel license
+files remain in their `.dist-info/licenses` directories. The Type 2 runtime's
+MIT, musl, libfuse, squashfuse, zstd, zlib and mimalloc license texts are fetched
+from immutable upstream refs and checked against pinned Git blob IDs before
+being staged. The mimalloc notice is included explicitly because the upstream
+runtime Makefile statically links `-lmimalloc` although the runtime's own
+`LICENSE` list does not mention it.
+
+Syft is installed at a pinned version and SHA-256 per architecture. It generates
+AppDir SPDX 2.3 and CycloneDX 1.6 documents. The curated Type 2 runtime inventory
+is added to separate aggregate SBOMs because the runtime executable is outside
+the AppDir SquashFS. A detached artifact manifest binds both aggregate SBOMs to
+the final AppImage SHA-256 and architecture. SPDX 2.3 and CycloneDX 1.6 output
+is validated against the official JSON schemas whose upstream Git blob IDs
+and source refs are pinned in `install-sbom-validator.sh`. CI uploads the AppImage and all
+license/SBOM evidence together.
+
+
+## Release SBOM evidence
+
+The release workflow attaches one architecture-specific SBOM evidence archive for each of x86_64 and aarch64. The assembly is handled by `assemble-release-evidence.sh`, which requires exactly one copy of every expected artifact and evidence file, creates the archives, and verifies a release-level `SHA256SUMS` covering the four application artifacts and both evidence archives. Each archive contains aggregate SPDX 2.3 and CycloneDX 1.6 documents, the AppDir SBOM pair, the artifact SHA-256 manifest, schema-validation report, native package inventory, and complete staged license-evidence tree. The GitHub release is created as a Draft; this workflow does not publish it.

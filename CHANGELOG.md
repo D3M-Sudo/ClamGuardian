@@ -22,10 +22,19 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - **User-Session Autostart:** optional autostart manager (`clamguardian/core/autostart.py`) installing user-session desktop entries in `~/.config/autostart`, disabled by default, exposed via GTK Settings and CLI (`clamguardian autostart status/enable/disable`).
 - **ClamUI Benchmark Evaluation:** comprehensive evaluation matrix (`docs/reports/CLAMUI-BENCHMARK-EVALUATION.md`) detailing adopted, improved, rejected, and deferred capabilities.
 - **Engineering Handoff:** comprehensive technical documentation in `docs/engineering/CLAMGUARDIAN-AUTONOMOUS-COMPLETION-HANDOFF.md`.
+- **AppImage license and SBOM evidence:** stage the complete project GPL license, collect copyright documents for Debian packages that own bundled AppDir files, generate Syft SPDX 2.3 and CycloneDX 1.6 AppDir inventories, and publish aggregate SBOMs that also represent the AppImage Type 2 runtime. Bind the evidence to the final artifact SHA-256 and verify it during native CI.
+- **AppImage release evidence:** attach architecture-specific SPDX/CycloneDX SBOM and license-evidence archives to Draft releases, with strict artifact cardinality checks and release-level SHA-256 verification.
+- **SPDX semantic validation:** validate license identifiers against the pinned SPDX License List, require actual extracted text for unresolved LicenseRefs, and enforce the `NONE`/`NOASSERTION` operator restrictions.
+
+### Changed
+
+- **GitHub Actions runtime compatibility:** replace all seven `actions/upload-artifact` v4 references that targeted deprecated Node.js 20 across CI, Release Gate and tagged-release workflows with the immutable Node.js 24-compatible v7.0.2 release pin.
 
 ### Fixed
 
+- **AppImage license/SBOM verification:** pin Syft output to SPDX 2.3 and CycloneDX 1.6, verify and hash the `ca-certificates` post-install hook, preserve native package ownership across flattened ELF libraries, reconcile Python wheel declarations, and stage the pinned GFDL-1.2 fallback when Ubuntu lacks the common-license file.
 - **AppImage runtime packaging:** replace appimage-builder and its source patcher with a native AppDir assembled around a custom AppRun and SHA-256-pinned linuxdeploy/appimagetool. Bundle GTK4, Libadwaita, GI typelibs, Python runtime modules, GSettings resources and CA certificates explicitly; validate ELF dependencies and run a finite full-window smoke test.
+- **GTK and AppImage warning remediation:** escape the Settings group ampersand for Pango markup, declare Gtk/Adw/Secret GI versions before the system runtime probe imports them, pass the known desktop file and custom AppRun explicitly to linuxdeploy, and omit CPython's static-link-only `python.o` from the runtime AppDir.
 - **GTK Scan controls:** use standard `Gtk.Button` widgets inside `Adw.PreferencesGroup`, avoiding unsupported Libadwaita preference-row parentage.
 - **Quarantine race and restore hardening (PR #30):** encrypt a stable regular-file snapshot, detach only the verified inode through a pinned directory descriptor, preserve concurrent pathname replacements, and restore through component-pinned no-follow directory descriptors. Bound authenticated record geometry and payload sizes, reject malformed metadata, and skip corrupt records during listing.
 - **Quarantine key integrity (PR #30):** distinguish a missing Secret Service key from a malformed stored key; fail closed on corruption rather than silently rotating the key, and log the owner-only key-file fallback.

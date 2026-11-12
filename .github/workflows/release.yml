@@ -109,7 +109,7 @@ jobs:
         env:
           GTK_A11Y: none
         run: xvfb-run -a dbus-run-session -- flatpak run --command=python3 io.github.clamguardian.ClamGuardian /app/share/clamguardian/gtk-smoke.py
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-flatpak-${{ matrix.arch }}
           path: ClamGuardian-*-linux-${{ matrix.arch }}.flatpak
@@ -158,11 +158,13 @@ jobs:
           APPIMAGE_ARCH: ${{ matrix.arch }}
         run: |
           export APP_VERSION="${GITHUB_REF_NAME#v}"
-          packaging/appimage/test-appimage.sh "dist/ClamGuardian-${GITHUB_REF_NAME#v}-${{ matrix.arch }}.AppImage"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+          packaging/appimage/test-appimage.sh "dist/ClamGuardian-${GITHUB_REF_NAME#v}-${{ matrix.arch }}.AppImage" "dist/sbom/${{ matrix.arch }}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-appimage-${{ matrix.arch }}
-          path: dist/ClamGuardian-*-${{ matrix.arch }}.AppImage
+          path: |
+            dist/ClamGuardian-*-${{ matrix.arch }}.AppImage
+            dist/sbom/${{ matrix.arch }}/*
           if-no-files-found: error
           retention-days: 30
 
@@ -182,18 +184,8 @@ jobs:
         run: |
           mkdir -p release-assets
           gh run download "$GITHUB_RUN_ID" --dir release-assets
-      - name: Verify payload and checksums
-        run: |
-          set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          mkdir -p release
-          expected=("ClamGuardian-${version}-linux-x86_64.flatpak" "ClamGuardian-${version}-linux-aarch64.flatpak" "ClamGuardian-${version}-x86_64.AppImage" "ClamGuardian-${version}-aarch64.AppImage")
-          for file in "${expected[@]}"; do
-            matches="$(find release-assets -type f -name "$file" -print)"
-            test "$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l)" -eq 1
-            cp "$matches" release/
-          done
-          (cd release && sha256sum "${expected[@]}" > SHA256SUMS && sha256sum --check SHA256SUMS)
+      - name: Assemble release payload and SBOM evidence
+        run: packaging/appimage/assemble-release-evidence.sh release-assets release "${GITHUB_REF_NAME#v}"
       - name: Create GitHub Release as Draft
         env:
           GH_TOKEN: ${{ github.token }}
