@@ -201,3 +201,24 @@ def test_spdx_catalog_rejects_modified_pinned_data(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="pinned SPDX catalog hash mismatch"):
         module.load_catalog(altered, exception_source)
+
+
+@pytest.mark.parametrize(
+    "expression",
+    ["NOASSERTION OR MIT", "NONE OR GPL-3.0-only", "MIT OR NOASSERTION"],
+)
+def test_spdx_special_identifiers_are_rejected_with_or(
+    expression: str,
+) -> None:
+    module = _module()
+    licenses, exceptions = _catalog(module)
+    with pytest.raises(ValueError, match="NONE or NOASSERTION.*OR"):
+        module.normalize_expression(expression, licenses, exceptions)
+
+
+def test_spdx_special_identifiers_remain_allowed_with_and() -> None:
+    module = _module()
+    licenses, exceptions = _catalog(module)
+    assert module.normalize_expression(
+        "NOASSERTION AND MIT", licenses, exceptions
+    ) == "NOASSERTION AND MIT"
