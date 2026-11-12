@@ -222,3 +222,15 @@ def test_spdx_special_identifiers_remain_allowed_with_and() -> None:
     assert module.normalize_expression(
         "NOASSERTION AND MIT", licenses, exceptions
     ) == "NOASSERTION AND MIT"
+
+
+def test_license_ref_is_a_valid_simple_operand_for_with() -> None:
+    module = _module()
+    licenses, exceptions = _catalog(module)
+    expression = "LicenseRef-Custom WITH Bison-exception-2.2"
+    assert module.normalize_expression(
+        expression,
+        licenses,
+        exceptions,
+        {"LicenseRef-Custom": "Custom license text with attached terms."},
+    ) == expression
