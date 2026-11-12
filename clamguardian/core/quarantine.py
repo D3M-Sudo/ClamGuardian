@@ -218,14 +218,16 @@ class QuarantineVault:
         # Resolve and pin every parent directory without following symlinks.
         # All subsequent creation and replacement is relative to this descriptor,
         # so swapping a pathname ancestor cannot redirect the restored payload.
-        with _open_directory_chain(target.parent, create=True) as parent_fd:
-            with _atomic_writer_at(parent_fd, target.name, mode=0o600) as out:
-                with path.open("rb") as handle:
-                    handle.seek(header.data_offset)
-                    if header.legacy:
-                        out.write(self._aes.decrypt(header.nonce, handle.read(), header.aad))
-                    else:
-                        self._restore_chunks(handle, header, out)
+        with (
+            _open_directory_chain(target.parent, create=True) as parent_fd,
+            _atomic_writer_at(parent_fd, target.name, mode=0o600) as out,
+            path.open("rb") as handle,
+        ):
+            handle.seek(header.data_offset)
+            if header.legacy:
+                out.write(self._aes.decrypt(header.nonce, handle.read(), header.aad))
+            else:
+                self._restore_chunks(handle, header, out)
 
         path.unlink()
         return target
@@ -452,6 +454,8 @@ def _open_directory_chain(path: Path, *, create: bool) -> Iterator[int]:
                 try:
                     os.mkdir(component, mode=0o700, dir_fd=descriptor)
                 except FileExistsError:
+                    # Another process created the component; open it with
+                    # O_DIRECTORY | O_NOFOLLOW below before proceeding.
                     pass
                 next_descriptor = os.open(component, flags, dir_fd=descriptor)
             os.close(descriptor)
@@ -532,10 +536,8 @@ def _atomic_writer_at(
             dst_dir_fd=parent_fd,
         )
     finally:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.unlink(temporary, dir_fd=parent_fd)
-        except FileNotFoundError:
-            pass
 
 
 def _encode_metadata(metadata: dict[str, Any]) -> bytes:
