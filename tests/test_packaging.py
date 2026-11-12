@@ -430,6 +430,7 @@ def test_appimage_packaging_recipe_and_helpers_exist() -> None:
     assert "APPDIR is not set" in launcher_source
     assert "GI_TYPELIB_PATH" in launcher_source
     assert 'cc -O2 -Wall -Wextra -Werror' in recipe
+    assert 'mkdir -p "$TARGET_APPDIR/usr/bin"' in recipe
     assert "python3-gi" in recipe
     assert "gir1.2-gtk-4.0" in recipe
     assert "gir1.2-adw-1" in recipe
