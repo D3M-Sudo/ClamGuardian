@@ -93,10 +93,9 @@ def test_shell_applies_the_persisted_color_scheme(gtk_app, tmp_path: Path) -> No
 def test_shutdown_always_closes_intelligence_worker(
     gtk_app, service_loop_state: str
 ) -> None:
+    import asyncio
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, Mock
-
-    import asyncio
 
     app = gtk_app
     intelligence_service = Mock()
