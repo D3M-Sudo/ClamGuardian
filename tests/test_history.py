@@ -29,6 +29,16 @@ from clamguardian.history.backend import SCHEMA_VERSION
 from clamguardian.history.interface import HistoryError, HistoryStore
 
 # ---------------------------------------------------------------------------
+# Public store contract
+# ---------------------------------------------------------------------------
+
+
+def test_history_store_protocol_exposes_intelligence_lookup() -> None:
+    """The public protocol must declare the backend's evidence retrieval API."""
+    assert callable(getattr(HistoryStore, "get_scan_intelligence", None))
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
