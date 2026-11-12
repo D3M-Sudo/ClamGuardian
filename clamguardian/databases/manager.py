@@ -49,19 +49,47 @@ class DatabaseManager:
     def installed(self):
         return tuple(self._installed.values())
 
-    def add_source(self, source):
+    def add_source(self, source: DatabaseSource) -> None:
         if source.id in self._sources:
             raise ValueError(f"Database source already exists: {source.id}")
+        self._ensure_artifact_names_available(source)
         self._sources[source.id] = source
         self._persist()
 
-    def remove_source(self, source_id):
+    def remove_source(self, source_id: str) -> None:
         source = self._require(source_id)
+        remaining = [
+            candidate for candidate_id, candidate in self._sources.items()
+            if candidate_id != source_id
+        ]
         for artifact in source.artifacts:
-            (self.database_dir / artifact.filename).unlink(missing_ok=True)
+            if not any(
+                other.filename == artifact.filename
+                for candidate in remaining
+                for other in candidate.artifacts
+            ):
+                (self.database_dir / artifact.filename).unlink(missing_ok=True)
         self._sources.pop(source_id)
         self._installed.pop(source_id, None)
         self._persist()
+
+    def _ensure_artifact_names_available(
+        self, source: DatabaseSource, *, excluding_source_id: str | None = None
+    ) -> None:
+        """Prevent sources from overwriting or deleting one another's artifacts."""
+        wanted = {artifact.filename for artifact in source.artifacts}
+        for existing_id, existing in self._sources.items():
+            if existing_id == excluding_source_id:
+                continue
+            conflicts = wanted.intersection(
+                artifact.filename for artifact in existing.artifacts
+            )
+            if conflicts:
+                names = ", ".join(sorted(conflicts))
+                raise ValueError(
+                    f"Database artifact filename(s) already owned by "
+                    f"source {existing_id!r}: {names}"
+                )
 
     def set_enabled(self, source_id, enabled):
         s = self._require(source_id)
@@ -90,35 +118,51 @@ class DatabaseManager:
         s = self._require(source_id)
         return self._installed.get(source_id, InstalledDatabase(s, DatabaseStatus.AVAILABLE))
 
-    async def update(self, source_id):
+    async def update(self, source_id: str) -> InstalledDatabase:
         source = self._require(source_id)
         if not source.enabled:
             raise DatabaseUpdateError(f"Database source is disabled: {source.name}")
         lock = self._locks.setdefault(source_id, asyncio.Lock())
         async with lock:
             previous = self._installed.get(source_id)
-            staging = Path(tempfile.mkdtemp(prefix=f".{source.id}-", dir=self.database_dir.parent))
-            backup = Path(
-                tempfile.mkdtemp(prefix=f".{source.id}-backup-", dir=self.database_dir.parent)
-            )
+            staging: Path | None = None
+            backup: Path | None = None
+            moved: list[tuple[Path, Path]] = []
             try:
+                self._ensure_artifact_names_available(
+                    source, excluding_source_id=source_id
+                )
+                # The parent may not exist on first run. Create it before using
+                # it as the parent of the private staging and rollback dirs.
+                self.database_dir.parent.mkdir(parents=True, exist_ok=True)
+                staging = Path(
+                    tempfile.mkdtemp(
+                        prefix=".clamguardian-db-stage-",
+                        dir=self.database_dir.parent,
+                    )
+                )
+                backup = Path(
+                    tempfile.mkdtemp(
+                        prefix=".clamguardian-db-backup-",
+                        dir=self.database_dir.parent,
+                    )
+                )
                 self.database_dir.mkdir(parents=True, exist_ok=True)
                 await self._emit(
                     InstalledDatabase(
-                        source, DatabaseStatus.UPDATING, previous.installed_at if previous else None
+                        source,
+                        DatabaseStatus.UPDATING,
+                        previous.installed_at if previous else None,
                     )
                 )
                 staged = [p async for p in self.provider.download(source, staging)]
-                moved = []
                 for path in staged:
                     destination = self.database_dir / path.name
                     backup_path = backup / path.name
                     if destination.exists():
                         destination.replace(backup_path)
-                    # Recorded *before* installing: the backup directory is
-                    # removed in the ``finally`` block, so a failure while
-                    # moving the staged file in would otherwise lose the
-                    # previous artifact for good.
+                    # Record before installing so a failed move restores the
+                    # previous artifact before the backup directory is removed.
                     moved.append((destination, backup_path))
                     path.replace(destination)
                 result = InstalledDatabase(
@@ -133,7 +177,6 @@ class DatabaseManager:
                 await self._emit(result)
                 return result
             except Exception as exc:
-                moved = locals().get("moved", [])
                 for destination, backup_path in moved:
                     destination.unlink(missing_ok=True)
                     if backup_path.exists():
@@ -150,8 +193,10 @@ class DatabaseManager:
                 await self._emit(result)
                 raise DatabaseUpdateError(f"Update failed for {source.name}: {exc}") from exc
             finally:
-                shutil.rmtree(staging, ignore_errors=True)
-                shutil.rmtree(backup, ignore_errors=True)
+                if staging is not None:
+                    shutil.rmtree(staging, ignore_errors=True)
+                if backup is not None:
+                    shutil.rmtree(backup, ignore_errors=True)
 
     async def update_enabled(self):
         results = []
