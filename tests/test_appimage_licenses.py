@@ -1229,3 +1229,102 @@ def test_sbom_reconciler_normalizes_syft_license_expressions_and_license_refs() 
     module._verify_component_records(expected, spdx, cyclonedx, "AppDir")
 
 
+
+
+def test_native_license_collector_stages_referenced_common_license_text(
+    tmp_path: Path,
+) -> None:
+    module_path = ROOT / "packaging" / "appimage" / "collect-licenses.py"
+    spec = importlib.util.spec_from_file_location(
+        "appimage_common_license_evidence", module_path
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    appdir = tmp_path / "AppDir"
+    info = tmp_path / "dpkg-info"
+    docs = tmp_path / "doc"
+    common = tmp_path / "common-licenses"
+    output = appdir / "usr/share/licenses/ClamGuardian"
+    (appdir / "usr/lib").mkdir(parents=True)
+    (appdir / "usr/lib/libexample.so").write_bytes(b"ELF fixture")
+    info.mkdir()
+    (info / "libexample1:amd64.list").write_text(
+        "/usr/lib/libexample.so\\n", encoding="utf-8"
+    )
+    (docs / "libexample1").mkdir(parents=True)
+    (docs / "libexample1/copyright").write_text(
+        "Files: *\\nLicense: GPL-2+\\n "
+        "Full text: /usr/share/common-licenses/GPL-2\\n",
+        encoding="utf-8",
+    )
+    common.mkdir()
+    license_text = "GNU General Public License version 2 full text\\n"
+    (common / "GPL-2").write_text(license_text, encoding="utf-8")
+
+    result = module.collect_package_provenance(
+        appdir,
+        info,
+        docs,
+        output,
+        package_metadata_resolver=lambda package: {
+            "version": "1.0-1", "source_package": "libexample", "source_version": "1.0-1",
+        },
+        common_licenses_dir=common,
+    )
+
+    package = next(item for item in result["packages"] if item["package"] == "libexample1:amd64")
+    evidence = package["referenced_common_licenses"]
+    assert len(evidence) == 1
+    assert evidence[0]["name"] == "GPL-2"
+    assert evidence[0]["source_path"] == str(common / "GPL-2")
+    assert evidence[0]["artifact_path"] == "third-party/native/common-licenses/GPL-2"
+    assert evidence[0]["sha256"] == hashlib.sha256(
+        license_text.encode("utf-8")
+    ).hexdigest()
+    assert (output / evidence[0]["artifact_path"]).read_text(encoding="utf-8") == license_text
+
+
+def test_native_license_collector_fails_closed_for_missing_common_license_text(
+    tmp_path: Path,
+) -> None:
+    module_path = ROOT / "packaging" / "appimage" / "collect-licenses.py"
+    spec = importlib.util.spec_from_file_location(
+        "appimage_missing_common_license_evidence", module_path
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    appdir = tmp_path / "AppDir"
+    info = tmp_path / "dpkg-info"
+    docs = tmp_path / "doc"
+    common = tmp_path / "common-licenses"
+    (appdir / "usr/lib").mkdir(parents=True)
+    (appdir / "usr/lib/libexample.so").write_bytes(b"ELF fixture")
+    info.mkdir()
+    (info / "libexample1:amd64.list").write_text(
+        "/usr/lib/libexample.so\\n", encoding="utf-8"
+    )
+    (docs / "libexample1").mkdir(parents=True)
+    (docs / "libexample1/copyright").write_text(
+        "Files: *\\nLicense: GPL-2+\\n "
+        "Full text: /usr/share/common-licenses/GPL-2\\n",
+        encoding="utf-8",
+    )
+    common.mkdir()
+
+    with pytest.raises(ValueError, match="missing common license text"):
+        module.collect_package_provenance(
+            appdir,
+            info,
+            docs,
+            appdir / "usr/share/licenses/ClamGuardian",
+            package_metadata_resolver=lambda package: {
+                "version": "1.0-1", "source_package": "libexample", "source_version": "1.0-1",
+            },
+            common_licenses_dir=common,
+        )
