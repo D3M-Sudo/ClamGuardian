@@ -1042,6 +1042,9 @@ def test_native_license_collector_resolves_symlink_target_for_dpkg_ownership(
     (info / "libexample1:amd64.list").write_text(
         "/usr/lib/x86_64-linux-gnu/libexample.so.2.0.0\n", encoding="utf-8"
     )
+    (info / "google-chrome-stable.list").write_text(
+        "/opt/google/chrome/libexample.so.2.0.0\n", encoding="utf-8"
+    )
     (docs / "libexample1").mkdir(parents=True)
     (docs / "libexample1/copyright").write_text(
         "Files: *\nLicense: MIT\n", encoding="utf-8"
