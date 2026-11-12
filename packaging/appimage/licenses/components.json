@@ -1,0 +1,512 @@
+{
+  "schema_version": 1,
+  "components": [
+    {
+      "id": "python-aiohappyeyeballs",
+      "name": "aiohappyeyeballs",
+      "version": "2.7.1",
+      "version_status": "verified",
+      "architecture": "all",
+      "license": "NOASSERTION",
+      "license_status": "unknown",
+      "source": "PyPI wheel metadata bundled in the native AppImage wheelhouse",
+      "source_package": "aiohappyeyeballs",
+      "artifact_paths": [
+        "opt/python/aiohappyeyeballs"
+      ],
+      "evidence_paths": [
+        "opt/python/aiohappyeyeballs-2.7.1.dist-info/licenses"
+      ],
+      "detection_method": "wheel-metadata",
+      "verification_status": "partial",
+      "source_paths": [
+        "packaging/appimage/wheelhouse/aiohappyeyeballs-*.whl"
+      ]
+    },
+    {
+      "id": "python-aiohttp",
+      "name": "aiohttp",
+      "version": "3.14.5",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "NOASSERTION",
+      "license_status": "unknown",
+      "source": "PyPI wheel metadata bundled in the native AppImage wheelhouse",
+      "source_package": "aiohttp",
+      "artifact_paths": [
+        "opt/python/aiohttp"
+      ],
+      "evidence_paths": [
+        "opt/python/aiohttp-3.14.5.dist-info/licenses"
+      ],
+      "detection_method": "wheel-metadata",
+      "verification_status": "partial",
+      "source_paths": [
+        "packaging/appimage/wheelhouse/aiohttp-*.whl"
+      ]
+    },
+    {
+      "id": "python-aiosignal",
+      "name": "aiosignal",
+      "version": "1.4.0",
+      "version_status": "verified",
+      "architecture": "all",
+      "license": "NOASSERTION",
+      "license_status": "unknown",
+      "source": "PyPI wheel metadata bundled in the native AppImage wheelhouse",
+      "source_package": "aiosignal",
+      "artifact_paths": [
+        "opt/python/aiosignal"
+      ],
+      "evidence_paths": [
+        "opt/python/aiosignal-1.4.0.dist-info/licenses"
+      ],
+      "detection_method": "wheel-metadata",
+      "verification_status": "partial",
+      "source_paths": [
+        "packaging/appimage/wheelhouse/aiosignal-*.whl"
+      ]
+    },
+    {
+      "id": "python-attrs",
+      "name": "attrs",
+      "version": "26.1.0",
+      "version_status": "verified",
+      "architecture": "all",
+      "license": "NOASSERTION",
+      "license_status": "unknown",
+      "source": "PyPI wheel metadata bundled in the native AppImage wheelhouse",
+      "source_package": "attrs",
+      "artifact_paths": [
+        "opt/python/attrs"
+      ],
+      "evidence_paths": [
+        "opt/python/attrs-26.1.0.dist-info/licenses"
+      ],
+      "detection_method": "wheel-metadata",
+      "verification_status": "partial",
+      "source_paths": [
+        "packaging/appimage/wheelhouse/attrs-*.whl"
+      ]
+    },
+    {
+      "id": "python-cffi",
+      "name": "cffi",
+      "version": "2.1.1",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "NOASSERTION",
+      "license_status": "unknown",
+      "source": "PyPI wheel metadata bundled in the native AppImage wheelhouse",
+      "source_package": "cffi",
+      "artifact_paths": [
+        "opt/python/cffi"
+      ],
+      "evidence_paths": [
+        "opt/python/cffi-2.1.1.dist-info/licenses"
+      ],
+      "detection_method": "wheel-metadata",
+      "verification_status": "partial",
+      "source_paths": [
+        "packaging/appimage/wheelhouse/cffi-*.whl"
+      ]
+    },
+    {
+      "id": "python-cryptography",
+      "name": "cryptography",
+      "version": "50.0.1",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "NOASSERTION",
+      "license_status": "unknown",
+      "source": "PyPI wheel metadata bundled in the native AppImage wheelhouse",
+      "source_package": "cryptography",
+      "artifact_paths": [
+        "opt/python/cryptography"
+      ],
+      "evidence_paths": [
+        "opt/python/cryptography-50.0.1.dist-info/licenses"
+      ],
+      "detection_method": "wheel-metadata",
+      "verification_status": "partial",
+      "source_paths": [
+        "packaging/appimage/wheelhouse/cryptography-*.whl"
+      ]
+    },
+    {
+      "id": "python-frozenlist",
+      "name": "frozenlist",
+      "version": "1.8.0",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "NOASSERTION",
+      "license_status": "unknown",
+      "source": "PyPI wheel metadata bundled in the native AppImage wheelhouse",
+      "source_package": "frozenlist",
+      "artifact_paths": [
+        "opt/python/frozenlist"
+      ],
+      "evidence_paths": [
+        "opt/python/frozenlist-1.8.0.dist-info/licenses"
+      ],
+      "detection_method": "wheel-metadata",
+      "verification_status": "partial",
+      "source_paths": [
+        "packaging/appimage/wheelhouse/frozenlist-*.whl"
+      ]
+    },
+    {
+      "id": "python-idna",
+      "name": "idna",
+      "version": "3.19",
+      "version_status": "verified",
+      "architecture": "all",
+      "license": "NOASSERTION",
+      "license_status": "unknown",
+      "source": "PyPI wheel metadata bundled in the native AppImage wheelhouse",
+      "source_package": "idna",
+      "artifact_paths": [
+        "opt/python/idna"
+      ],
+      "evidence_paths": [
+        "opt/python/idna-3.19.dist-info/licenses"
+      ],
+      "detection_method": "wheel-metadata",
+      "verification_status": "partial",
+      "source_paths": [
+        "packaging/appimage/wheelhouse/idna-*.whl"
+      ]
+    },
+    {
+      "id": "python-multidict",
+      "name": "multidict",
+      "version": "6.9.1",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "NOASSERTION",
+      "license_status": "unknown",
+      "source": "PyPI wheel metadata bundled in the native AppImage wheelhouse",
+      "source_package": "multidict",
+      "artifact_paths": [
+        "opt/python/multidict"
+      ],
+      "evidence_paths": [
+        "opt/python/multidict-6.9.1.dist-info/licenses"
+      ],
+      "detection_method": "wheel-metadata",
+      "verification_status": "partial",
+      "source_paths": [
+        "packaging/appimage/wheelhouse/multidict-*.whl"
+      ]
+    },
+    {
+      "id": "python-propcache",
+      "name": "propcache",
+      "version": "0.5.2",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "NOASSERTION",
+      "license_status": "unknown",
+      "source": "PyPI wheel metadata bundled in the native AppImage wheelhouse",
+      "source_package": "propcache",
+      "artifact_paths": [
+        "opt/python/propcache"
+      ],
+      "evidence_paths": [
+        "opt/python/propcache-0.5.2.dist-info/licenses"
+      ],
+      "detection_method": "wheel-metadata",
+      "verification_status": "partial",
+      "source_paths": [
+        "packaging/appimage/wheelhouse/propcache-*.whl"
+      ]
+    },
+    {
+      "id": "python-pycparser",
+      "name": "pycparser",
+      "version": "3.0",
+      "version_status": "verified",
+      "architecture": "all",
+      "license": "NOASSERTION",
+      "license_status": "unknown",
+      "source": "PyPI wheel metadata bundled in the native AppImage wheelhouse",
+      "source_package": "pycparser",
+      "artifact_paths": [
+        "opt/python/pycparser"
+      ],
+      "evidence_paths": [
+        "opt/python/pycparser-3.0.dist-info/licenses"
+      ],
+      "detection_method": "wheel-metadata",
+      "verification_status": "partial",
+      "source_paths": [
+        "packaging/appimage/wheelhouse/pycparser-*.whl"
+      ]
+    },
+    {
+      "id": "python-typing-extensions",
+      "name": "typing_extensions",
+      "version": "4.16.0",
+      "version_status": "verified",
+      "architecture": "all",
+      "license": "NOASSERTION",
+      "license_status": "unknown",
+      "source": "PyPI wheel metadata bundled in the native AppImage wheelhouse",
+      "source_package": "typing_extensions",
+      "artifact_paths": [
+        "opt/python/typing_extensions"
+      ],
+      "evidence_paths": [
+        "opt/python/typing_extensions-4.16.0.dist-info/licenses"
+      ],
+      "detection_method": "wheel-metadata",
+      "verification_status": "partial",
+      "source_paths": [
+        "packaging/appimage/wheelhouse/typing_extensions-*.whl"
+      ]
+    },
+    {
+      "id": "python-yarl",
+      "name": "yarl",
+      "version": "1.25.1",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "NOASSERTION",
+      "license_status": "unknown",
+      "source": "PyPI wheel metadata bundled in the native AppImage wheelhouse",
+      "source_package": "yarl",
+      "artifact_paths": [
+        "opt/python/yarl"
+      ],
+      "evidence_paths": [
+        "opt/python/yarl-1.25.1.dist-info/licenses"
+      ],
+      "detection_method": "wheel-metadata",
+      "verification_status": "partial",
+      "source_paths": [
+        "packaging/appimage/wheelhouse/yarl-*.whl"
+      ]
+    },
+    {
+      "id": "native-lzo2",
+      "name": "lzo2",
+      "version": "2.10",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "GPL-2.0-or-later",
+      "license_status": "declared",
+      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source_package": null,
+      "artifact_paths": [
+        "liblzo2.so.2"
+      ],
+      "evidence_paths": [
+        "native package copyright/NOTICE to be collected during AppImage build"
+      ],
+      "detection_method": "native-package-provenance",
+      "verification_status": "partial",
+      "source_paths": [
+        "/usr/lib/*/liblzo2.so.2"
+      ]
+    },
+    {
+      "id": "native-pygobject",
+      "name": "PyGObject",
+      "version": "3.48.2-1",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "LGPL-2.1-or-later",
+      "license_status": "declared",
+      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source_package": null,
+      "artifact_paths": [
+        "usr/lib/python3/dist-packages/gi"
+      ],
+      "evidence_paths": [
+        "native package copyright/NOTICE to be collected during AppImage build"
+      ],
+      "detection_method": "native-package-provenance",
+      "verification_status": "partial",
+      "source_paths": [
+        "/usr/lib/python3/dist-packages/gi"
+      ]
+    },
+    {
+      "id": "native-pycairo",
+      "name": "Pycairo",
+      "version": "1.25.1-2build2",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "MPL-1.1 OR LGPL-2.1-only",
+      "license_status": "declared",
+      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source_package": null,
+      "artifact_paths": [
+        "usr/lib/python3/dist-packages/cairo"
+      ],
+      "evidence_paths": [
+        "native package copyright/NOTICE to be collected during AppImage build"
+      ],
+      "detection_method": "native-package-provenance",
+      "verification_status": "partial",
+      "source_paths": [
+        "/usr/lib/python3/dist-packages/cairo"
+      ]
+    },
+    {
+      "id": "native-dconf",
+      "name": "dconf",
+      "version": null,
+      "version_status": "unknown",
+      "architecture": "both",
+      "license": "LGPL-2.1-or-later",
+      "license_status": "declared",
+      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source_package": null,
+      "artifact_paths": [
+        "usr/lib/*/gio/modules/libdconfsettings.so"
+      ],
+      "evidence_paths": [
+        "native package copyright/NOTICE to be collected during AppImage build"
+      ],
+      "detection_method": "native-package-provenance",
+      "verification_status": "partial",
+      "source_paths": [
+        "/usr/lib/*/gio/modules/libdconfsettings.so"
+      ]
+    },
+    {
+      "id": "native-adwaita-icon-theme",
+      "name": "Adwaita icon theme",
+      "version": "46.0-1",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "LGPL-3.0-only OR CC-BY-SA-3.0-US",
+      "license_status": "declared",
+      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source_package": null,
+      "artifact_paths": [
+        "usr/share/icons/Adwaita"
+      ],
+      "evidence_paths": [
+        "native package copyright/NOTICE to be collected during AppImage build"
+      ],
+      "detection_method": "native-package-provenance",
+      "verification_status": "partial",
+      "source_paths": [
+        "/usr/share/icons/Adwaita"
+      ]
+    },
+    {
+      "id": "native-hicolor-icon-theme",
+      "name": "hicolor icon theme",
+      "version": "0.17-2",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "GPL-2.0-or-later",
+      "license_status": "declared",
+      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source_package": null,
+      "artifact_paths": [
+        "usr/share/icons/hicolor"
+      ],
+      "evidence_paths": [
+        "native package copyright/NOTICE to be collected during AppImage build"
+      ],
+      "detection_method": "native-package-provenance",
+      "verification_status": "partial",
+      "source_paths": [
+        "/usr/share/icons/hicolor"
+      ]
+    },
+    {
+      "id": "native-gsettings-desktop-schemas",
+      "name": "gsettings-desktop-schemas",
+      "version": "46.1-0ubuntu1",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "LGPL-2.1-or-later",
+      "license_status": "declared",
+      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source_package": null,
+      "artifact_paths": [
+        "usr/share/glib-2.0/schemas"
+      ],
+      "evidence_paths": [
+        "native package copyright/NOTICE to be collected during AppImage build"
+      ],
+      "detection_method": "native-package-provenance",
+      "verification_status": "partial",
+      "source_paths": [
+        "/usr/share/glib-2.0/schemas"
+      ]
+    },
+    {
+      "id": "native-ca-certificates",
+      "name": "ca-certificates",
+      "version": "20260816ubuntu0.24.04.2",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "NOASSERTION",
+      "license_status": "unknown",
+      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source_package": null,
+      "artifact_paths": [
+        "etc/ssl/certs/ca-certificates.crt"
+      ],
+      "evidence_paths": [
+        "native package copyright/NOTICE to be collected during AppImage build"
+      ],
+      "detection_method": "native-package-provenance",
+      "verification_status": "partial",
+      "source_paths": [
+        "/etc/ssl/certs/ca-certificates.crt"
+      ]
+    },
+    {
+      "id": "native-python-3.12",
+      "name": "Python 3.12",
+      "version": "3.12.3-1ubuntu0.17",
+      "version_status": "verified",
+      "architecture": "both",
+      "license": "NOASSERTION",
+      "license_status": "unknown",
+      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source_package": null,
+      "artifact_paths": [
+        "usr/lib/python3.12"
+      ],
+      "evidence_paths": [
+        "native package copyright/NOTICE to be collected during AppImage build"
+      ],
+      "detection_method": "native-package-provenance",
+      "verification_status": "partial",
+      "source_paths": [
+        "/usr/bin/python3.12",
+        "/usr/lib/python3.12"
+      ]
+    },
+    {
+      "id": "native-libmpdec",
+      "name": "libmpdec",
+      "version": null,
+      "version_status": "unknown",
+      "architecture": "both",
+      "license": "NOASSERTION",
+      "license_status": "unknown",
+      "source": "Ubuntu Noble package metadata or upstream component evidence; package-to-file provenance must be captured by the native build",
+      "source_package": null,
+      "artifact_paths": [
+        "usr/lib/python3.12/lib-dynload/_decimal*.so"
+      ],
+      "evidence_paths": [
+        "native package copyright/NOTICE to be collected during AppImage build"
+      ],
+      "detection_method": "native-package-provenance",
+      "verification_status": "partial",
+      "source_paths": [
+        "/usr/lib/python3.12/lib-dynload/_decimal*.so"
+      ]
+    }
+  ]
+}
