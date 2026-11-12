@@ -1,30 +1,32 @@
 # AppImage packaging
 
-AppImages are built natively on Ubuntu 24.04 runners for x86_64 and aarch64.
-The recipe bundles GTK4, Libadwaita, PyGObject, Secret Service client libraries
-and the application's locked Python runtime dependencies.
+AppImages are assembled natively on Ubuntu 24.04 runners for x86_64 and
+aarch64. The build no longer uses appimage-builder or patches its internal
+Python modules.
 
 ## Build contract
 
-1. Export runtime dependencies from uv.lock without development packages.
-2. Download only wheels compatible with the native Python 3.12 runner, verifying
-   every wheel against the lockfile hashes.
-3. Compile a small native ELF launcher for the target architecture; it configures the bundled Python/GTK environment and forwards CLI arguments.\n4. Package the Python application and GTK runtime using appimage-builder.
-5. Execute CLI smoke checks and start the GTK event loop under Xvfb/DBus.
-   The test requires the event loop to remain alive until the bounded timeout.
+1. Export the runtime dependency set from `uv.lock` and download only native
+   wheels, verifying every wheel against the lockfile hashes.
+2. Install Ubuntu 24.04 Python 3.12, PyGObject/pycairo and GTK runtime packages
+   on the native runner.
+3. Assemble an explicit AppDir containing the Python standard library,
+   locked application wheels, GI typelibs, GTK4/Libadwaita/Secret libraries
+   and resources, GSettings schemas, pixbuf loaders and CA certificates.
+4. Run SHA-256-pinned `linuxdeploy` against Python and bundled ELF modules.
+   Required GTK/Adwaita/Secret libraries and GI typelibs are checked after
+   deployment; unresolved ELF dependencies abort the build.
+5. Use the maintained custom `AppRun` to configure Python, GI, GIO,
+   GSettings, pixbuf loaders and CA certificates.
+6. Package with SHA-256-pinned appimagetool 1.9.1 and the pinned type2 runtime.
+   Test extraction, architecture, CLI and complete GTK window construction
+   before uploading the artifact.
 
 No x86_64 artifact is relabelled as aarch64. Each architecture is built and
 tested on a native runner.
 
-The AppImage includes userspace libraries but relies on the host kernel,
-graphics drivers, display/DBus session and ClamAV installation. Hardware
-drivers and host ClamAV executables are intentionally not bundled.
-
-
-## Compatibility baseline
-
-The native AppImages are built on Ubuntu 24.04 and therefore use its glibc
-baseline. CI proves execution on the matching Ubuntu 24.04 architecture, not
-compatibility with older glibc distributions. Older distributions require
-separate runtime validation before being listed as supported. Host graphics
-drivers, kernel, display server, D-Bus and ClamAV remain host-provided.
+The AppImage bundles userspace Python/GTK/GI libraries and resources but
+intentionally relies on the host kernel, glibc baseline, graphics drivers,
+display server, D-Bus session, Secret Service daemon and ClamAV installation.
+The compatibility baseline is Ubuntu 24.04; older distributions require
+separate runtime validation before being listed as supported.

@@ -115,7 +115,7 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
         """
         if hasattr(Adw, "ButtonRow"):
             row = Adw.ButtonRow(title=title)
-            row.set_icon_name(icon_name)
+            row.set_start_icon_name(icon_name)
             return row
         row = Adw.ActionRow(title=title, activatable=True)
         row.add_prefix(Gtk.Image(icon_name=icon_name))

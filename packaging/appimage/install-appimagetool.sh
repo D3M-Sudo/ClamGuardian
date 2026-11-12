@@ -22,7 +22,7 @@ case "$APPIMAGE_ARCH" in
     ;;
 esac
 
-# appimage-builder 1.0.0 invokes appimagetool as an external command.
+# The AppDir is assembled directly and packaged with the official appimagetool.
 # Pin the official AppImage/appimagetool 1.9.1 asset and verify its digest.
 APPIMAGETOOL_DIR="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/appimagetool-${APPIMAGE_ARCH}"
 mkdir -p "$APPIMAGETOOL_DIR"
@@ -34,16 +34,14 @@ printf '%s  %s\n' "$expected_sha256" "$APPIMAGETOOL_DIR/$asset" | sha256sum --ch
 chmod +x "$APPIMAGETOOL_DIR/$asset"
 
 # Use the maintained type2-runtime, whose embedded SquashFS reader supports
-# the Zstandard compression emitted by appimagetool 1.9.1. The older
-# AppImageKit runtime downloaded by appimage-builder cannot read this format.
+# the Zstandard compression emitted by appimagetool 1.9.1. The pinned runtime supports the Zstandard SquashFS format used by this tool.
 runtime_url="https://github.com/AppImage/type2-runtime/releases/download/20251108/$runtime_asset"
 curl --fail --location --retry 3 "$runtime_url" --output "$APPIMAGETOOL_DIR/$runtime_asset"
 printf '%s  %s\n' "$runtime_sha256" "$APPIMAGETOOL_DIR/$runtime_asset" | sha256sum --check -
 chmod +x "$APPIMAGETOOL_DIR/$runtime_asset"
 
-# appimage-builder passes its own legacy --runtime-file. Replace it with the
-# pinned type2-runtime while preserving every other argument. Keep paths in
-# exported variables instead of generating shell code with sed substitutions.
+# Preserve compatibility with callers that pass --runtime-file, but always
+# replace that value with the pinned type2-runtime.
 export APPIMAGETOOL_BINARY="$APPIMAGETOOL_DIR/$asset"
 export APPIMAGETOOL_RUNTIME="$APPIMAGETOOL_DIR/$runtime_asset"
 cat > "$APPIMAGETOOL_DIR/appimagetool" <<'WRAPPER'

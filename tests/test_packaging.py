@@ -415,44 +415,60 @@ def test_flatpak_manifests_install_the_native_locked_wheelhouse() -> None:
     )
 
 
-def test_appimage_packaging_recipe_and_helpers_exist() -> None:
-    """The AppImage recipe and architecture-specific build/test helpers are tracked."""
+
+def test_appimage_manual_appdir_pipeline_is_pinned_and_complete() -> None:
     appimage = ROOT / "packaging" / "appimage"
-    recipe = (appimage / "AppImageBuilder.yml").read_text(encoding="utf-8")
-    launcher = appimage / "clamguardian-launcher.c"
     scripts = (
+        "AppRun",
         "build-appimage.sh",
+        "bundle-runtime.sh",
+        "install-linuxdeploy.sh",
         "prepare-wheelhouse.sh",
         "test-appimage.sh",
         "install-appimagetool.sh",
     )
     for script in scripts:
         path = appimage / script
-        assert path.is_file()
+        assert path.is_file(), f"missing AppImage build component: {script}"
         assert path.stat().st_mode & 0o111, f"{script} must be executable"
-    assert launcher.is_file()
-    launcher_source = launcher.read_text(encoding="utf-8")
-    assert "execv(python, python_argv)" in launcher_source
-    assert "APPDIR is not set" in launcher_source
-    assert "GI_TYPELIB_PATH" in launcher_source
-    assert 'cc -O2 -Wall -Wextra -Werror' in recipe
-    assert 'mkdir -p "$TARGET_APPDIR/usr/bin"' in recipe
-    assert "python3-gi" in recipe
-    assert "      - python3.12-minimal" in recipe
-    assert "      - libpython3.12-minimal" in recipe
-    assert "      - libpython3.12-stdlib" in recipe
-    parsed_recipe = yaml.safe_load(recipe)
-    build_script = "\\n".join(parsed_recipe["script"])
-    after_bundle = parsed_recipe["AppDir"]["after_bundle"]
-    assert 'test -d "$stdlib_dir/encodings"' in after_bundle
-    assert 'ln -sfn ../usr/lib/python3.12 "$TARGET_APPDIR/lib/python3.12"' in after_bundle
-    assert "python3.12/encodings" not in build_script
-    assert "ln -sfn ../usr/lib/python3.12" not in build_script
-    assert "gir1.2-gtk-4.0" in recipe
-    assert "gir1.2-adw-1" in recipe
-    assert "{{APPIMAGE_ARCH}}" in recipe
-    assert "{{APT_ARCH}}" in recipe
-    assert "$SOURCE_DIR/wheelhouse/" in recipe
+
+    assert not (appimage / "AppImageBuilder.yml").exists()
+    assert not (appimage / "patch-appimage-builder.py").exists()
+    assert not (appimage / "clamguardian-launcher.c").exists()
+
+    apprun = (appimage / "AppRun").read_text(encoding="utf-8")
+    for marker in (
+        'PYTHONHOME="$APPDIR"',
+        "GI_TYPELIB_PATH=",
+        "GIO_EXTRA_MODULES=",
+        "GSETTINGS_SCHEMA_DIR=",
+        "SSL_CERT_FILE=",
+        "gdk-pixbuf-query-loaders",
+        "--python-interpreter",
+    ):
+        assert marker in apprun
+
+    build = (appimage / "build-appimage.sh").read_text(encoding="utf-8")
+    assert "appimage-builder" not in build.lower()
+    assert "/usr/bin/python3.12" in build
+    assert "python3-gi" in build and "python3-cairo" in build
+    assert "bundle-runtime.sh" in build
+    assert "APT_ARCH" not in build and "APT_MIRROR" not in build
+
+    bundler = (appimage / "bundle-runtime.sh").read_text(encoding="utf-8")
+    for marker in (
+        "linuxdeploy", "--library", "libgtk-4.so.1", "libadwaita-1.so.0",
+        "libsecret-1.so.0", "Gtk-4.0.typelib", "Adw-1.typelib",
+        "Secret-1.typelib", "glib-compile-schemas", "gdk-pixbuf-query-loaders",
+        "ca-certificates.crt", "ldd",
+    ):
+        assert marker in bundler
+
+    linuxdeploy = (appimage / "install-linuxdeploy.sh").read_text(encoding="utf-8")
+    assert "releases/download/continuous" in linuxdeploy
+    assert "df908b19f1ed1cdafa79508d415aa12d6c56ce4d56d4149aa8c09286718706e5" in linuxdeploy
+    assert "f38e4d7cebf20d8073ec4e00e0a167ac146cd8585fe2f8fe82df27d74f2bd8e1" in linuxdeploy
+    assert "sha256sum --check" in linuxdeploy
 
     installer = (appimage / "install-appimagetool.sh").read_text(encoding="utf-8")
     assert "appimagetool-aarch64.AppImage" in installer
@@ -460,57 +476,12 @@ def test_appimage_packaging_recipe_and_helpers_exist() -> None:
     assert "sha256sum --check" in installer
     assert "1.9.1" in installer
     assert "type2-runtime/releases/download/20251108" in installer
-    assert "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d" in installer
-    assert "00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444" in installer
-    assert 'printf \'%s  %s\\n\' "$runtime_sha256" "$APPIMAGETOOL_DIR/$runtime_asset"' in installer
-    assert 'export APPIMAGETOOL_BINARY="$APPIMAGETOOL_DIR/$asset"' in installer
-    assert 'export APPIMAGETOOL_RUNTIME="$APPIMAGETOOL_DIR/$runtime_asset"' in installer
-    assert ': "${APPIMAGETOOL_BINARY:?missing pinned appimagetool binary}"' in installer
-    assert ': "${APPIMAGETOOL_RUNTIME:?missing pinned type2 runtime}"' in installer
-    assert "APPIMAGETOOL_DIR_PLACEHOLDER" not in installer
-    assert 'if [ "$arg" = "--runtime-file" ]' in installer
-    assert 'export APPIMAGE_EXTRACT_AND_RUN=1' in installer
-    assert 'export PATH="$APPIMAGETOOL_DIR:$PATH"' in installer
-    assert 'appimagetool --version' in installer
-
-    builder_patch = (appimage / "patch-appimage-builder.py").read_text(encoding="utf-8")
-    assert "APPRUN2_SETUP_MARKER" in builder_patch
-    assert 'compat_linker_folder = self.compat_runtime_path / "lib64"' in builder_patch
-    assert '"*/*-linux-gnu*/ld-linux*.so*"' in builder_patch
-    assert "compat_linker_folder.symlink_to(symlink_target)" in builder_patch
-    assert "Patched Ubuntu compatibility linker path" in builder_patch
-    build_script = (appimage / "build-appimage.sh").read_text(encoding="utf-8")
-    assert 'appimage-builder==1.1.0' in build_script
 
     appimage_test = (appimage / "test-appimage.sh").read_text(encoding="utf-8")
     assert "--appimage-extract" in appimage_test
-    assert 'test -x "$extracted_appdir/AppRun"' in appimage_test
-    assert 'test -e "$extracted_appdir/runtime/compat/lib64"' in appimage_test
-
-    # The former shell launcher was replaced by a native C ELF entrypoint.
-    # Both PR CI and tag-release validation must syntax-check the current source.
-    for workflow_name in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
-        workflow = (ROOT / workflow_name).read_text(encoding="utf-8")
-        assert "packaging/appimage/clamguardian-launcher" not in workflow.replace(
-            "packaging/appimage/clamguardian-launcher.c", ""
-        ), f"{workflow_name} still references the removed shell launcher"
-        assert (
-            "cc -fsyntax-only -Wall -Wextra -Werror "
-            "packaging/appimage/clamguardian-launcher.c"
-        ) in workflow
-
-
-def test_appimage_recipe_bundles_required_gi_typelibs_and_icon() -> None:
-    recipe = (ROOT / "packaging" / "appimage" / "AppImageBuilder.yml").read_text(encoding="utf-8")
-    parsed = yaml.safe_load(recipe)
-    assert parsed["AppDir"]["app_info"]["version"] == "{{APP_VERSION}}"
-    assert parsed["AppDir"]["apt"]["arch"] == "{{APT_ARCH}}"
-    assert parsed["AppImage"]["arch"] == "{{APPIMAGE_ARCH}}"
-    assert "gir1.2-secret-1" in recipe
-    assert "adwaita-icon-theme" in recipe
-    assert "rsvg-convert" in recipe
-    assert "$TARGET_APPDIR/.DirIcon" in recipe
-    assert "wheelhouse/" in recipe
+    assert "--python-interpreter" in appimage_test
+    assert "gtk-smoke.py" in appimage_test
+    assert "timeout --signal=TERM 20s" not in appimage_test
 
 
 def test_generated_packaging_wheelhouses_are_ignored() -> None:
@@ -519,16 +490,29 @@ def test_generated_packaging_wheelhouses_are_ignored() -> None:
     assert "/packaging/appimage/wheelhouse/" in gitignore
 
 
-def test_appimage_recipe_has_native_ubuntu_24_04_apt_sources() -> None:
-    recipe = yaml.safe_load(
-        (ROOT / "packaging" / "appimage" / "AppImageBuilder.yml").read_text(encoding="utf-8")
-    )
-    apt = recipe["AppDir"]["apt"]
-    assert apt["arch"] == "{{APT_ARCH}}"
-    assert len(apt["sources"]) == 3
-    lines = [source["sourceline"] for source in apt["sources"]]
-    assert any(" noble main universe" in line for line in lines)
-    assert any(" noble-updates main universe" in line for line in lines)
-    assert any(" noble-security main universe" in line for line in lines)
-    assert all("{{APT_ARCH}}" in line and "{{APT_MIRROR}}" in line for line in lines)
-    assert all(source.get("key_url") for source in apt["sources"])
+def test_flatpak_manifests_install_the_shared_gtk_smoke_script() -> None:
+    for manifest_name in MANIFESTS:
+        module = _clamguardian_module(_manifest(manifest_name))
+        commands = "\\n".join(module["build-commands"])
+        assert "packaging/smoke/gtk-smoke.py" in commands
+        assert "/app/share/clamguardian/gtk-smoke.py" in commands
+
+
+def test_packaging_workflows_use_finite_gtk_construction_smoke() -> None:
+    for workflow_name in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
+        workflow = (ROOT / workflow_name).read_text(encoding="utf-8")
+        assert "flatpak run --command=python3" in workflow
+        assert "/app/share/clamguardian/gtk-smoke.py" in workflow
+        assert "timeout --signal=TERM 20s" not in workflow
+
+    release_gate = (ROOT / ".github/workflows/release-gate.yml").read_text(encoding="utf-8")
+    assert "packaging/smoke/gtk-smoke.py" in release_gate
+
+
+def test_shared_gtk_smoke_constructs_the_complete_application() -> None:
+    smoke = (ROOT / "packaging" / "smoke" / "gtk-smoke.py").read_text(encoding="utf-8")
+    for marker in (
+        "ClamGuardianApp", "MainWindow", "DiagnosticsPage", "ScanPage",
+        "build_about_dialog", "CLAMGUARDIAN_GTK_SMOKE_OK",
+    ):
+        assert marker in smoke

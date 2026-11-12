@@ -77,14 +77,10 @@ jobs:
           test "$(flatpak info --show-ref io.github.clamguardian.ClamGuardian)" = "app/io.github.clamguardian.ClamGuardian/${{ matrix.arch }}/master"
           flatpak run io.github.clamguardian.ClamGuardian version
           flatpak run io.github.clamguardian.ClamGuardian profiles
-      - name: Verify GTK launch
-        shell: bash
-        run: |
-          set +e
-          GTK_A11Y=none timeout --signal=TERM 20s xvfb-run -a dbus-run-session -- flatpak run io.github.clamguardian.ClamGuardian ui
-          status=$?
-          set -e
-          test "$status" -eq 124 || { echo "::error::Flatpak GTK startup failed ($status)"; exit 1; }
+      - name: Construct complete GTK UI in installed Flatpak runtime
+        env:
+          GTK_A11Y: none
+        run: xvfb-run -a dbus-run-session -- flatpak run --command=python3 io.github.clamguardian.ClamGuardian /app/share/clamguardian/gtk-smoke.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-flatpak-${{ matrix.arch }}
@@ -103,12 +99,8 @@ jobs:
         include:
           - arch: x86_64
             runner: ubuntu-24.04
-            apt_arch: amd64
-            apt_mirror: http://archive.ubuntu.com/ubuntu/
           - arch: aarch64
             runner: ubuntu-24.04-arm
-            apt_arch: arm64
-            apt_mirror: http://ports.ubuntu.com/ubuntu-ports/
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
@@ -119,7 +111,7 @@ jobs:
           for script in packaging/flatpak/prepare-wheelhouse.sh packaging/appimage/*.sh; do
             bash -n "$script"
           done
-          cc -fsyntax-only -Wall -Wextra -Werror packaging/appimage/clamguardian-launcher.c
+          python -m py_compile packaging/smoke/gtk-smoke.py
       - name: Install AppImage build dependencies
         run: |
           python -m pip install --disable-pip-version-check uv==0.9.5
@@ -128,8 +120,6 @@ jobs:
       - run: packaging/appimage/prepare-wheelhouse.sh
       - name: Build AppImage
         env:
-          APT_ARCH: ${{ matrix.apt_arch }}
-          APT_MIRROR: ${{ matrix.apt_mirror }}
           APPIMAGE_ARCH: ${{ matrix.arch }}
         run: |
           export APP_VERSION="${GITHUB_REF_NAME#v}"

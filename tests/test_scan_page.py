@@ -61,6 +61,25 @@ def test_module_exposes_boolean_gtk_flag() -> None:
     assert isinstance(scan_page_module.GTK_AVAILABLE, bool)
 
 
+@pytest.mark.skipif(
+    not scan_page_module.GTK_AVAILABLE,
+    reason="requires PyGObject; no display is needed for the API contract",
+)
+def test_button_row_uses_libadwaita_16_start_icon_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeButtonRow:
+        def __init__(self, *, title: str) -> None:
+            self.title = title
+            self.start_icon_name: str | None = None
+
+        def set_start_icon_name(self, icon_name: str) -> None:
+            self.start_icon_name = icon_name
+
+    monkeypatch.setattr(scan_page_module.Adw, "ButtonRow", FakeButtonRow, raising=False)
+    row = scan_page_module._button_row("Scan", "system-run-symbolic")
+    assert row.title == "Scan"
+    assert row.start_icon_name == "system-run-symbolic"
+
+
 def test_parse_detection_splits_path_and_signature() -> None:
     path, signature = scan_page_module.parse_detection(
         "/tmp/eicar.com.txt: Eicar-Test-Signature FOUND"
