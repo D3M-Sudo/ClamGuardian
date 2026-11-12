@@ -63,21 +63,38 @@ def test_module_exposes_boolean_gtk_flag() -> None:
 
 @pytest.mark.skipif(
     not scan_page_module.GTK_AVAILABLE,
-    reason="requires PyGObject; no display is needed for the API contract",
+    reason="requires PyGObject; no display is needed for the row API contract",
 )
-def test_button_row_uses_libadwaita_16_start_icon_api(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_button_row_uses_action_row_compatible_with_preferences_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class FakeButtonRow:
         def __init__(self, *, title: str) -> None:
-            self.title = title
-            self.start_icon_name: str | None = None
+            raise AssertionError("Adw.ButtonRow requires Gtk.ListBox as its parent")
 
-        def set_start_icon_name(self, icon_name: str) -> None:
-            self.start_icon_name = icon_name
+    class FakeActionRow:
+        def __init__(self, *, title: str, activatable: bool) -> None:
+            self.title = title
+            self.activatable = activatable
+            self.prefix: object | None = None
+
+        def add_prefix(self, widget: object) -> None:
+            self.prefix = widget
+
+    class FakeImage:
+        def __init__(self, *, icon_name: str) -> None:
+            self.icon_name = icon_name
 
     monkeypatch.setattr(scan_page_module.Adw, "ButtonRow", FakeButtonRow, raising=False)
+    monkeypatch.setattr(scan_page_module.Adw, "ActionRow", FakeActionRow, raising=False)
+    monkeypatch.setattr(scan_page_module.Gtk, "Image", FakeImage, raising=False)
+
     row = scan_page_module._button_row("Scan", "system-run-symbolic")
+    assert isinstance(row, FakeActionRow)
     assert row.title == "Scan"
-    assert row.start_icon_name == "system-run-symbolic"
+    assert row.activatable is True
+    assert isinstance(row.prefix, FakeImage)
+    assert row.prefix.icon_name == "system-run-symbolic"
 
 
 def test_parse_detection_splits_path_and_signature() -> None:
