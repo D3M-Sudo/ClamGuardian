@@ -10,6 +10,7 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ### Added
 - **VirusTotal API profiles and file submission:** independent Public/Premium credentials in OS Secret Service, explicit profile selection, hash-first lookup and consent-gated upload with snapshot revalidation and analysis polling.
+- **VirusTotal hash cache:** persistent, profile-isolated hash assessments with shared in-flight lookup deduplication and bounded transient retries.
 - **Shared scan enrichment:** centralize optional VirusTotal enrichment across pathname and descriptor-based scan workflows while preserving the local ClamAV verdict and request-time profile/provenance.
 - **Persistent intelligence evidence:** store normalized VirusTotal assessments in a scan-linked SQLite table with schema migration and retention lifecycle; expose retrieval through the HistoryStore interface.
 
@@ -33,7 +34,7 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - **Realtime lifecycle and filesystem confinement:** recreate the scan orchestrator on each start, fail startup when configured directories or recursive watches cannot be registered, and expose watch-registration failures instead of reporting incomplete monitoring as active. Pin configured roots, open event targets relative to root descriptors, reject symlink/path traversal and special files, scan through descriptor-preserving clamd transports, and detect file mutation without pathname fallback.
 - **Scheduled scans:** persist the last successful daily run across restarts and retry failed scans rather than recording a failed attempt as completed.
 - **Background service integration:** start and stop USB, realtime and scheduler services from the GTK application lifecycle using the application's shared scan runner and history store; apply realtime path changes.
-- **VirusTotal safety and concurrency:** enforce opt-in in the CLI, preserve request-time API profile/provenance across scan workflows, cache the provider for a service lifetime, coordinate shared lookups and cache I/O across event loops/processes, bound retries and resolver shutdown, apply the shared 15.1-second minimum request interval, and keep Public network lookups blocked until written terms/product eligibility authorization is recorded.
+- **VirusTotal safety and concurrency:** enforce opt-in in the CLI, preserve request-time API profile/provenance across scan workflows, cache the provider for a service lifetime, coordinate shared lookups and cache I/O across event loops/processes, bound retries and resolver shutdown, apply profile-specific request pacing (15.1 seconds for Public), and keep Public network lookups blocked until written terms/product eligibility authorization is recorded.
 - **Flatpak credentials:** grant the Secret Service D-Bus name in both manifests; Secret Service availability checks now exercise the D-Bus operation and remain fail-closed.
 - **Autostart:** reject unsupported host XDG autostart writes from inside Flatpak rather than silently claiming that host autostart was installed.
 
