@@ -1,5 +1,7 @@
 # ClamGuardian 1.0 Manual Desktop Test Checklist
 
+> **Release status reviewed 2026-11-12:** `v1.0.1` was published on GitHub on 2026-10-24. This file remains an unfilled checklist/template and contains no recorded outcomes. It is retained to identify the intended host-side checks; do not treat it as evidence that desktop or Flatpak-restore steps passed. The D4-specific session record has the same evidence gap.
+
 This document is the evidence template for **`docs/ROADMAP.md`, 1.0.x M2** (manual test on a
 real desktop) and **M3** (quarantine-restore verification inside the Flatpak sandbox).
 
@@ -13,8 +15,7 @@ real desktop) and **M3** (quarantine-restore verification inside the Flatpak san
   `feature → testing` PR; after the tag, use
   `ClamGuardian-v1.0.1-linux-x86_64.flatpak`. Both are built offline from the
   same local manifest; the resolved commit and SHA-256 must be recorded.
-- **Prerequisites:** the CI GTK smoke test passed under Xvfb; this checklist is
-  the last gate before the `v1.0.1` tag.
+- **Prerequisites:** the CI GTK smoke test passed under Xvfb; this checklist was intended as a pre-release gate; the release has since been published, but this copy remains unfilled.
 
 ---
 
