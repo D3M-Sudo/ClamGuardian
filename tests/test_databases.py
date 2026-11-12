@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -473,3 +475,81 @@ async def test_provider_removes_partial_file_when_download_is_cancelled(
         await task
 
     assert list(destination.iterdir()) == []
+
+
+class _ConcurrentProvider:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.active = 0
+        self.max_active = 0
+
+    async def download(self, source, destination):
+        with self._lock:
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+        try:
+            await asyncio.sleep(0.1)
+            destination.mkdir(parents=True, exist_ok=True)
+            path = destination / source.artifacts[0].filename
+            path.write_bytes(b"good")
+            yield path
+        finally:
+            with self._lock:
+                self.active -= 1
+
+
+def test_same_source_updates_are_serialized_across_event_loops(tmp_path: Path) -> None:
+    manager = DatabaseManager(
+        tmp_path / "db", tmp_path / "state.json", provider=_ConcurrentProvider()
+    )
+    manager.add_source(source())
+    barrier = threading.Barrier(2)
+
+    def run_update():
+        barrier.wait(timeout=2)
+        return asyncio.run(manager.update("thirdparty"))
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(run_update) for _ in range(2)]
+        results = [future.result(timeout=5) for future in futures]
+
+    assert all(result.status is DatabaseStatus.INSTALLED for result in results)
+    assert manager.provider.max_active == 1
+    assert (tmp_path / "db" / "thirdparty.cvd").read_bytes() == b"good"
+
+
+@pytest.mark.asyncio
+async def test_cancelled_update_rolls_back_and_blocks_source_mutation(tmp_path: Path) -> None:
+    manager = DatabaseManager(
+        tmp_path / "db", tmp_path / "state.json", provider=FakeProvider(b"good")
+    )
+    manager.add_source(source())
+    await manager.update("thirdparty")
+
+    installed_callback_started = asyncio.Event()
+    release_callback = asyncio.Event()
+
+    async def block_after_install(status):
+        if status.status is DatabaseStatus.INSTALLED:
+            installed_callback_started.set()
+            await release_callback.wait()
+
+    manager.provider = FakeProvider(b"replacement")
+    manager.status_callback = block_after_install
+    task = asyncio.create_task(manager.update("thirdparty"))
+    await asyncio.wait_for(installed_callback_started.wait(), timeout=2)
+
+    with pytest.raises(RuntimeError, match="update is in progress"):
+        manager.remove_source("thirdparty")
+    with pytest.raises(RuntimeError, match="update is in progress"):
+        manager.set_enabled("thirdparty", False)
+
+    task.cancel()
+    release_callback.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert (tmp_path / "db" / "thirdparty.cvd").read_bytes() == b"good"
+    assert manager.status("thirdparty").status is DatabaseStatus.INSTALLED
+    assert "thirdparty" not in manager._updating_sources
+    assert list((tmp_path / "db").parent.glob(".clamguardian-db-backup-*")) == []
