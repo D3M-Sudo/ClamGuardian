@@ -153,14 +153,16 @@ async def test_descriptor_scan_fails_closed_without_engine_support(tmp_path) -> 
         await runner.submit_fd(17, tmp_path / "missing.bin")
 
 
-@pytest.mark.asyncio
-async def test_cancel_all_does_not_wait_on_a_stopped_event_loop() -> None:
+def test_cancel_all_does_not_wait_on_a_stopped_event_loop() -> None:
     runner = ScanTaskRunner(StubEngine())
     stopped_loop = asyncio.new_event_loop()
     task = stopped_loop.create_task(asyncio.sleep(60))
+    # Let the coroutine start before stopping its loop, avoiding an
+    # un-awaited-coroutine warning when the test later disposes the task.
+    stopped_loop.run_until_complete(asyncio.sleep(0))
     runner._track_task(task, stopped_loop)
 
-    await asyncio.wait_for(runner.cancel_all(), timeout=1)
+    asyncio.run(runner.cancel_all())
 
     assert not task.done()
     task.cancel()
