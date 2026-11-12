@@ -906,3 +906,34 @@ def test_sbom_verifier_reconciles_curated_appdir_packages_and_licenses(tmp_path:
         artifact, "x86_64", sbom_dir, tmp_path / "runtime.json",
         appdir_inventory_path=tmp_path / "components.json",
     )
+
+
+
+def test_syft_output_formats_pin_spdx_and_cyclonedx_schema_versions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module_path = ROOT / "packaging" / "appimage" / "generate-sbom.py"
+    spec = importlib.util.spec_from_file_location("appimage_sbom_generator_format_pin", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    appdir = tmp_path / "AppDir"
+    appdir.mkdir()
+    output = tmp_path / "sbom"
+    captured: list[str] = []
+
+    def fake_run(command: list[str], *, check: bool) -> None:
+        captured.extend(command)
+        for argument in command:
+            if argument.startswith("spdx-json@2.3="):
+                Path(argument.split("=", 1)[1]).write_text("{}", encoding="utf-8")
+            if argument.startswith("cyclonedx-json@1.6="):
+                Path(argument.split("=", 1)[1]).write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    module.generate_appdir_sboms(appdir, "syft", output)
+
+    assert any(value.startswith("spdx-json@2.3=") for value in captured)
+    assert any(value.startswith("cyclonedx-json@1.6=") for value in captured)
