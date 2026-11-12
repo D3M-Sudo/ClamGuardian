@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import secrets
 import stat
@@ -31,6 +32,9 @@ _MAX_AAD_BYTES = 1_000_000
 DEFAULT_CHUNK_SIZE = 1024 * 1024
 #: Upper bound for a quarantinable file (512 MiB).
 DEFAULT_MAX_BYTES = 512 * 1024 * 1024
+_MAX_CHUNK_SIZE = 8 * 1024 * 1024
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,8 +85,10 @@ class QuarantineVault:
     ) -> None:
         if len(key) != _KEY_SIZE:
             raise ValueError("Quarantine key must be exactly 32 bytes (AES-256)")
-        if chunk_size <= 0:
-            raise ValueError("Quarantine chunk_size must be positive")
+        if chunk_size <= 0 or chunk_size > _MAX_CHUNK_SIZE:
+            raise ValueError(
+                f"Quarantine chunk_size must be between 1 and {_MAX_CHUNK_SIZE} bytes"
+            )
         if max_bytes <= 0:
             raise ValueError("Quarantine max_bytes must be positive")
         self.directory = Path(directory)
@@ -230,10 +236,14 @@ class QuarantineVault:
 
         Only the cleartext header is parsed: listing never decrypts a payload.
         """
-        return [
-            self._entry_from_metadata(self._read_header(path.stem).metadata)
-            for path in sorted(self.directory.glob("*.qtn"))
-        ]
+        entries: list[QuarantineEntry] = []
+        for path in sorted(self.directory.glob("*.qtn")):
+            try:
+                header = self._read_header(path.stem)
+                entries.append(self._entry_from_metadata(header.metadata))
+            except (OSError, ValueError) as exc:
+                logger.warning("Skipping invalid quarantine record %s: %s", path.name, exc)
+        return entries
 
 
     @staticmethod
@@ -263,7 +273,7 @@ class QuarantineVault:
         return path
 
     def _read_header(self, item_id: str) -> _RecordHeader:
-        """Parse the cleartext header of a record without reading its payload."""
+        """Parse and bound a record header before reading any ciphertext."""
         with self._path(item_id).open("rb") as handle:
             magic = handle.read(_MAGIC_SIZE)
             if magic not in (_MAGIC_V1, _MAGIC_V2):
@@ -278,36 +288,60 @@ class QuarantineVault:
             if len(aad) != aad_len:
                 raise ValueError("Invalid quarantine record metadata")
             metadata = _parse_metadata(aad, item_id)
+            size = metadata.get("size")
+            if (
+                not isinstance(size, int)
+                or isinstance(size, bool)
+                or size < 0
+                or size > self.max_bytes
+            ):
+                raise ValueError("Invalid quarantine record size")
 
+            nonce = handle.read(_NONCE_SIZE)
+            if len(nonce) != _NONCE_SIZE:
+                raise ValueError("Invalid quarantine record")
             if magic == _MAGIC_V1:
-                nonce = handle.read(_NONCE_SIZE)
-                if len(nonce) != _NONCE_SIZE:
-                    raise ValueError("Invalid quarantine record")
+                data_offset = handle.tell()
+                handle.seek(0, os.SEEK_END)
+                payload_size = handle.tell() - data_offset
+                if payload_size != size + _TAG_SIZE:
+                    raise ValueError("Invalid legacy quarantine record size")
                 return _RecordHeader(
                     metadata=metadata,
                     aad=aad,
                     nonce=nonce,
                     chunk_size=0,
                     chunk_count=1,
-                    data_offset=handle.tell(),
+                    data_offset=data_offset,
                     legacy=True,
                 )
 
             raw_geometry = handle.read(8)
-            nonce = handle.read(_NONCE_SIZE)
-            if len(raw_geometry) != 8 or len(nonce) != _NONCE_SIZE:
-                raise ValueError("Invalid quarantine record")
+            if len(raw_geometry) != 8:
+                raise ValueError("Invalid quarantine record geometry")
             chunk_size = int.from_bytes(raw_geometry[:4], "big")
             chunk_count = int.from_bytes(raw_geometry[4:], "big")
-            if chunk_size <= 0 or chunk_count < 1:
+            if (
+                chunk_size <= 0
+                or chunk_size > _MAX_CHUNK_SIZE
+                or chunk_count < 1
+            ):
                 raise ValueError("Invalid quarantine record geometry")
+            expected_count = max(1, -(-size // chunk_size))
+            if chunk_count != expected_count:
+                raise ValueError("Invalid quarantine record geometry")
+            data_offset = handle.tell()
+            handle.seek(0, os.SEEK_END)
+            payload_size = handle.tell() - data_offset
+            if payload_size != size + chunk_count * _TAG_SIZE:
+                raise ValueError("Invalid quarantine record payload size")
             return _RecordHeader(
                 metadata=metadata,
                 aad=aad,
                 nonce=nonce,
                 chunk_size=chunk_size,
                 chunk_count=chunk_count,
-                data_offset=handle.tell(),
+                data_offset=data_offset,
                 legacy=False,
             )
 
