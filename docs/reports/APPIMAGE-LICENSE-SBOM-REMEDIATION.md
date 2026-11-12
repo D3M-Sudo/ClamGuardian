@@ -2,7 +2,7 @@
 
 **Status: IMPLEMENTED ON PR / CI GREEN / NOT RELEASE-READY**  
 **Target:** PR #38, branch `ci/node24-actions` → `feature`  
-**Verified PR head:** `7b858222dd60c5fc2bb2a952f0c6fd53cd247cbb`  
+**CI-verified implementation commit:** `7b858222dd60c5fc2bb2a952f0c6fd53cd247cbb` (the later PR commits update documentation only).  
 **CI:** [run 43287780117](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43287780117) — **success**  
 **Release Gate:** [run 43287780155](https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43287780155) — **success**
 
@@ -64,7 +64,7 @@ The remaining 108 unknown declarations include many native/system package record
 2. **Type 2 runtime versions:** musl, zstd, zlib and mimalloc candidate versions are marked `declared` from Alpine 3.21 APKBUILD evidence. The runtime build did not retain the exact installed APK database, so these are not verified installed versions.
 3. **libmpdec version:** the embedded library version remains unknown. The copyright evidence establishes the relevant `_decimal`/libmpdec notice, not an independently versioned libmpdec component.
 4. **LGPL-2.1 / libfuse:** the static-linking implications, including source and relinkability obligations, still require engineering/legal review. Including the license text is not itself proof that every applicable obligation is met.
-5. **Independent review:** perform a separate review of the x86_64 and aarch64 evidence bundles and a final whole-branch review for material omissions. Native CI has exercised both artifacts, but this independent review has not been recorded as complete.
+5. **Second-party review:** obtain a separate engineering/legal review of the x86_64 and aarch64 evidence bundles and the remaining license interpretations. Native CI and this implementation pass's technical review have exercised both artifacts, but a second-party review has not been recorded as complete.
 
 No legal-compliance conclusion is made. The remaining items above are not CI failures; they are evidence and review gaps that prevent calling the remediation release-ready.
 
