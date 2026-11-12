@@ -441,6 +441,13 @@ def test_appimage_packaging_recipe_and_helpers_exist() -> None:
     assert "      - python3.12-minimal" in recipe
     assert "      - libpython3.12-minimal" in recipe
     assert "      - libpython3.12-stdlib" in recipe
+    parsed_recipe = yaml.safe_load(recipe)
+    build_script = "\\n".join(parsed_recipe["script"])
+    after_bundle = parsed_recipe["AppDir"]["after_bundle"]
+    assert 'test -d "$stdlib_dir/encodings"' in after_bundle
+    assert 'ln -sfn ../usr/lib/python3.12 "$TARGET_APPDIR/lib/python3.12"' in after_bundle
+    assert "python3.12/encodings" not in build_script
+    assert "ln -sfn ../usr/lib/python3.12" not in build_script
     assert "gir1.2-gtk-4.0" in recipe
     assert "gir1.2-adw-1" in recipe
     assert "{{APPIMAGE_ARCH}}" in recipe
