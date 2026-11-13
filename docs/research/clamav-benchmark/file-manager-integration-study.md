@@ -11,7 +11,7 @@ The freedesktop desktop-entry `Actions` key provides launcher quicklists/jumplis
 | File manager | Mechanism | Key behavior | Recommendation |
 |---|---|---|---|
 | Nemo / Cinnamon | `.nemo_action` | Selection filters, `%F` path list, `%U` URI list, script | First target |
-| Nautilus / GNOME Files | Scripts or nautilus-python `MenuProvider` | Selected paths; dynamic menu via extension | First wave after Nemo |
+| Nautilus / GNOME Files | Scripts or nautilus-python `MenuProvider` | Selected paths; dynamic menu via extension | First wave (same coordinated delivery as Nemo and Dolphin) |
 | Dolphin / KDE | KIO service-menu `.desktop` | MIME filters, `%u`/`%U`, directory MIME | First wave |
 | Caja / MATE | Caja-Actions / extensions | Actions over selected files | Optional follow-up |
 | Thunar / Xfce | Custom Actions | `%f` first item, `%F` all selected items | Optional follow-up |
