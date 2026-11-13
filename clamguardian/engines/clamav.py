@@ -80,6 +80,14 @@ class _DescriptorSocketControl:
             sock.close()
 
 
+class CommandTimeoutError(TimeoutError):
+    """Command deadline exceeded, with bounded output collected before teardown."""
+
+    def __init__(self, message: str, output: str) -> None:
+        super().__init__(message)
+        self.output = output
+
+
 class ClamAVEngine(BaseAVEngine):
     """Use clamd over UNIX socket when available, otherwise clamscan/freshclam.
 
@@ -218,11 +226,26 @@ class ClamAVEngine(BaseAVEngine):
                 return self._annotate_profile(result, profile)
         try:
             output, exit_code = await self._run_cli_scan(target, profile=profile)
-        except TimeoutError:
-            # No digest in this case: the engine already gave up on this target,
-            # and hashing it afterwards would repeat the very work that timed
-            # out (typically a very large or very slow file).
-            return self._annotate_profile(ScanResult.timed_out(str(target), started), profile)
+        except TimeoutError as exc:
+            # A timeout is never CLEAN. Preserve bounded diagnostics and any
+            # detections observed before teardown, while retaining TIMEOUT as
+            # the authoritative terminal status.
+            output = getattr(exc, "output", "")
+            result = ScanResult(
+                target=str(target),
+                clean=False,
+                status=ScanStatus.TIMEOUT,
+                threats=self._detection_lines(output),
+                engine="clamscan",
+                error=str(exc) or "scan timed out",
+                started_at=started,
+                finished_at=datetime.now(UTC),
+            )
+            if output:
+                result.metadata["partial_output"] = output
+            if _OUTPUT_TRUNCATED_MARKER in output:
+                result.metadata["output_truncated"] = "true"
+            return self._annotate_profile(result, profile)
         result = self._result(target, started, output, exit_code, "clamscan")
         return self._finalize(result, target, profile, initial_file_stat)
 
@@ -801,10 +824,11 @@ class ClamAVEngine(BaseAVEngine):
                         "command exceeded its maximum execution or inactivity timeout"
                     ) from None
             await completion
-        except TimeoutError:
+        except TimeoutError as exc:
             await self._terminate_process(process)
             await asyncio.gather(*readers, return_exceptions=True)
-            raise
+            partial_output = self._format_command_output(retained, detections, truncated)
+            raise CommandTimeoutError(str(exc), partial_output) from exc
         except asyncio.CancelledError:
             # Cancellation must reach the subprocess: terminate the process
             # group, finish draining both pipes, and preserve cancellation.
@@ -812,6 +836,13 @@ class ClamAVEngine(BaseAVEngine):
             await asyncio.gather(*readers, return_exceptions=True)
             raise
 
+        output = self._format_command_output(retained, detections, truncated)
+        return output, int(process.returncode or 0)
+
+    @staticmethod
+    def _format_command_output(
+        retained: bytearray, detections: list[str], truncated: bool
+    ) -> str:
         output = bytes(retained).decode("utf-8", errors="replace")
         retained_lines = set(output.splitlines())
         missing_detections = [line for line in detections if line not in retained_lines]
@@ -821,7 +852,7 @@ class ClamAVEngine(BaseAVEngine):
             )
         if truncated:
             output += _OUTPUT_TRUNCATED_MARKER
-        return output, int(process.returncode or 0)
+        return output
 
     @staticmethod
     async def _terminate_process(
@@ -834,23 +865,38 @@ class ClamAVEngine(BaseAVEngine):
         the signal targets the whole process group so ClamAV helper children
         cannot survive as orphans.
         """
-        if process.returncode is not None:
-            return  # already exited: nothing to reap
+        # The direct child may have exited while descendants remain in its
+        # session. Signal the process group by the original session leader PID
+        # regardless of process.returncode; checking the leader alone leaks
+        # helpers that inherited the subprocess pipes.
         try:
-            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            if process.returncode is None:
+                await process.wait()
+            return
+        except PermissionError as exc:
+            raise EngineError(f"cannot signal subprocess group {process.pid}: {exc}") from exc
+
+        deadline = asyncio.get_running_loop().time() + grace
+        while asyncio.get_running_loop().time() < deadline:
             try:
-                process.terminate()
+                os.killpg(process.pid, 0)
             except ProcessLookupError:
-                return
+                break
+            await asyncio.sleep(min(0.05, max(0.0, deadline - asyncio.get_running_loop().time())))
+
         try:
-            await asyncio.wait_for(process.wait(), grace)
-        except TimeoutError:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            pass
+        else:
             try:
-                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                process.kill()
-            await process.wait()
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+        await process.wait()
 
 
     @staticmethod
