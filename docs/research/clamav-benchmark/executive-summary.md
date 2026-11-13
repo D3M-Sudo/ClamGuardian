@@ -19,18 +19,18 @@ There is no defensible overall winner. ClamGuardian's encrypted quarantine and d
 
 | Priority | Recommendation | Class |
 |---|---|---|
-| P1 | Bounded recovery after inotify event loss / queue overflow | INVESTIGATE |
+| P1 | Conservative realtime coverage-loss handling; explicit manual scan when safe automatic recovery is uncertain | ACCEPTED DECISION — no automatic reconciliation requirement |
 | P1 | Preserve descriptor-pinned realtime scanning; validate on real hosts | RETAIN / VALIDATION |
 | P1 | Clarify quarantine key custody and recovery | INVESTIGATE |
 | P2 | Structured scan completeness: skipped files, warnings, coverage | ADOPT SEMANTICS |
-| P2 | Shared file-manager invocation contract and Nemo-first adapter | PROPOSE |
+| P2 | Shared multi-path invocation contract and coordinated Nemo, Nautilus and Dolphin first delivery wave | ACCEPTED ROADMAP DIRECTION — adapter mechanisms remain desktop-specific |
 | P2 | Unprivileged per-user systemd timer | INVESTIGATE |
 | RESEARCH | fanotify/clamonacc as separately gated architecture | DEFER |
 | EXCLUDE | Root helper, setuid, Polkit or privileged daemon for ordinary scans | EXCLUDE |
 
 ## Recommended file-manager direction
 
-Use thin native adapters calling one ClamGuardian-owned entry point. Keep scanning, profiles, history, cancellation and result interpretation in existing Core/Engine/UI layers. Start with Nemo, then Nautilus and Dolphin; Caja and Thunar can follow.
+Use thin native adapters calling one ClamGuardian-owned entry point. Keep scanning, profiles, history, cancellation and result interpretation in existing Core/Engine/UI layers. Deliver Nemo, Nautilus and Dolphin together in the same first wave after the shared multi-path contract is ready; their adapter mechanisms and desktop-specific validation remain distinct. Nemo may be the first adapter exercised during development on Cinnamon, but that test order does not create a Nemo-only release phase. Caja and Thunar can follow as later candidates.
 
 Preferred UX: one ClamGuardian window accepts multiple selected local paths, displays progress, supports cancellation and links detections to existing quarantine workflow. Adapter must not implement scanning or invoke ClamAV directly.
 

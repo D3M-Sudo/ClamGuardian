@@ -13,9 +13,11 @@
 
 **Finding:** inotify overflow and dropped events are counted, but complete reconciliation of affected roots is not established.
 
-**Proposal:** bounded recovery state machine; record affected roots/loss epoch; mark coverage degraded; reconcile via bounded traversal or controlled rescan; coalesce work; cap concurrency, queue and elapsed time; expose recovery result. Avoid unbounded full scans on each overflow.
+**Historical proposal — SUPERSEDED:** the original research proposed a bounded recovery state machine with affected-root tracking and controlled traversal/rescan. This is retained as research history, not the accepted 2.x-A closure requirement.
 
-**Exit evidence:** deterministic tests for overflow/repeated overflow/root removal/cancellation/shutdown/recovery and a host test proving state transitions.
+**Current maintainer decision — CONSERVATIVE:** retain and expose kernel overflow and internal queue-saturation evidence; mark affected monitoring coverage degraded/uncertain; identify affected roots or intervals where possible; require an explicit user-initiated scan when automatic recovery cannot be proven safe and complete. Do not make automatic root reconciliation or rescanning a requirement for current 2.x-A closure. See `docs/ROADMAP.md`, workstream WS-RT-REC.
+
+**Exit evidence:** deterministic tests proving event loss cannot be represented as full coverage; degraded-state persistence across relevant lifecycle transitions; repeated overflow, shutdown and restart behavior; actionable UI/diagnostics guidance for manual recovery. Record real-host evidence separately from CI. Automatic bounded traversal/rescan is not an acceptance criterion.
 
 ## CG-E02 — Quarantine key custody/recoverability (P1)
 

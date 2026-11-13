@@ -59,20 +59,21 @@ The existing `clamguardian scan` CLI accepts one positional PATH; it does not cu
 
 ## 4. Implementation phases
 
-### FM-1 — Nemo MVP (P2 proposal)
-- User-level `.nemo_action` for multi-selection and directory selection.
-- One host-side launcher/CLI invocation; no shell concatenation.
-- Submit one request to existing GTK controller.
-- Reuse progress, cancellation, result and quarantine UI.
-- Idempotent installer/uninstaller and exact installed-file documentation.
+### FM-1 — Coordinated first wave: Nemo, Nautilus and Dolphin (P2 proposal)
 
-### FM-2 — Nautilus and Dolphin (P2 proposal)
-- Nautilus: start with script; add Python `MenuProvider` only if dynamic menus are required.
+Deliver all three file-manager integrations in the same first wave after the shared multi-path request contract is ready. The delivery phase is coordinated; adapter implementation and host validation remain desktop-specific.
+
+- Nemo: user-level `.nemo_action` for multi-selection and directory selection.
+- Nautilus: start with a script; add Python `MenuProvider` only if dynamic menus are required.
 - Dolphin: KIO service menu with file and directory MIME support.
-- Both use the same request contract.
+- All adapters submit one request to the existing GTK controller through the same bounded contract.
+- Reuse progress, cancellation, result and quarantine UI.
+- Provide idempotent, user-scoped installation/uninstallation and exact installed-file documentation.
 
-### FM-3 — Caja and Thunar
-Optional, after request API and packaging/uninstall behavior are stable.
+Nemo may be used as the first development/host-test target on Cinnamon. This is a validation sequence only; it does not split Nemo into an earlier standalone delivery phase.
+
+### FM-2 — Caja and Thunar
+Optional later candidates, after the shared request API and first-wave packaging/uninstall behavior are stable.
 
 ## 5. Flatpak/native packaging
 
@@ -84,9 +85,9 @@ Native packages may install integration files. Flatpak users should run an expli
 
 Single/multiple files, directories, mixed selections, spaces, quotes, Unicode, leading hyphens, newline/control characters, symlinks, broken links, unreadable/special files, remote URIs, removable/unmounted volumes, app already running, app absent, cancellation, notification failure, Flatpak/native launch, uninstall and stale extension cache.
 
-Validate Nemo first on Cinnamon. Do not infer other file managers' behavior from the shared request contract alone.
+Validate Nemo first on Cinnamon as the initial host-test target. This ordering is for efficient development validation only; it does not change the coordinated first-wave delivery of Nemo, Nautilus and Dolphin. Do not infer other file managers' behavior from the shared request contract alone.
 
-**Decision — PROPOSED:** Nemo-first thin adapter plus one ClamGuardian-owned multi-path UI request. No implementation is included in this research branch.
+**Decision — PROPOSED:** one ClamGuardian-owned multi-path UI request with thin, desktop-specific adapters for Nemo, Nautilus and Dolphin in the same first delivery wave. No implementation is included in this research branch.
 
 ## 7. Review corrections — process dispatch and selection contract
 

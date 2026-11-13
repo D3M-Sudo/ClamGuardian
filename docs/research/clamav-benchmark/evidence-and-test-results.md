@@ -59,7 +59,7 @@ The PR #45 regression suite covers malformed/empty protocol responses and summar
 
 - Original PR #44 head validation: CI run https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43383029161 and Release Gate run https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43383029178 both completed successfully on the then-current PR head. These are **historical pre-rebase runs**, not validation of this reconstructed branch.
 - PR #45 validation: CI run https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43396650195 completed with all 9 jobs passing; Release Gate run https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43396650487 completed with 6 passed and 1 expected skip. These runs support the ClamD remediation, not this documentation branch as a whole.
-- The new rebased documentation branch must pass its own CI and Release Gate before it is considered validated. Add those final run links after they complete.
+- PR #47 documentation branch head `884861eb6954c42b66f47f081f9b1bd7eea723ee`: CI run #579 completed successfully (9/9 jobs): https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43463528830. Release Gate #521 completed successfully with 6 passed and 1 skipped: https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43463527845. These are **pre-merge PR-head results**; they are not a post-merge validation run on merge commit `08d40bc17c201e5a94a3adb989a022a8e3bb0580` and do not validate this subsequent documentation-correction commit.
 - CI jobs validate only the steps they execute. They do not exercise the proposed file-manager request API, real Nemo action parsing, host-side installation or on-access behavior.
 
 ### ClamUI workflow-count wording

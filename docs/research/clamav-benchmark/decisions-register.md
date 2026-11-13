@@ -4,9 +4,9 @@ Research recommendations only; this is not implementation approval.
 
 | ID | Topic | Recommendation | Class | Priority / gate |
 |---|---|---|---|---|
-| D-01 | Nemo context action | Thin Nemo adapter over shared ClamGuardian request API | PROPOSE | P2; one UI request, no duplicate scan logic |
-| D-02 | Nautilus | Script first; Python MenuProvider only if needed | INVESTIGATE | P2; extension lifecycle/API compatibility |
-| D-03 | Dolphin | KIO service menu for file and directory MIME types | INVESTIGATE | P2; verify KDE Frameworks support |
+| D-01 | Nemo context action | Thin Nemo adapter over shared ClamGuardian request API | PROPOSE | P2; first delivery wave with Nautilus and Dolphin; one UI request, no duplicate scan logic |
+| D-02 | Nautilus | Script first; Python MenuProvider only if needed | INVESTIGATE | P2; same first delivery wave; extension lifecycle/API compatibility |
+| D-03 | Dolphin | KIO service menu for file and directory MIME types | INVESTIGATE | P2; same first delivery wave; verify KDE Frameworks support |
 | D-04 | Caja | Optional Caja-Actions integration | DEFER | P3; packaging/runtime validation |
 | D-05 | Thunar | Optional custom action | DEFER | P3; config/uninstall behavior |
 | D-06 | Multi-selection | Structured multi-path UI request; current CLI is single-path | PROPOSE | P2; bounded JSON request |
@@ -16,7 +16,7 @@ Research recommendations only; this is not implementation approval.
 | D-10 | Descriptor scan | FILDES → INSTREAM; never pathname fallback | RETAIN | P1; TOCTOU invariant |
 | D-11 | FreshClam | Diagnose host-managed updater conflicts | INVESTIGATE | P2; do not manage systemd service |
 | D-12 | User systemd timer | Evaluate unprivileged user-level service/timer | INVESTIGATE | P2; reuse CLI/Core |
-| D-13 | Realtime overflow | Bounded reconciliation after event loss | INVESTIGATE | P1; avoid rescan storms |
+| D-13 | Realtime overflow | Conservative coverage-loss handling: expose degraded/uncertain coverage and require explicit user-initiated scan when safe automatic recovery cannot be proven | DECIDED — CONSERVATIVE | P1; prior bounded automatic reconciliation/rescan proposal superseded; not required for current 2.x-A closure |
 | D-14 | Quarantine key custody | Complete threat model and recovery design | INVESTIGATE | P1; do not remove fallback prematurely |
 | D-15 | clamonacc/fanotify | Keep deferred; separate architecture review | DEFER | RESEARCH; elevated permissions/performance |
 | D-16 | Privileged helper/Polkit | Do not adopt | EXCLUDE | No justified use case |
@@ -27,4 +27,4 @@ Research recommendations only; this is not implementation approval.
 
 All PROPOSE/INVESTIGATE/DEFER items require separate maintainer approval. This register does not authorize code, dependency, permission, package, service or roadmap changes.
 
-| D-21 | Pathname ClamD response validation | Require non-empty, fully recognized responses; malformed/empty/error replies must never be CLEAN | FIX — separate implementation PR | P1; regression matrix required; no fallback after established connection |
+| D-21 | Pathname ClamD response validation | Require non-empty, fully recognized responses; malformed/empty/error replies must never be CLEAN | RESOLVED — PR #45 | P1 historical finding fixed by `c1da5c8974c8148ac60b23f507a5deec2816b52c`; regression tests added; no fallback after established connection |

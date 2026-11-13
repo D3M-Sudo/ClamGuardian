@@ -25,7 +25,7 @@ This document evaluates the publicly observable capabilities of [linx-systems/cl
 | **Desktop Autostart** | Launch application on login | Implemented (Phase 4) | Implemented & integrated | Implemented via standard user-session `~/.config/autostart` XDG desktop entry (`AutostartManager`), disabled by default, managed via Settings and CLI (`clamguardian autostart`). |
 | **Privileged IPC Daemon** | Root-dependent background daemon | Rejected | Rejected | Violates unprivileged security model. Excluded scope (2.x-C). |
 | **On-Access Blocking** | fanotify/clamonacc blocking | Deferred | Deferred | Requires root privileges and system-level intervention. Excluded scope (2.x-B). |
-| **System Tray Icon** | Background tray/AppIndicator | Deferred | Deferred | GNOME/Libadwaita desktop standard prefers background portal notifications over legacy StatusNotifier/XEmbed system tray icons. Desktop notifications are fully integrated. |
+| **System Tray Icon** | Background tray/AppIndicator | Deferred | Deferred (P3; full tray lifecycle, menu, minimize-to-tray and minimized startup remain future scope) | Existing desktop notifications do not provide tray icon/menu, minimize-to-tray or minimized-startup semantics and are not a substitute. Legacy StatusNotifier/XEmbed availability and supported integration differ across desktop environments; Cinnamon, GNOME and KDE compatibility requires a separate evaluation when this deferred work is scheduled. |
 
 ---
 

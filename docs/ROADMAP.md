@@ -163,7 +163,7 @@ Future versions are planning targets, not implemented releases or promised dates
 - **Phase D3 — History + Quarantine pages:** **IMPLEMENTED 2026-10-18 (`5dbd74c`)** — `ui/history_page.py` with status-filter list and limit, detail dialog, purge with `AlertDialog` confirmation; `ui/quarantine_page.py` with entry list, restore (destination dialog) and delete with confirmation; key management via Secret Service with `0600` file fallback in app-data. Tests `tests/test_history_page.py` + `tests/test_quarantine_page.py`. Gate green (ruff/mypy/pytest).
 - **Phase D4 — Polish:** implemented accent stylesheet, About dialog, optional content-free desktop notifications, persisted default-profile/theme settings, window chrome, quarantine ingest and expanded GTK smoke coverage. See the historical implementation handoff for original details.
 - **Gate per phase:** ruff + mypy + pytest green, CI smoke green, commit to `feature`; commits/pushes per the standing authorization rule.
-- **Exit criterion:** installable Flatpak presenting all five pages, diagnostics dialog blocking-on-missing-dependencies at first run, desktop validation recorded.
+- **Exit criterion:** installable Flatpak presenting all six pages, diagnostics dialog blocking-on-missing-dependencies at first run, desktop validation recorded.
 
 ### Phase 10: 1.1 USB Auto-Scan
 - **Status:** IMPLEMENTED on `feature`; real-host behaviour remains a separate validation item.
