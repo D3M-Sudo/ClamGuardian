@@ -33,13 +33,13 @@ async def test_freshclam_progress_resets_inactivity_timeout(tmp_path: Path) -> N
         "import time\n"
         "for _ in range(12):\n"
         "    print('Downloading database: progress', flush=True)\n"
-        "    time.sleep(0.03)\n",
+        "    time.sleep(0.1)\n",
         encoding="utf-8",
     )
     executable.chmod(0o755)
     engine = ClamAVEngine(
         freshclam_binary=str(executable),
-        command_inactivity_timeout=0.12,
+        command_inactivity_timeout=0.5,
         command_maximum_timeout=2.0,
     )
 
@@ -76,6 +76,35 @@ async def test_freshclam_progress_does_not_extend_maximum_execution_timeout(
     elapsed = time.monotonic() - started
 
     assert 0.20 <= elapsed < 3.0
+
+
+@pytest.mark.asyncio
+async def test_scan_timeout_preserves_partial_detections(tmp_path: Path) -> None:
+    """A timeout remains TIMEOUT while detections emitted before it are retained."""
+    target = tmp_path / "sample.bin"
+    target.write_bytes(b"sample")
+    detection = f"{target}: Eicar-Test-Signature FOUND"
+    script = (
+        "import time; "
+        f"print({detection!r}, flush=True); "
+        "time.sleep(5)"
+    )
+    engine = ClamAVEngine(
+        socket_path=tmp_path / "missing.sock",
+        command_inactivity_timeout=0.2,
+        command_maximum_timeout=1.0,
+    )
+
+    async def timed_cli(_target: Path, *, profile):
+        return await engine._run_command([sys.executable, "-c", script])
+
+    engine._run_cli_scan = timed_cli
+    result = await engine.scan(target)
+
+    assert result.status.name == "TIMEOUT"
+    assert result.clean is False
+    assert detection in result.threats
+    assert result.metadata["partial_output"].find(detection) >= 0
 
 
 @pytest.mark.asyncio
