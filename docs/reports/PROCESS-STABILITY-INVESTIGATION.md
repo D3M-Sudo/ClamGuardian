@@ -168,3 +168,14 @@ The initial investigation produced reproducible evidence for all four subprocess
 
 The work is **not ready for review or merge** until CI and Release Gate complete successfully on the current PR head and the final source review is complete. PR #43 remains Draft by explicit authorization. No merge or transition to Ready for Review is authorized.
 
+
+
+## 9. CI verification checkpoint (2026-11-13)
+
+At PR head `341e422d9ddf76d45d8abe8d78062700f9a70e2d`, the branch was one commit ahead of the latest completed CI/Release Gate pair:
+
+- **CI #550** completed successfully at `aa7608009156898407c171dfe7efa95e391ca8bd`. Python 3.11, 3.12 and 3.13 each reported 636 passed and 9 skipped. The Python 3.14 headless runtime reported 606 passed and 22 skipped. Native AppImage and Flatpak packaging for x86_64 and aarch64, and the pinned-runtime dependency audit, all succeeded.
+- **Release Gate #493** completed successfully at the same commit. Preflight, local-manifest Flatpak build, real clamscan/clamd checks, GTK smoke test and AppStream validation succeeded; the release-manifest build was skipped as expected for a pull request.
+- The comparison `aa76080...341e422` contains exactly one test-file change: the bounded-output test now writes 256 KiB to each stream and verifies the `output_truncated` metadata. Production code is unchanged by that delta.
+
+These results provide strong evidence for the implementation at `aa76080`, but do **not** constitute CI verification of the test-only delta at `341e422`. A fresh CI and Release Gate run on the updated PR head is still required before the branch can be considered ready for review. This PR remains Draft.
