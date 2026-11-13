@@ -1,14 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="650" viewBox="0 0 1100 650">
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="900" viewBox="0 0 1100 900">
 <style>
 .t{font:700 26px sans-serif;fill:#111827}.s{font:15px sans-serif;fill:#4b5563}.h{font:700 15px sans-serif;fill:#374151}
-.b{stroke-width:2;rx:13;ry:13}.done{fill:#e5e7eb;stroke:#6b7280}.rel{fill:#dbeafe;stroke:#1d4ed8;stroke-width:4}.gate{fill:#fff7ed;stroke:#c2410c}.later{fill:#f9fafb;stroke:#9ca3af;stroke-dasharray:6 4}
+.b{stroke-width:2;rx:13;ry:13}.done{fill:#e5e7eb;stroke:#6b7280}.rel{fill:#dbeafe;stroke:#1d4ed8;stroke-width:4}.gate{fill:#fff7ed;stroke:#c2410c}.plan{fill:#eff6ff;stroke:#3b82f6}.later{fill:#f9fafb;stroke:#9ca3af;stroke-dasharray:6 4}
 .l{font:700 17px sans-serif;fill:#111827;text-anchor:middle}.d{font:14px sans-serif;fill:#374151;text-anchor:middle}
 .a{stroke:#4b5563;stroke-width:2.4;fill:none;marker-end:url(#ar)}
 </style>
 <defs><marker id="ar" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#4b5563"/></marker></defs>
-<rect width="1100" height="650" fill="#fff"/>
+<rect width="1100" height="900" fill="#fff"/>
 <text x="35" y="42" class="t">ClamGuardian — roadmap di produzione</text>
-<text x="35" y="68" class="s">Stato implementazione su feature · aggiornato 12 novembre 2026</text>
+<text x="35" y="68" class="s">Stato implementazione su feature · aggiornato 13 novembre 2026</text>
 <text x="35" y="108" class="h">BASELINE E RELEASE PUBBLICATA</text>
 <rect x="35" y="125" width="220" height="75" class="b done"/><text x="145" y="153" class="l">M0–M7</text><text x="145" y="177" class="d">Core · sicurezza · CI · packaging</text>
 <path d="M255 162 H282" class="a"/>
@@ -20,15 +20,20 @@
 <text x="35" y="250" class="h">STATO IMPLEMENTAZIONE E GATE RESIDUI</text>
 <rect x="35" y="270" width="310" height="100" class="b done"/><text x="190" y="300" class="l">USB Auto-Scan</text><text x="190" y="325" class="d">Implementato su feature</text><text x="190" y="347" class="d">Validazione host pendente</text>
 <path d="M345 320 H375" class="a"/>
-<rect x="380" y="270" width="310" height="100" class="b done"/><text x="535" y="300" class="l">Threat Intelligence</text><text x="535" y="325" class="d">Profili, upload consentito, evidence</text><text x="535" y="347" class="d">Public bloccato · Premium entitlement</text>
+<rect x="380" y="270" width="310" height="100" class="b done"/><text x="535" y="300" class="l">Threat Intelligence</text><text x="535" y="325" class="d">Profili · upload consentito · evidence</text><text x="535" y="347" class="d">Public bloccato · Premium entitlement</text>
 <path d="M690 320 H720" class="a"/>
 <rect x="725" y="270" width="340" height="100" class="b done"/><text x="895" y="300" class="l">2.x-A · Realtime</text><text x="895" y="325" class="d">Descriptor scanning · PR #30 hardening</text><text x="895" y="347" class="d">Validazione host pendente</text>
-<text x="35" y="420" class="h">PROSSIMI PASSI — NON SONO FUNZIONALITÀ DA IMPLEMENTARE</text>
-<rect x="35" y="440" width="310" height="85" class="b gate"/><text x="190" y="470" class="l">Validazione host</text><text x="190" y="495" class="d">Desktop · restore · USB · realtime</text><text x="190" y="514" class="d">Registrare evidenze PASS / FAIL</text>
-<path d="M345 482 H375" class="a"/>
-<rect x="380" y="440" width="310" height="85" class="b later"/><text x="535" y="470" class="l">2.x-B · Access prevention</text><text x="535" y="495" class="d">fanotify / clamonacc</text><text x="535" y="514" class="d">Threat model e privilegi</text>
-<path d="M690 482 H720" class="a"/>
-<rect x="725" y="440" width="340" height="85" class="b later"/><text x="895" y="470" class="l">2.x-C · IPC privilegiato</text><text x="895" y="495" class="d">Daemon / IPC / Polkit</text><text x="895" y="514" class="d">Solo se giustificato</text>
-<rect x="35" y="560" width="1030" height="58" rx="12" fill="#f9fafb" stroke="#d1d5db"/>
-<text x="55" y="585" class="l" text-anchor="start">Vincoli</text><text x="55" y="605" class="d" text-anchor="start">Implementazione su feature ≠ release promossa. Public API resta bloccata; ogni gate richiede evidenze verificabili.</text>
+<text x="35" y="420" class="h">WORKSTREAM TECNICI — PIANIFICATI / INVESTIGATIVI</text>
+<rect x="35" y="440" width="330" height="112" class="b plan"/><text x="200" y="469" class="l">P1 · Affidabilità e sicurezza</text><text x="200" y="494" class="d">Realtime coverage-loss conservativo</text><text x="200" y="516" class="d">Quarantine key custody</text><text x="200" y="538" class="d">Scansione esplicitamente completa/parziale</text>
+<rect x="385" y="440" width="330" height="112" class="b plan"/><text x="550" y="469" class="l">P2 · Core / Engine</text><text x="550" y="494" class="d">ClamD framing investigation</text><text x="550" y="516" class="d">FreshClam compatibilità e diagnostica</text><text x="550" y="538" class="d">Nessun controllo sui servizi host</text>
+<rect x="735" y="440" width="330" height="112" class="b plan"/><text x="900" y="469" class="l">P2 · Desktop / Scheduling</text><text x="900" y="494" class="d">Contratto multi-path → Nemo / Nautilus / Dolphin</text><text x="900" y="516" class="d">Timer systemd user dopo scheduler reliability</text><text x="900" y="538" class="d">Release assignment da definire</text>
+<text x="35" y="605" class="h">GATE OPERATIVI E ARCHITETTURE DIFFERITE</text>
+<rect x="35" y="625" width="310" height="100" class="b gate"/><text x="190" y="655" class="l">Validazione host</text><text x="190" y="680" class="d">Desktop · restore · USB · realtime</text><text x="190" y="702" class="d">Registrare evidenze PASS / FAIL</text>
+<path d="M345 675 H375" class="a"/>
+<rect x="380" y="625" width="310" height="100" class="b later"/><text x="535" y="655" class="l">2.x-B · Access prevention</text><text x="535" y="680" class="d">fanotify / clamonacc</text><text x="535" y="702" class="d">Threat model e privilegi</text>
+<path d="M690 675 H720" class="a"/>
+<rect x="725" y="625" width="340" height="100" class="b later"/><text x="895" y="655" class="l">2.x-C · IPC privilegiato</text><text x="895" y="680" class="d">Daemon / IPC / Polkit</text><text x="895" y="702" class="d">Solo se giustificato</text>
+<rect x="35" y="765" width="500" height="95" class="b later"/><text x="285" y="794" class="l">P3 · System Tray completo</text><text x="285" y="819" class="d">Tray · minimize-to-tray · minimized startup</text><text x="285" y="841" class="d">Deferred · nessun impegno di release</text>
+<rect x="565" y="765" width="500" height="95" class="b later"/><text x="815" y="794" class="l">P3 · Integrazioni successive</text><text x="815" y="819" class="d">Caja / Thunar dopo la prima wave</text><text x="815" y="841" class="d">Non incluse nella prima wave</text>
+<text x="35" y="885" class="s">Implementazione su feature ≠ release promossa. Public API resta bloccata; ogni gate richiede evidenze verificabili.</text>
 </svg>
