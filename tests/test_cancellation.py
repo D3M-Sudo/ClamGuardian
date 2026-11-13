@@ -8,6 +8,7 @@ is faked where real process semantics would be flaky on CI.
 from __future__ import annotations
 
 import asyncio
+import os
 import signal
 import sys
 from pathlib import Path
@@ -128,6 +129,54 @@ async def test_terminate_process_escalates_to_kill() -> None:
     await ClamAVEngine._terminate_process(process, grace=0.2)
     assert process.returncode is not None
     assert process.returncode == -signal.SIGKILL
+
+
+@pytest.mark.asyncio
+async def test_terminate_process_kills_descendants_after_parent_exits(
+    tmp_path: Path,
+) -> None:
+    """An exited session leader must not leave SIGTERM-resistant descendants."""
+    pid_file = tmp_path / "descendant.pid"
+    child_script = (
+        "import signal, time; "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        f"open({str(pid_file)!r}, 'w').write(str(__import__('os').getpid())); "
+        "time.sleep(30)"
+    )
+    parent_script = (
+        "import subprocess, sys, time; "
+        f"subprocess.Popen([sys.executable, '-c', {child_script!r}]); "
+        "time.sleep(0.15)"
+    )
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-c",
+        parent_script,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,
+    )
+    await process.wait()
+    for _ in range(50):
+        if pid_file.exists():
+            break
+        await asyncio.sleep(0.02)
+    assert pid_file.exists()
+    child_pid = int(pid_file.read_text())
+
+    await ClamAVEngine._terminate_process(process, grace=0.1)
+
+    for _ in range(50):
+        try:
+            os.kill(child_pid, 0)
+        except ProcessLookupError:
+            break
+        stat_path = Path(f"/proc/{child_pid}/stat")
+        if stat_path.exists() and stat_path.read_text().split()[2] == "Z":
+            break
+        await asyncio.sleep(0.02)
+    else:
+        pytest.fail("descendant process survived process-group termination")
 
 
 @pytest.mark.asyncio
