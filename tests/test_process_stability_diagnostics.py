@@ -29,11 +29,11 @@ async def test_freshclam_progress_resets_inactivity_timeout(tmp_path: Path) -> N
     """Continuous progress prevents inactivity timeout but not the hard deadline."""
     executable = tmp_path / "freshclam-progress"
     executable.write_text(
-        "#!/usr/bin/env python3\\n"
-        "import time\\n"
-        "for _ in range(12):\\n"
-        "    print('Downloading database: progress', flush=True)\\n"
-        "    time.sleep(0.03)\\n",
+        "#!/usr/bin/env python3\n"
+        "import time\n"
+        "for _ in range(12):\n"
+        "    print('Downloading database: progress', flush=True)\n"
+        "    time.sleep(0.03)\n",
         encoding="utf-8",
     )
     executable.chmod(0o755)
@@ -56,11 +56,11 @@ async def test_freshclam_progress_does_not_extend_maximum_execution_timeout(
     """Continuous output cannot keep FreshClam alive beyond the hard deadline."""
     executable = tmp_path / "freshclam-progress"
     executable.write_text(
-        "#!/usr/bin/env python3\\n"
-        "import time\\n"
-        "while True:\\n"
-        "    print('Downloading database: progress', flush=True)\\n"
-        "    time.sleep(0.02)\\n",
+        "#!/usr/bin/env python3\n"
+        "import time\n"
+        "while True:\n"
+        "    print('Downloading database: progress', flush=True)\n"
+        "    time.sleep(0.02)\n",
         encoding="utf-8",
     )
     executable.chmod(0o755)
