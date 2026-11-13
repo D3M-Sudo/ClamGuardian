@@ -8,6 +8,7 @@ clamd endpoints, so no ClamAV installation is required.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import signal
 import sys
@@ -224,10 +225,8 @@ async def test_process_group_termination_can_leave_sigterm_ignoring_descendant(
         )
     finally:
         if child_pid is not None:
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 os.kill(child_pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
         if parent.returncode is None:
             await ClamAVEngine._terminate_process(parent, grace=0.2)
 
