@@ -192,8 +192,12 @@ class RealtimeScanOrchestrator:
                 os.close(fd)
 
             if self.history_store is not None:
-                with contextlib.suppress(Exception):
+                try:
                     await self.history_store.record_scan(result, profile=self.profile)
+                except Exception:
+                    logger.exception(
+                        "Realtime scan completed but its History record could not be saved: %s", path
+                    )
 
             if on_complete is not None:
                 with contextlib.suppress(Exception):

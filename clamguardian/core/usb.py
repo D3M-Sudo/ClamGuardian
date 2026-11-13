@@ -151,8 +151,12 @@ class USBDeviceScanner:
                 target, profile=selected_profile, on_start=on_start
             )
             if self.history_store is not None:
-                with contextlib.suppress(Exception):
+                try:
                     await self.history_store.record_scan(result, profile=selected_profile)
+                except Exception:
+                    logger.exception(
+                        "USB scan completed but its History record could not be saved: %s", target
+                    )
             return result
         except asyncio.CancelledError:
             return ScanResult.cancelled(str(target))
