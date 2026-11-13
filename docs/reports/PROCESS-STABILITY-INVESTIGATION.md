@@ -225,7 +225,7 @@ Regression tests use a synthetic clamd reader that sends a complete FOUND line a
 
 No workflow file, dependency, protected branch, or production host was changed. The implementation remains confined to the existing investigation branch and the approved engine, regression-test, changelog, report and plan files. The clamd response buffer is per scan and bounded to 8 MiB. The existing socket timeout policy and descriptor-scan transport are unchanged.
 
-The three regressions are covered by deterministic tests in tests/test_process_stability_diagnostics.py. CI and Release Gate must be rerun on the final Phase 1-B head; earlier Phase 1 run identifiers do not verify this amendment. A second read-only audit and delivery-evidence assessment remain required before any review-state change. PR #43 remains Draft.
+The three regressions are covered by deterministic tests in tests/test_process_stability_diagnostics.py. CI #559 and Release Gate #502 were rerun successfully on the Phase 1-B implementation commit; earlier Phase 1 run identifiers do not verify this amendment. The second read-only audit and delivery-evidence assessment are recorded in Section 12. PR #43 remains Draft.
 
 
 ## 12. Phase 1-B final verification checkpoint (2026-11-13)
@@ -267,3 +267,6 @@ The requested evidence assessment was run. Its combined verdict was NOT_SUPPORTE
 - The branch is 61 commits ahead of feature and 0 behind.
 - The complete PR changed-file list contains seven files; no shared workflow or protected-branch file is included.
 - No merge, approval, or Ready-for-Review transition was performed.
+
+
+**Documentation-only follow-up:** after the successful CI #559 / Release Gate #502 pair on implementation commit 4493b9272364f9320a9e093444b097e48556d39c, report/plan-only commits updated the verification record and closed the Phase 1-B checklist. They did not alter engine code, tests, workflows or packaging inputs. The current PR head is 5783dec032cb359b6a6040ec1280eb4eda9a5329.
