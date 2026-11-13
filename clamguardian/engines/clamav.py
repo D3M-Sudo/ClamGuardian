@@ -1010,7 +1010,11 @@ class ClamAVEngine(BaseAVEngine):
 
             if summary_started:
                 label, separator, value = line.partition(":")
-                if not separator or label.strip() != "Infected files" or summary_infected is not None:
+                if (
+                    not separator
+                    or label.strip() != "Infected files"
+                    or summary_infected is not None
+                ):
                     raise ValueError(f"clamd returned an invalid scan summary line: {line!r}")
                 value = value.strip()
                 if not value.isdecimal():
