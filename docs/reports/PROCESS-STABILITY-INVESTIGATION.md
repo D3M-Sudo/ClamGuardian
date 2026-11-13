@@ -190,3 +190,39 @@ The final verification runs completed successfully on PR head `5d769f780128edd3e
 - The PR remained open and Draft, targeting `feature`. No merge or Ready-for-Review transition was performed.
 
 The final source pass was an author self-review, not an independent reviewer sign-off. CI does not reproduce every Linux Mint deployment or Flatpak host-spawn process-group behavior; peak process RSS was not profiled. These remain explicit validation limitations, not claims of verified behavior.
+
+
+## 11. Independent post-implementation audit — Phase 1-B (2026-11-13)
+
+The read-only audit of the Phase 1 implementation identified three findings. All three were remediated on the isolated investigation branch; the fixes and regression coverage are described below.
+
+### CG-AUD-01 — IMPORTANT: clamd partial response was discarded
+
+**Original defect:** _scan_socket() accumulated the clamd response in a local bytearray and returned it only after EOF. If clamd emitted a detection and then stalled, was cancelled, or failed at the transport layer, the response buffer was discarded by the interrupted coroutine. The caller therefore lost evidence already received from the daemon.
+
+**Remediation:** scan() now creates one bounded response buffer per scan and passes it explicitly to _scan_socket(). The socket reader appends incrementally, enforcing the existing MAX_RESPONSE_BYTES cap (8 MiB). The buffer is not stored on the engine instance and cannot be shared across concurrent scans.
+
+- Timeout returns a non-clean TIMEOUT result with engine="clamd", parsed complete detections and metadata["partial_output"] when bytes were received.
+- Cancellation attaches bounded partial_output and partial_threats diagnostics to the original asyncio.CancelledError, then re-raises the same cancellation path. It is not converted to an error and cannot trigger CLI fallback.
+- Transport/protocol errors retain the existing ERROR result semantics and no-fallback policy, while including partial output and complete parsed detections.
+- If the response exceeds the cap, only the bounded prefix is retained and the existing error path remains authoritative; the scan cannot become CLEAN.
+
+Regression tests use a synthetic clamd reader that sends a complete FOUND line and then stalls, is cancelled, or raises a transport reset. These tests assert preservation of the detection and absence of a false CLEAN result.
+
+### CG-AUD-02 — IMPORTANT: positional constructor compatibility
+
+**Original defect:** new timeout/output parameters had been inserted before max_descriptor_workers, changing the meaning of the legacy sixth positional argument.
+
+**Remediation:** max_descriptor_workers is restored as the sixth positional parameter. The newly introduced timeout and output-cap parameters follow a keyword-only separator. A regression test constructs the engine with the original six positional arguments and verifies that the sixth value still configures descriptor-worker capacity while the new options retain their defaults.
+
+### CG-AUD-03 — MINOR: clamd timeout engine label
+
+**Original defect:** the clamd timeout path used ScanResult.timed_out(), whose default engine label is not clamd.
+
+**Remediation:** the timeout result is constructed explicitly with engine="clamd". The partial-response timeout regression asserts this label.
+
+### Phase 1-B scope and verification boundary
+
+No workflow file, dependency, protected branch, or production host was changed. The implementation remains confined to the existing investigation branch and the approved engine, regression-test, changelog, report and plan files. The clamd response buffer is per scan and bounded to 8 MiB. The existing socket timeout policy and descriptor-scan transport are unchanged.
+
+The three regressions are covered by deterministic tests in tests/test_process_stability_diagnostics.py. CI and Release Gate must be rerun on the final Phase 1-B head; earlier Phase 1 run identifiers do not verify this amendment. A second read-only audit and delivery-evidence assessment remain required before any review-state change. PR #43 remains Draft.
