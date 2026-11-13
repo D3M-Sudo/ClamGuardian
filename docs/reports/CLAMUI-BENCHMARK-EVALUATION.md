@@ -32,3 +32,7 @@ This document evaluates the publicly observable capabilities of [linx-systems/cl
 ## Follow-up research
 
 The detailed pinned-source comparison, ClamAV backend analysis, file-manager integration proposal, evidence matrix and roadmap recommendations are maintained in [the ClamAV benchmark research dossier](../research/clamav-benchmark/README.md).
+
+## P1 ClamD response-validation finding
+
+A subsequent review of the pinned ClamGuardian baseline identified a fail-open edge case in the pathname ClamD response parser: an empty or unrecognized response can retain exit code zero and be classified as CLEAN by the shared result mapper. This is a baseline correctness defect, not a ClamUI comparison result and not a change introduced by the research dossier. It is tracked separately from this documentation work and requires regression tests for empty, malformed, truncated, mixed and valid ClamD responses. See the [detailed research finding](../research/clamav-benchmark/clamav-integration-study.md#8-p1-finding--pathname-clamd-response-can-be-classified-clean-without-a-valid-reply).
