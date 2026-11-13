@@ -206,7 +206,9 @@ class ClamAVEngine(BaseAVEngine):
                 output, exit_code, unsupported = await asyncio.wait_for(
                     self._scan_socket(target, profile, response_buffer), self.command_timeout
                 )
-                result = self._result(target, started, output, exit_code, "clamd")
+                result = self._result(
+                    target, started, output, exit_code, "clamd", force_error=exit_code == 2
+                )
                 # Explicit policy for options clamd cannot honour per
                 # connection (they are clamd.conf server-side settings):
                 # never silently ignored, always reported in metadata.
@@ -705,11 +707,7 @@ class ClamAVEngine(BaseAVEngine):
                     raise ValueError("clamd response exceeded the size limit")
                 response.extend(chunk)
             output = bytes(response).decode("utf-8", errors="replace")
-            code = (
-                1
-                if any(" ERROR" in line or line.endswith("ERROR") for line in output.splitlines())
-                else 0
-            )
+            code = self._clamd_response_code(output)
             return output, code, unsupported
         finally:
             writer.close()
@@ -979,18 +977,100 @@ class ClamAVEngine(BaseAVEngine):
         the bare substring ``" FOUND"`` made a clean path like
         ``/tmp/my FOUND report.txt: OK`` look like a threat.
         """
-        return tuple(
-            line.strip()
-            for line in output.splitlines()
-            if line.strip().endswith("FOUND") and ": " in line
-        )
+        detections: list[str] = []
+        for raw_line in output.splitlines():
+            line = raw_line.strip()
+            path, separator, result = line.rpartition(": ")
+            if (
+                separator
+                and path.strip()
+                and result.endswith(" FOUND")
+                and result.removesuffix(" FOUND").strip()
+            ):
+                detections.append(line)
+        return tuple(detections)
+
+    @staticmethod
+    def _clamd_response_code(output: str) -> int:
+        """Validate every pathname result and any complete summary trailer.
+
+        Return 0 for all-clean results, 1 when at least one detection exists,
+        and 2 when ClamD reports an error. Unknown, malformed, truncated or
+        internally inconsistent response data is a protocol failure.
+        """
+        lines = [line.strip() for line in output.splitlines() if line.strip()]
+        if not lines:
+            raise ValueError("clamd returned an empty scan response")
+
+        result_count = 0
+        found_paths: set[str] = set()
+        has_error = False
+        summary_started = False
+        summary_infected: int | None = None
+
+        for line in lines:
+            if line == "----------- SCAN SUMMARY -----------":
+                if summary_started:
+                    raise ValueError("clamd returned a duplicate scan summary")
+                summary_started = True
+                continue
+
+            if summary_started:
+                label, separator, value = line.partition(":")
+                if (
+                    not separator
+                    or label.strip() != "Infected files"
+                    or summary_infected is not None
+                ):
+                    raise ValueError(f"clamd returned an invalid scan summary line: {line!r}")
+                value = value.strip()
+                if not value.isdecimal():
+                    raise ValueError(f"clamd returned an invalid infected-file count: {line!r}")
+                summary_infected = int(value)
+                continue
+
+            # Split from the right so a legal path containing ': ' is retained.
+            path, separator, result = line.rpartition(": ")
+            if not separator or not path.strip() or not result.strip():
+                raise ValueError(f"clamd returned a malformed result line: {line!r}")
+            if result == "OK":
+                result_count += 1
+            elif result.endswith(" FOUND") and result.removesuffix(" FOUND").strip():
+                result_count += 1
+                found_paths.add(path)
+            elif result.endswith(" ERROR") and result.removesuffix(" ERROR").strip():
+                result_count += 1
+                has_error = True
+            else:
+                raise ValueError(f"clamd returned an unrecognized response line: {line!r}")
+
+        if result_count == 0:
+            raise ValueError("clamd response contained no recognized scan results")
+        if summary_started:
+            if summary_infected is None:
+                raise ValueError("clamd returned a truncated scan summary")
+            if summary_infected != len(found_paths):
+                raise ValueError(
+                    "clamd scan summary infected-file count does not match result lines"
+                )
+        if has_error:
+            return 2
+        return 1 if found_paths else 0
 
     @staticmethod
     def _result(
-        target: Path, started: datetime, output: str, exit_code: int, engine: str
+        target: Path,
+        started: datetime,
+        output: str,
+        exit_code: int,
+        engine: str,
+        *,
+        force_error: bool = False,
     ) -> ScanResult:
         threats = ClamAVEngine._detection_lines(output)
-        if exit_code == 0 and not threats:
+        if force_error:
+            status = ScanStatus.ERROR
+        elif exit_code == 0 and not threats:
             status = ScanStatus.CLEAN
         elif threats:
             status = ScanStatus.INFECTED

@@ -437,3 +437,112 @@ def test_finalize_rejects_file_changed_during_digest(
     assert finalized.status is ScanStatus.ERROR
     assert "changed during scan" in (finalized.error or "")
     assert "sha256" not in finalized.metadata
+
+
+@pytest.mark.parametrize(
+    ("response_lines", "expected_status", "expected_threats"),
+    [
+        ([], ScanStatus.ERROR, ()),
+        ([b"\n"], ScanStatus.ERROR, ()),
+        ([b"clamd unexpectedly closed the request\n"], ScanStatus.ERROR, ()),
+        ([b"sample.txt: truncated"], ScanStatus.ERROR, ()),
+        (
+            [b"sample.txt: OK\n", b"unrecognized trailing response\n"],
+            ScanStatus.ERROR,
+            (),
+        ),
+        (
+            [b"sample.txt: OK\n", b"not a SCAN SUMMARY trailer\n"],
+            ScanStatus.ERROR,
+            (),
+        ),
+        (
+            [
+                b"sample.txt: Eicar-Test-Signature FOUND\n",
+                b"other.txt: Permission denied ERROR\n",
+            ],
+            ScanStatus.ERROR,
+            ("sample.txt: Eicar-Test-Signature FOUND",),
+        ),
+        ([b"sample.txt: Permission denied ERROR\n"], ScanStatus.ERROR, ()),
+        ([b": OK\n"], ScanStatus.ERROR, ()),
+        ([b": FOUND\n"], ScanStatus.ERROR, ()),
+        (
+            [
+                b"sample.txt: OK\n",
+                b"----------- SCAN SUMMARY -----------\n",
+                b"Infected files: 1\n",
+            ],
+            ScanStatus.ERROR,
+            (),
+        ),
+        (
+            [b"sample.txt: OK\n", b"----------- SCAN SUMMARY -----------\n"],
+            ScanStatus.ERROR,
+            (),
+        ),
+        (
+            [
+                b"sample.txt: OK\n",
+                b"----------- SCAN SUMMARY -----------\n",
+                b"Infected files: 0\n",
+                b"unexpected trailer text\n",
+            ],
+            ScanStatus.ERROR,
+            (),
+        ),
+        (
+            [
+                b"clean.txt: OK\n",
+                b"infected.txt: Eicar-Test-Signature FOUND\n",
+                b"----------- SCAN SUMMARY -----------\n",
+                b"Infected files: 1\n",
+            ],
+            ScanStatus.INFECTED,
+            ("infected.txt: Eicar-Test-Signature FOUND",),
+        ),
+        (
+            [
+                b"clean.txt: OK\n",
+                b"----------- SCAN SUMMARY -----------\n",
+                b"Infected files: 0\n",
+            ],
+            ScanStatus.CLEAN,
+            (),
+        ),
+        ([b"sample.txt: OK\n"], ScanStatus.CLEAN, ()),
+        (
+            [b"sample.txt: Eicar-Test-Signature FOUND\n"],
+            ScanStatus.INFECTED,
+            ("sample.txt: Eicar-Test-Signature FOUND",),
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_clamd_path_response_must_be_complete_and_recognized(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    response_lines: list[bytes],
+    expected_status: ScanStatus,
+    expected_threats: tuple[str, ...],
+) -> None:
+    """Invalid/empty ClamD replies must never be CLEAN or trigger CLI fallback."""
+    target = tmp_path / "sample.txt"
+    target.write_text("payload")
+    socket_path = tmp_path / "clamd.ctl"
+
+    async def unexpected_cli(*args, **kwargs):
+        raise AssertionError("CLI fallback must not run after ClamD connection succeeds")
+
+    monkeypatch.setattr(ClamAVEngine, "_run_cli_scan", unexpected_cli)
+    server = await _serve_clamd(socket_path, response_lines)
+    async with server:
+        engine = ClamAVEngine(socket_path=socket_path, command_timeout=5)
+        result = await engine.scan(target)
+
+    assert result.status is expected_status
+    assert result.clean is (expected_status is ScanStatus.CLEAN)
+    assert result.threats == expected_threats
+    assert result.engine == "clamd"
+    if expected_status is ScanStatus.ERROR:
+        assert result.error
