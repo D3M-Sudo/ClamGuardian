@@ -44,3 +44,23 @@ No controlled throughput/CPU/memory/concurrency benchmark; no end-to-end file-ma
 File managers: record versions, package type, selection count, spaces/unicode/newline paths, directories, symlinks, cancellation, focus/notifications and uninstall.
 
 ClamAV: daemon absent/running, permission denied, refusal, malformed/partial reply, timeout, output truncation, unsupported profile options, EICAR/clean/skipped files, FILDES absent, INSTREAM limit, FreshClam already running, stale/corrupt database. Record exact versions/configuration.
+
+## Additional review evidence — PR #44 review
+
+### P1 ClamD response-classification finding
+
+**VERIFIED** at pinned commit `b42c01612d34ef20b980518aa9b3845f48ea4210`: pathname ClamD response handling can return code zero for empty or unrecognized output, and `_result()` can consequently classify the scan as CLEAN. See the immutable source anchors in [ClamAV Integration Study](clamav-integration-study.md#8-p1-finding--pathname-clamd-response-can-be-classified-clean-without-a-valid-reply). This is a source defect in the baseline, not a regression introduced by the research branch. A separate fix branch and regression suite are being prepared.
+
+### CI traceability
+
+- PR #44 CI run: https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43380687681 — Python 3.11/3.12/3.13, Python 3.14 headless, Flatpak x86_64/aarch64, AppImage x86_64/aarch64 and dependency audit jobs reported successful.
+- PR #44 Release Gate run: https://github.com/D3M-Sudo/ClamGuardian/actions/runs/43380687744 — real ClamAV scan, GTK smoke, local Flatpak manifest and AppStream validation passed; release-manifest job was skipped.
+- These runs validate the CI jobs they execute. They do not exercise the proposed file-manager request API, real Nemo action parsing, host-side installation or on-access behavior.
+
+### ClamUI workflow-count wording
+
+The earlier phrase “14 workflows” is imprecise. The observation is **14 workflow runs**, not 14 distinct workflow definitions. Some runs are dependency automation; the count must not be presented as 14 independent code-CI workflows. The aggregate count is contextual only and is not a substitute for linking each run individually.
+
+### Evidence traceability limits
+
+The pinned source revisions are historical comparison points. Where this dossier does not provide a direct commit-pinned file/line anchor or an individual CI run URL, treat the statement as an observation from the recorded review rather than independently reproducible evidence. In particular, host file-manager behavior and host fanotify/inotify behavior remain **BLOCKED**, not PASS.
