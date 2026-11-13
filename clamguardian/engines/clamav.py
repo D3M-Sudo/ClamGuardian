@@ -169,8 +169,28 @@ class ClamAVEngine(BaseAVEngine):
                 if unsupported:
                     result.metadata["profile_unsupported_clamd"] = ",".join(unsupported)
                 return self._finalize(result, target, profile, initial_file_stat)
-            except (TimeoutError, OSError, ValueError):
+            except (FileNotFoundError, ConnectionRefusedError, ConnectionResetError, BrokenPipeError):
+                # The daemon is genuinely unavailable. A CLI scan is a safe
+                # alternative only for this connection-establishment failure.
                 pass
+            except TimeoutError:
+                return self._annotate_profile(
+                    ScanResult.timed_out(str(target), started), profile
+                )
+            except (OSError, ValueError) as exc:
+                # A protocol/transport failure after connecting is not proof
+                # that clamd is unavailable. Do not silently start a second
+                # potentially expensive scan of the same target.
+                result = ScanResult(
+                    target=str(target),
+                    clean=False,
+                    status=ScanStatus.ERROR,
+                    engine="clamd",
+                    error=f"clamd scan failed: {exc}",
+                    started_at=started,
+                    finished_at=datetime.now(UTC),
+                )
+                return self._annotate_profile(result, profile)
         try:
             output, exit_code = await self._run_cli_scan(target, profile=profile)
         except TimeoutError:
