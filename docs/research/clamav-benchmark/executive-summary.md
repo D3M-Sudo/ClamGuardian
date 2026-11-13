@@ -41,3 +41,7 @@ No direct cherry-pick from ClamUI is justified or was performed. Rust/Tauri code
 ## Limitations
 
 No controlled throughput/CPU/RAM benchmark, no real-host end-to-end file-manager validation, no real-host fanotify/inotify validation, and no approval of new code, dependencies, permissions, packages or roadmap phases.
+
+## Review finding requiring a separate P1 fix
+
+The review identified a fail-open edge case in the pinned pathname ClamD parser: an empty or unrecognized daemon response can yield exit code zero, and the shared result classifier can consequently report CLEAN without a valid scan result. This is a **VERIFIED baseline defect**, not a change introduced by the research PR. The fix and regression tests are isolated in a separate implementation PR. Until that fix is validated, do not interpret the current pathname ClamD response path as fail-closed for empty or malformed replies. See [the detailed finding and immutable source anchors](clamav-integration-study.md#8-p1-finding--pathname-clamd-response-can-be-classified-clean-without-a-valid-reply).
