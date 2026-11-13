@@ -1000,7 +1000,7 @@ class ClamAVEngine(BaseAVEngine):
         found = False
         has_error = False
         for line in lines:
-            if "SCAN SUMMARY" in line and not line.endswith((" OK", " FOUND", " ERROR")):
+            if line.strip("- ") == "SCAN SUMMARY":
                 break
             if ": " not in line:
                 raise ValueError(f"clamd returned an unrecognized response line: {line!r}")
