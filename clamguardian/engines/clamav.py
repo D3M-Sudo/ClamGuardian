@@ -977,11 +977,18 @@ class ClamAVEngine(BaseAVEngine):
         the bare substring ``" FOUND"`` made a clean path like
         ``/tmp/my FOUND report.txt: OK`` look like a threat.
         """
-        return tuple(
-            line.strip()
-            for line in output.splitlines()
-            if line.strip().endswith("FOUND") and ": " in line
-        )
+        detections: list[str] = []
+        for raw_line in output.splitlines():
+            line = raw_line.strip()
+            path, separator, result = line.rpartition(": ")
+            if (
+                separator
+                and path.strip()
+                and result.endswith(" FOUND")
+                and result.removesuffix(" FOUND").strip()
+            ):
+                detections.append(line)
+        return tuple(detections)
 
     @staticmethod
     def _clamd_response_code(output: str) -> int:
