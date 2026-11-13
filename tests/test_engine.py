@@ -451,6 +451,11 @@ def test_finalize_rejects_file_changed_during_digest(
             (),
         ),
         (
+            [b"sample.txt: OK\n", b"not a SCAN SUMMARY trailer\n"],
+            ScanStatus.ERROR,
+            (),
+        ),
+        (
             [
                 b"sample.txt: Eicar-Test-Signature FOUND\n",
                 b"other.txt: Permission denied ERROR\n",
