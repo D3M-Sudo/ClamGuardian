@@ -26,3 +26,7 @@
 - **DEFERRED** — intentionally outside the current implementation decision.
 
 This dossier does not authorize implementation of a privileged daemon, setuid helper, Polkit workflow, fanotify prevention, new dependencies or file-manager extension. It does not change `docs/ROADMAP.md`. Re-check current branch state and upstream docs before implementation.
+
+## Review status
+
+The research dossier now records a separate P1 pathname-ClamD response-validation defect found during review of the pinned baseline. The correction is isolated from this documentation branch. File-manager integration remains a **PROPOSED** design, not an implementation decision; host validation remains **BLOCKED** until exercised on real desktop environments.
