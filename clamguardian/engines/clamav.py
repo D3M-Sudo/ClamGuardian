@@ -89,6 +89,8 @@ class ClamAVEngine(BaseAVEngine):
         freshclam_binary: str = "freshclam",
         flatpak_host: bool = False,
         command_timeout: float = 300.0,
+        command_inactivity_timeout: float = 600.0,
+        command_maximum_timeout: float = 3600.0,
         max_descriptor_workers: int = 4,
     ) -> None:
         if (
@@ -102,6 +104,14 @@ class ClamAVEngine(BaseAVEngine):
         self.freshclam_binary = freshclam_binary
         self.flatpak_host = flatpak_host
         self.command_timeout = command_timeout
+        for name, value in (
+            ("command_inactivity_timeout", command_inactivity_timeout),
+            ("command_maximum_timeout", command_maximum_timeout),
+        ):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+                raise ValueError(f"{name} must be a positive number")
+        self.command_inactivity_timeout = float(command_inactivity_timeout)
+        self.command_maximum_timeout = float(command_maximum_timeout)
         self.max_descriptor_workers = max_descriptor_workers
         self._descriptor_worker_count = 0
         self._descriptor_workers: set[asyncio.Task[tuple[str, int, str]]] = set()
@@ -703,24 +713,62 @@ class ClamAVEngine(BaseAVEngine):
                 *command,
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
+                stderr=asyncio.subprocess.PIPE,
                 start_new_session=True,
             )
         except OSError as exc:
             raise EngineError(f"failed to start {command[0]!r}: {exc}") from exc
+
+        assert process.stdout is not None
+        assert process.stderr is not None
+        output_chunks: list[bytes] = []
+        loop = asyncio.get_running_loop()
+        last_activity = loop.time()
+
+        async def drain(reader: asyncio.StreamReader) -> None:
+            nonlocal last_activity
+            while chunk := await reader.read(65536):
+                output_chunks.append(chunk)
+                last_activity = loop.time()
+
+        readers = [
+            asyncio.create_task(drain(process.stdout)),
+            asyncio.create_task(drain(process.stderr)),
+        ]
+        completion = asyncio.gather(process.wait(), *readers)
+        started = loop.time()
         try:
-            stdout, _ = await asyncio.wait_for(process.communicate(), self.command_timeout)
+            while not completion.done():
+                elapsed = loop.time() - started
+                inactive = loop.time() - last_activity
+                remaining = min(
+                    self.command_maximum_timeout - elapsed,
+                    self.command_inactivity_timeout - inactive,
+                )
+                if remaining <= 0:
+                    raise TimeoutError(
+                        "command exceeded its maximum execution or inactivity timeout"
+                    )
+                try:
+                    await asyncio.wait_for(asyncio.shield(completion), timeout=remaining)
+                except TimeoutError:
+                    raise TimeoutError(
+                        "command exceeded its maximum execution or inactivity timeout"
+                    ) from None
+            await completion
         except TimeoutError:
             await self._terminate_process(process)
+            await asyncio.gather(*readers, return_exceptions=True)
             raise
         except asyncio.CancelledError:
-            # Cancellation must reach the subprocess: terminate the whole
-            # process group started with ``start_new_session=True``, wait for
-            # it to die, then re-raise so the caller still observes the
-            # CancelledError (never a generic failure).
+            # Cancellation must reach the subprocess: terminate the process
+            # group, finish draining both pipes, and preserve cancellation.
             await self._terminate_process(process)
+            await asyncio.gather(*readers, return_exceptions=True)
             raise
-        return stdout.decode("utf-8", errors="replace"), int(process.returncode or 0)
+
+        output = b"".join(output_chunks).decode("utf-8", errors="replace")
+        return output, int(process.returncode or 0)
 
     @staticmethod
     async def _terminate_process(
