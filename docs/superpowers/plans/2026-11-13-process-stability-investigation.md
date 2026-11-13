@@ -2,9 +2,9 @@
 
 > **For agentic workers:** Execute this plan task-by-task. Each task is restricted to the isolated `investigation/process-stability` branch.
 
-**Goal:** Produce reproducible, CI-backed evidence about ClamGuardian subprocess, timeout, output, cancellation, fallback, and scheduling behavior without changing production code.
+**Original goal:** Produce reproducible, CI-backed evidence about ClamGuardian subprocess, timeout, output, cancellation, fallback, and scheduling behavior without changing production code. This original investigation was completed before the separately authorized Phase 1 amendment below.
 
-**Architecture:** Characterize the existing implementation through isolated diagnostic tests and deterministic child-process fixtures. Record confirmed behavior, failures, and limitations in a technical report; defer all production fixes to the later Phase 1 implementation.
+**Original architecture:** Characterize the existing implementation through isolated diagnostic tests and deterministic child-process fixtures. Record confirmed behavior, failures, and limitations in a technical report.
 
 **Tech Stack:** Python 3.11+, asyncio, pytest, pytest-asyncio, GitHub Actions.
 
@@ -14,8 +14,9 @@
 
 - Base branch: `feature`; investigation branch: `investigation/process-stability`.
 - All commits and files remain on `investigation/process-stability`.
-- No production-code changes.
-- Allowed files: diagnostic tests, fixtures, scripts/tools, and technical documentation.
+- The original investigation tasks below were read-only with respect to production code.
+- The separately authorized Phase 1 amendment permits scoped changes to `clamguardian/engines/clamav.py`, regression tests, `CHANGELOG.md`, and the investigation report only.
+- No shared workflow changes, production-host actions, or protected-branch changes.
 - Do not modify shared workflow configuration or any existing branch.
 - Open a Draft PR targeting `feature`; never mark ready, approve, close, or merge it.
 - Use GitHub Actions triggered by the Draft PR to test the investigation head; report any trigger limitations.
@@ -28,6 +29,51 @@
 - A parent process exits on SIGTERM while a descendant ignores SIGTERM; no descendant should be left running.
 - Cancellation while waiting for the runner concurrency slot does not leak a slot or leave a scan running.
 - Scheduler shutdown while a scan is active propagates cancellation through the runner and engine.
+
+## Phase 1 implementation amendment — authorized 2026-11-13
+
+The user explicitly authorized implementation on the existing `investigation/process-stability` branch, retaining PR #43 as Draft. This amendment supersedes the original production-code prohibition only for the bounded scope below.
+
+### Binding defaults and policy
+
+| Parameter / policy | Approved value |
+|---|---:|
+| Command inactivity timeout | 600 seconds |
+| Maximum command execution time | 3600 seconds |
+| Ordinary output retention | 1 MiB |
+| SIGTERM grace period | 5 seconds |
+| clamd fallback after missing/refused socket | Allowed |
+| clamd fallback after timeout | Forbidden |
+| clamd fallback after protocol/value or unrelated socket error | Forbidden |
+| Fallback after cancellation | Forbidden |
+
+Timeout values and output cap are constructor-configurable. No new runtime dependency is authorized or required.
+
+### Implementation tasks
+
+1. **BM-03 — fallback classification**
+   - Restrict fallback to missing/refused socket connection.
+   - Return TIMEOUT/ERROR for incomplete or invalid clamd attempts without starting clamscan.
+   - Preserve cancellation propagation.
+2. **BM-01 — timeout semantics**
+   - Drain output while tracking last activity.
+   - Reset inactivity deadline on actual stdout/stderr progress.
+   - Enforce independent maximum execution deadline.
+3. **BM-02 — bounded progressive output**
+   - Drain stdout and stderr concurrently.
+   - Bound ordinary retained output and separately bound parsed detection records.
+   - Preserve late detections and explicit truncation metadata.
+4. **BM-04 — process lifecycle**
+   - Signal the process group even if the direct session leader has exited.
+   - Escalate SIGTERM to SIGKILL after the approved grace period.
+   - Reap the direct child and drain pipes.
+   - Preserve bounded partial diagnostics on timeout and cancellation; never map incomplete work to CLEAN.
+5. **Delivery evidence**
+   - Add regression tests for each behavior.
+   - Update `CHANGELOG.md` and this report.
+   - Run CI and Release Gate on the current PR head.
+   - Perform a read-only whole-branch review and use AI Delivery Evidence Checker.
+   - Keep PR #43 Draft; no approval, Ready for Review, or merge without further explicit authorization.
 
 ---
 
