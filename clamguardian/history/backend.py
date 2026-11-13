@@ -8,6 +8,7 @@ injected behind that abstraction.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -15,6 +16,8 @@ import sqlite3
 import threading
 from dataclasses import replace
 from datetime import datetime
+from collections.abc import Callable
+from typing import TypeVar
 from pathlib import Path
 
 from ..core.base import ScanResult
@@ -31,6 +34,8 @@ from .models import (
 
 #: Schema version written via ``PRAGMA user_version`` (0 = uninitialized).
 SCHEMA_VERSION = 2
+
+_DbResult = TypeVar("_DbResult")
 
 _SCHEMA_V1 = """
 CREATE TABLE scan_history (
@@ -466,134 +471,94 @@ class SqliteHistoryStore:
 
     # -- public async API ----------------------------------------------
 
-    async def record_scan(
-        self, result: ScanResult, profile: ScanProfile | None = None
-    ) -> HistoryRecord:
-        """Persist *result* atomically (master + threats) and return its record."""
+    def _execute_db(self, operation: Callable[[sqlite3.Connection], _DbResult]) -> _DbResult:
+        """Run one complete connection operation under the lifecycle lock."""
+        with self._lock:
+            conn = self._require_conn()
+            try:
+                return operation(conn)
+            except sqlite3.Error as exc:
+                raise HistoryError(f"history database operation failed: {exc}") from exc
+
+    async def record_scan(self, result: ScanResult, profile: ScanProfile | None = None) -> HistoryRecord:
+        """Persist a scan atomically without blocking the caller's event loop."""
         intelligence = _parse_intelligence_evidence(
             result.metadata.get("threat_intelligence") if result.metadata else None,
             result.metadata.get("sha256") if result.metadata else None,
         )
         record = history_record_from_scan(result, profile=profile)
-        conn = self._require_conn()
-        with self._lock:
-            try:
-                conn.execute("BEGIN IMMEDIATE")
-                try:
-                    conn.execute(
-                        "INSERT INTO scan_history ("
-                        + ", ".join(_HISTORY_COLUMNS)
-                        + ") VALUES ("
-                        + ", ".join("?" for _ in _HISTORY_COLUMNS)
-                        + ")",
-                        (
-                            record.id,
-                            record.target,
-                            record.status,
-                            record.engine,
-                            record.files_scanned,
-                            record.error,
-                            record.profile_id,
-                            (
-                                json.dumps(
-                                    dict(record.profile_snapshot),
-                                    sort_keys=True,
-                                    separators=(",", ":"),
-                                )
-                                if record.profile_snapshot is not None
-                                else None
-                            ),
-                            json.dumps(
-                                dict(record.metadata), sort_keys=True, separators=(",", ":")
-                            ),
-                            encode_timestamp(record.started_at),
-                            encode_timestamp(record.finished_at),
-                            encode_timestamp(record.created_at),
-                            record.duration_seconds,
-                        ),
-                    )
-                    self._insert_threats(conn, record.id, record.threats)
-                    if intelligence is not None:
-                        conn.execute(
-                            """
-                            INSERT INTO scan_intelligence (
-                                scan_id, provider, profile, sha256, observed_at,
-                                provenance, status, metadata_json
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (
-                                record.id,
-                                intelligence["provider"],
-                                intelligence["profile"],
-                                intelligence["sha256"],
-                                intelligence["observed_at"],
-                                intelligence["provenance"],
-                                intelligence["status"],
-                                intelligence["metadata_json"],
-                            ),
-                        )
-                    conn.execute("COMMIT")
-                except BaseException:
-                    conn.execute("ROLLBACK")
-                    raise
-                # WAL/SHM sidecars may have been (re)created by this write.
-                self._harden_aux_files()
-            except sqlite3.Error as exc:
-                raise HistoryError(f"failed to record scan: {exc}") from exc
+        await asyncio.to_thread(self._record_scan_sync, record, intelligence)
         return record
 
-    async def get_scan_intelligence(
-        self, scan_id: str
-    ) -> ThreatIntelligenceRecord | None:
+    def _record_scan_sync(self, record: HistoryRecord, intelligence: dict[str, object] | None) -> None:
+        """Perform the atomic scan write in a worker thread."""
+        def persist(conn: sqlite3.Connection) -> None:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute(
+                    "INSERT INTO scan_history (" + ", ".join(_HISTORY_COLUMNS)
+                    + ") VALUES (" + ", ".join("?" for _ in _HISTORY_COLUMNS) + ")",
+                    (
+                        record.id, record.target, record.status, record.engine,
+                        record.files_scanned, record.error, record.profile_id,
+                        json.dumps(dict(record.profile_snapshot), sort_keys=True, separators=(",", ":"))
+                        if record.profile_snapshot is not None else None,
+                        json.dumps(dict(record.metadata), sort_keys=True, separators=(",", ":")),
+                        encode_timestamp(record.started_at), encode_timestamp(record.finished_at),
+                        encode_timestamp(record.created_at), record.duration_seconds,
+                    ),
+                )
+                self._insert_threats(conn, record.id, record.threats)
+                if intelligence is not None:
+                    conn.execute(
+                        """INSERT INTO scan_intelligence (
+                            scan_id, provider, profile, sha256, observed_at,
+                            provenance, status, metadata_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            record.id, intelligence["provider"], intelligence["profile"],
+                            intelligence["sha256"], intelligence["observed_at"],
+                            intelligence["provenance"], intelligence["status"],
+                            intelligence["metadata_json"],
+                        ),
+                    )
+                conn.execute("COMMIT")
+            except BaseException:
+                if conn.in_transaction:
+                    conn.execute("ROLLBACK")
+                raise
+        self._execute_db(persist)
+        self._harden_aux_files()
+
+    async def get_scan_intelligence(self, scan_id: str) -> ThreatIntelligenceRecord | None:
         """Return the separate VirusTotal assessment associated with a scan."""
-        conn = self._require_conn()
-        with self._lock:
-            row = conn.execute(
-                "SELECT * FROM scan_intelligence WHERE scan_id = ?", (scan_id,)
-            ).fetchone()
-            if row is None:
-                return None
-            return _row_to_intelligence_record(row)
+        def query(conn: sqlite3.Connection) -> ThreatIntelligenceRecord | None:
+            row = conn.execute("SELECT * FROM scan_intelligence WHERE scan_id = ?", (scan_id,)).fetchone()
+            return _row_to_intelligence_record(row) if row is not None else None
+        return await asyncio.to_thread(self._execute_db, query)
 
     async def get_scan(self, scan_id: str) -> HistoryRecord | None:
-        """Return the full record for *scan_id* (including threats) or ``None``."""
-        conn = self._require_conn()
-        with self._lock:
-            row = conn.execute(
-                "SELECT * FROM scan_history WHERE id = ?", (scan_id,)
-            ).fetchone()
+        """Return the full record for scan_id, including threats, or None."""
+        def query(conn: sqlite3.Connection) -> HistoryRecord | None:
+            row = conn.execute("SELECT * FROM scan_history WHERE id = ?", (scan_id,)).fetchone()
             if row is None:
                 return None
             record = _row_to_record(row)
-            if record is None:
-                # Malformed row: treated as missing per the defensive policy.
-                return None
-            threats = _attach_threats(conn, record.id)
-        return replace(record, threats=threats)
+            return replace(record, threats=_attach_threats(conn, record.id)) if record else None
+        return await asyncio.to_thread(self._execute_db, query)
 
     async def list_scans(
-        self,
-        *,
-        status: str | None = None,
-        profile_id: str | None = None,
-        since: datetime | None = None,
-        until: datetime | None = None,
-        limit: int = 100,
-        offset: int = 0,
-        ascending: bool = False,
+        self, *, status: str | None = None, profile_id: str | None = None,
+        since: datetime | None = None, until: datetime | None = None,
+        limit: int = 100, offset: int = 0, ascending: bool = False,
     ) -> list[HistoryRecord]:
-        """Return scan summaries ordered by ``started_at`` (default descending).
-
-        Threat details are intentionally not loaded per row (use
-        :meth:`get_scan` for the full record).
-        """
+        """Return scan summaries ordered by started_at."""
         if limit <= 0:
             raise ValueError("limit must be positive")
         if offset < 0:
             raise ValueError("offset must be non-negative")
         if status is not None and not is_valid_status(status):
             raise ValueError(f"unknown status: {status!r}")
-
         clauses: list[str] = []
         params: list[object] = []
         if status is not None:
@@ -608,56 +573,33 @@ class SqliteHistoryStore:
         if until is not None:
             clauses.append("started_at <= ?")
             params.append(encode_timestamp(until))
-
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         order = "ASC" if ascending else "DESC"
-        sql = (
-            f"SELECT * FROM scan_history {where} "
-            f"ORDER BY started_at {order} LIMIT ? OFFSET ?"
-        )
+        sql = f"SELECT * FROM scan_history {where} ORDER BY started_at {order} LIMIT ? OFFSET ?"
         params.extend([limit, offset])
-        conn = self._require_conn()
-        with self._lock:
+        def query(conn: sqlite3.Connection) -> list[HistoryRecord]:
             rows = conn.execute(sql, params).fetchall()
-        records: list[HistoryRecord] = []
-        for row in rows:
-            record = _row_to_record(row)
-            if record is not None:  # skip malformed rows defensively
-                records.append(record)
-        return records
+            return [record for row in rows if (record := _row_to_record(row)) is not None]
+        return await asyncio.to_thread(self._execute_db, query)
 
     async def delete_scan(self, scan_id: str) -> bool:
-        """Delete one scan, cascading its threats; ``False`` if it did not exist."""
-        conn = self._require_conn()
-        with self._lock:
-            cur = conn.execute("DELETE FROM scan_history WHERE id = ?", (scan_id,))
-            return cur.rowcount > 0
+        """Delete one scan and cascade its dependent rows."""
+        def delete(conn: sqlite3.Connection) -> bool:
+            return conn.execute("DELETE FROM scan_history WHERE id = ?", (scan_id,)).rowcount > 0
+        return await asyncio.to_thread(self._execute_db, delete)
 
     async def clear_history(self) -> int:
-        """Delete all scans (cascading threats) and return the master row count."""
-        conn = self._require_conn()
-        with self._lock:
-            cur = conn.execute("DELETE FROM scan_history")
-            return cur.rowcount
+        """Delete all scans and return the master row count."""
+        def clear(conn: sqlite3.Connection) -> int:
+            return conn.execute("DELETE FROM scan_history").rowcount
+        return await asyncio.to_thread(self._execute_db, clear)
 
-    async def purge(
-        self,
-        *,
-        before: datetime | None = None,
-        status: str | None = None,
-    ) -> int:
-        """Delete scans matching the criteria and return the row count.
-
-        ``before`` selects records whose ``started_at`` is strictly older
-        (exclusive boundary). ``status`` restricts the operation to one state.
-        At least one criterion is required: ``purge()`` with neither is a
-        :class:`ValueError` so it can never silently clear the whole history.
-        """
+    async def purge(self, *, before: datetime | None = None, status: str | None = None) -> int:
+        """Delete scans matching the requested criteria."""
         if before is None and status is None:
             raise ValueError("purge requires at least one of: before, status")
         if status is not None and not is_valid_status(status):
             raise ValueError(f"unknown status: {status!r}")
-
         clauses: list[str] = []
         params: list[object] = []
         if before is not None:
@@ -666,29 +608,37 @@ class SqliteHistoryStore:
         if status is not None:
             clauses.append("status = ?")
             params.append(status)
-
-        where = f"WHERE {' AND '.join(clauses)}"
-        conn = self._require_conn()
-        with self._lock:
-            cur = conn.execute(f"DELETE FROM scan_history {where}", params)
-            return cur.rowcount
+        where = "WHERE " + " AND ".join(clauses)
+        def delete(conn: sqlite3.Connection) -> int:
+            return conn.execute(f"DELETE FROM scan_history {where}", params).rowcount
+        return await asyncio.to_thread(self._execute_db, delete)
 
     async def count_scans(self, *, status: str | None = None) -> int:
-        """Return the number of stored scans, optionally filtered by *status*."""
-        conn = self._require_conn()
+        """Return the number of stored scans, optionally filtered by status."""
         if status is not None and not is_valid_status(status):
             raise ValueError(f"unknown status: {status!r}")
-        query = "SELECT COUNT(*) FROM scan_history"
+        sql = "SELECT COUNT(*) FROM scan_history"
         params: tuple[object, ...] = ()
         if status is not None:
-            query += " WHERE status = ?"
+            sql += " WHERE status = ?"
             params = (status,)
-        row = conn.execute(query, params).fetchone()
-        return int(row[0]) if row else 0
+        def count(conn: sqlite3.Connection) -> int:
+            row = conn.execute(sql, params).fetchone()
+            return int(row[0]) if row else 0
+        return await asyncio.to_thread(self._execute_db, count)
 
     async def close(self) -> None:
-        """Close the underlying connection, if open."""
-        conn = self._conn
-        self._conn = None
-        if conn is not None:
-            conn.close()
+        """Close the connection under the same lock as every other operation."""
+        await asyncio.to_thread(self._close_sync)
+
+    def _close_sync(self) -> None:
+        with self._lock:
+            conn = self._conn
+            if conn is None:
+                return
+            try:
+                conn.close()
+            except sqlite3.Error as exc:
+                raise HistoryError(f"cannot close history database: {exc}") from exc
+            finally:
+                self._conn = None
