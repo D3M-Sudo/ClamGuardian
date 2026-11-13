@@ -36,6 +36,8 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ### Fixed
 
+- **AppImage runtime inventory validation:** validate runtime-specific schema v2 and require explicit binary-package/APK-revision provenance fields; align libmpdec, mimalloc and release-evidence regression tests with the current inventory contract.
+
 - **AppImage license/SBOM verification:** pin Syft output to SPDX 2.3 and CycloneDX 1.6, verify and hash the `ca-certificates` post-install hook, preserve native package ownership across flattened ELF libraries, reconcile Python wheel declarations, and stage the pinned GFDL-1.2 fallback when Ubuntu lacks the common-license file.
 - **AppImage runtime packaging:** replace appimage-builder and its source patcher with a native AppDir assembled around a custom AppRun and SHA-256-pinned linuxdeploy/appimagetool. Bundle GTK4, Libadwaita, GI typelibs, Python runtime modules, GSettings resources and CA certificates explicitly; validate ELF dependencies and run a finite full-window smoke test.
 - **GTK and AppImage warning remediation:** escape the Settings group ampersand for Pango markup, declare Gtk/Adw/Secret GI versions before the system runtime probe imports them, pass the known desktop file and custom AppRun explicitly to linuxdeploy, and omit CPython's static-link-only `python.o` from the runtime AppDir.
