@@ -157,7 +157,7 @@ async def test_clamd_connection_refused_falls_back_to_clamscan(
     async def fake_cli(_target: Path, *, profile):
         nonlocal cli_calls
         cli_calls += 1
-        return f"{target}: OK\\n", 0
+        return f"{target}: OK\n", 0
 
     monkeypatch.setattr(engine, "_scan_socket", refused_socket)
     monkeypatch.setattr(engine, "_run_cli_scan", fake_cli)
@@ -194,7 +194,7 @@ async def test_clamd_timeout_and_invalid_responses_do_not_fallback(
     async def fake_cli(_target: Path, *, profile):
         nonlocal cli_calls
         cli_calls += 1
-        return f"{target}: OK\\n", 0
+        return f"{target}: OK\n", 0
 
     monkeypatch.setattr(engine, "_scan_socket", failing_socket)
     monkeypatch.setattr(engine, "_run_cli_scan", fake_cli)
@@ -464,7 +464,7 @@ async def test_clamd_timeout_preserves_partial_detections(
     target = tmp_path / "sample.bin"
     target.write_bytes(b"sample")
     detection = f"{target}: Eicar-Test-Signature FOUND"
-    reader = _install_partial_clamd(monkeypatch, payload=(detection + "\\n").encode())
+    reader = _install_partial_clamd(monkeypatch, payload=(detection + "\n").encode())
     socket_path = tmp_path / "clamd.ctl"
     socket_path.touch()
     engine = ClamAVEngine(socket_path=socket_path, command_timeout=0.05)
@@ -486,7 +486,7 @@ async def test_clamd_cancellation_preserves_partial_detections(
     target = tmp_path / "sample.bin"
     target.write_bytes(b"sample")
     detection = f"{target}: Eicar-Test-Signature FOUND"
-    reader = _install_partial_clamd(monkeypatch, payload=(detection + "\\n").encode())
+    reader = _install_partial_clamd(monkeypatch, payload=(detection + "\n").encode())
     socket_path = tmp_path / "clamd.ctl"
     socket_path.touch()
     engine = ClamAVEngine(socket_path=socket_path, command_timeout=5.0)
@@ -510,7 +510,7 @@ async def test_clamd_transport_error_preserves_partial_detections(
     detection = f"{target}: Eicar-Test-Signature FOUND"
     _install_partial_clamd(
         monkeypatch,
-        payload=(detection + "\\n").encode(),
+        payload=(detection + "\n").encode(),
         fail_after_payload=True,
     )
     socket_path = tmp_path / "clamd.ctl"
