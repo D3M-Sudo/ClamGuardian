@@ -206,7 +206,9 @@ class ClamAVEngine(BaseAVEngine):
                 output, exit_code, unsupported = await asyncio.wait_for(
                     self._scan_socket(target, profile, response_buffer), self.command_timeout
                 )
-                result = self._result(target, started, output, exit_code, "clamd")
+                result = self._result(
+                    target, started, output, exit_code, "clamd", force_error=exit_code == 2
+                )
                 # Explicit policy for options clamd cannot honour per
                 # connection (they are clamd.conf server-side settings):
                 # never silently ignored, always reported in metadata.
@@ -705,11 +707,7 @@ class ClamAVEngine(BaseAVEngine):
                     raise ValueError("clamd response exceeded the size limit")
                 response.extend(chunk)
             output = bytes(response).decode("utf-8", errors="replace")
-            code = (
-                1
-                if any(" ERROR" in line or line.endswith("ERROR") for line in output.splitlines())
-                else 0
-            )
+            code = self._clamd_response_code(output)
             return output, code, unsupported
         finally:
             writer.close()
@@ -986,11 +984,57 @@ class ClamAVEngine(BaseAVEngine):
         )
 
     @staticmethod
+    def _clamd_response_code(output: str) -> int:
+        """Validate a complete pathname ClamD response.
+
+        Return 0 for all-clean results, 1 when at least one detection exists,
+        and 2 when ClamD reports an error. Empty, malformed or mixed
+        result/unknown responses are protocol failures and must never become
+        CLEAN. ClamD's optional scan-summary trailer is not a result line.
+        """
+        lines = [line.strip() for line in output.splitlines() if line.strip()]
+        if not lines:
+            raise ValueError("clamd returned an empty scan response")
+
+        result_count = 0
+        found = False
+        has_error = False
+        for line in lines:
+            if "SCAN SUMMARY" in line and not line.endswith((" OK", " FOUND", " ERROR")):
+                break
+            if ": " not in line:
+                raise ValueError(f"clamd returned an unrecognized response line: {line!r}")
+            if line.endswith(" OK"):
+                result_count += 1
+            elif line.endswith(" FOUND"):
+                result_count += 1
+                found = True
+            elif line.endswith(" ERROR"):
+                result_count += 1
+                has_error = True
+            else:
+                raise ValueError(f"clamd returned an unrecognized response line: {line!r}")
+
+        if result_count == 0:
+            raise ValueError("clamd response contained no recognized scan results")
+        if has_error:
+            return 2
+        return 1 if found else 0
+
+    @staticmethod
     def _result(
-        target: Path, started: datetime, output: str, exit_code: int, engine: str
+        target: Path,
+        started: datetime,
+        output: str,
+        exit_code: int,
+        engine: str,
+        *,
+        force_error: bool = False,
     ) -> ScanResult:
         threats = ClamAVEngine._detection_lines(output)
-        if exit_code == 0 and not threats:
+        if force_error:
+            status = ScanStatus.ERROR
+        elif exit_code == 0 and not threats:
             status = ScanStatus.CLEAN
         elif threats:
             status = ScanStatus.INFECTED
