@@ -14,7 +14,7 @@ from _gtk_probe import gtk_works
 
 import clamguardian.ui.history_page as history_page_module
 from clamguardian.core.base import ScanStatus
-from clamguardian.history.interface import HistoryStore
+from clamguardian.history.interface import HistoryError, HistoryStore
 
 
 class _StubStore(HistoryStore):
@@ -194,7 +194,9 @@ def test_purge_failure_is_logged_and_notifies_without_exposing_error_details(
     assert "/home/user/private" in caplog.text
 
 
+@pytest.mark.parametrize("error_type", [HistoryError, OSError])
 def test_history_detail_failure_reports_safe_feedback_and_logs_exception(
+    error_type: type[Exception],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     from clamguardian.ui.history_page import (
@@ -204,7 +206,7 @@ def test_history_detail_failure_reports_safe_feedback_and_logs_exception(
     )
 
     notifications: list[str] = []
-    failure = OSError("/home/user/private/history.sqlite: database unavailable")
+    failure = error_type("/home/user/private/history.sqlite: database unavailable")
     errors: list[tuple[str, Exception]] = []
 
     def report_error(action: str, error: Exception) -> None:
