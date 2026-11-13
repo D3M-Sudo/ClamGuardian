@@ -108,8 +108,13 @@ class ScheduledScanManager:
         """Manually trigger scheduled scan immediately."""
         result = await self.runner.submit(self.target, profile=self.profile)
         if self.history_store is not None:
-            with contextlib.suppress(Exception):
+            try:
                 await self.history_store.record_scan(result, profile=self.profile)
+            except Exception:
+                logger.exception(
+                    "Scheduled scan completed but its History record could not be saved: %s",
+                    self.target,
+                )
         if self.on_scan_complete is not None:
             with contextlib.suppress(Exception):
                 self.on_scan_complete(result)

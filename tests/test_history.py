@@ -1278,3 +1278,75 @@ async def test_inconsistent_remote_status_is_not_persisted(
         "sha256": digest, "threat_intelligence": json.dumps(envelope)
     }))
     assert await store.get_scan_intelligence(scan.id) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "operation,args,kwargs",
+    [
+        ("get_scan", ("missing",), {}),
+        ("get_scan_intelligence", ("missing",), {}),
+        ("list_scans", (), {}),
+        ("delete_scan", ("missing",), {}),
+        ("clear_history", (), {}),
+        ("purge", (), {"before": datetime.now(UTC)}),
+        ("count_scans", (), {}),
+    ],
+)
+async def test_sqlite_errors_are_normalized_to_history_error(
+    tmp_path: Path,
+    operation: str,
+    args: tuple[object, ...],
+    kwargs: dict[str, object],
+) -> None:
+    store = make_store(tmp_path)
+    # Keep the closed connection assigned so operations reach SQLite and
+    # exercise the backend-error contract rather than the uninitialized guard.
+    store._conn.close()  # type: ignore[union-attr]
+
+    with pytest.raises(HistoryError):
+        await getattr(store, operation)(*args, **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_sqlite_operations_run_off_the_event_loop_thread(tmp_path: Path) -> None:
+    import threading
+
+    store = make_store(tmp_path)
+    callback_threads: list[int] = []
+    store._conn.set_trace_callback(  # type: ignore[union-attr]
+        lambda _statement: callback_threads.append(threading.get_ident())
+    )
+
+    await store.count_scans()
+
+    assert callback_threads
+    assert callback_threads[0] != threading.get_ident()
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_close_waits_for_the_connection_lock(tmp_path: Path) -> None:
+    import threading
+
+    store = make_store(tmp_path)
+    lock_entered = threading.Event()
+    release_lock = threading.Event()
+
+    def hold_connection_lock() -> None:
+        with store._lock:
+            lock_entered.set()
+            release_lock.wait(timeout=2)
+
+    holder = threading.Thread(target=hold_connection_lock)
+    holder.start()
+    assert await asyncio.to_thread(lock_entered.wait, 1)
+
+    close_task = asyncio.create_task(store.close())
+    await asyncio.sleep(0.02)
+    assert not close_task.done()
+
+    release_lock.set()
+    await close_task
+    holder.join(timeout=1)
+    assert not holder.is_alive()

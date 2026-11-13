@@ -88,3 +88,24 @@ async def test_page_list_renders_records() -> None:
 def test_history_page_shim_raises_headless() -> None:
     with pytest.raises(RuntimeError, match="PyGObject"):
         history_page_module.HistoryPage(None)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_history_detail_loads_full_record_instead_of_list_summary() -> None:
+    from clamguardian.ui.history_page import load_history_detail
+
+    summary = _record(status=ScanStatus.INFECTED, threats=())
+    full_record = _record(
+        status=ScanStatus.INFECTED,
+        threats=("Eicar-Test-Signature",),
+    )
+
+    class ProductionContractStore:
+        async def get_scan(self, scan_id: str):
+            assert scan_id == summary["id"]
+            return full_record
+
+    detail = await load_history_detail(ProductionContractStore(), summary)
+
+    assert detail is full_record
+    assert detail["threats"] == ["Eicar-Test-Signature"]

@@ -13,6 +13,7 @@ the shim pattern of :mod:`clamguardian.ui.database_pages`.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -50,6 +51,8 @@ _TICK_INTERVAL_SECONDS = 1
 
 #: Suffix of a canonical ClamAV detection line.
 _DETECTION_SUFFIX = " FOUND"
+
+logger = logging.getLogger(__name__)
 
 
 def parse_detection(line: str) -> tuple[Path | None, str]:
@@ -432,7 +435,10 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             from .database_pages import run_async
 
             if self._record_scan is not None:
-                run_async(self._record_scan(result), None)
+                def _recorded(_value: object, error: Exception | None) -> None:
+                    if error is not None:
+                        logger.error("Could not persist completed scan history: %s", error)
+                run_async(self._record_scan(result), _recorded)
 
         def _render_result(self, result: ScanResult) -> None:
             self._result_group.remove(self._result_status)

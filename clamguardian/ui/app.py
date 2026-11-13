@@ -331,9 +331,22 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             )
 
         async def _store_scan_result(self, result: ScanResult) -> None:
-            """Persist the already-enriched scan result and refresh the UI."""
-            await self._history_store.record_scan(result)
+            """Persist the enriched result; never change the completed scan verdict."""
+            try:
+                await self._history_store.record_scan(result)
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "Scan completed but History persistence failed for %s", result.target
+                )
+                GLib.idle_add(self._show_history_persistence_warning)
+                return
             GLib.idle_add(self._after_scan_recorded, result)
+
+        def _show_history_persistence_warning(self) -> bool:
+            self._toast_overlay.add_toast(
+                Adw.Toast.new("Scan completed, but its history record could not be saved.")
+            )
+            return False
 
         def _after_scan_recorded(self, result: ScanResult) -> bool:
             if self.visible_page_id == "history" and self._history_page is not None:
@@ -635,6 +648,12 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             # closed independently after active scan tasks have been cancelled.
             if self._window is not None:
                 self._window._intelligence_service.close(timeout=8)
+                try:
+                    asyncio.run(self._window._history_store.close())
+                except Exception:
+                    logging.getLogger(__name__).exception(
+                        "History database did not close cleanly during application shutdown"
+                    )
 
         def _on_about_action(self, _action: object, _parameter: object) -> None:
             if self._window is not None:

@@ -883,3 +883,31 @@ async def test_clamd_fd_worker_limit_reservation_is_atomic_across_threads(tmp_pa
 
     assert sorted(outcomes) == [False, True]
     assert engine.active_descriptor_worker_count == 0
+
+
+@pytest.mark.asyncio
+async def test_realtime_history_failure_is_logged_without_changing_scan_result(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    target = tmp_path / "persist-failure.txt"
+    target.write_text("data")
+    orchestrator, root_fd = _make_orchestrator(
+        tmp_path, ScanTaskRunner(StubEngine(delay=0)), debounce_seconds=0
+    )
+
+    class FailingHistoryStore:
+        async def record_scan(self, *_args: object, **_kwargs: object) -> None:
+            raise OSError("history disk unavailable")
+
+    orchestrator.history_store = FailingHistoryStore()
+    try:
+        with caplog.at_level(logging.ERROR):
+            result = await orchestrator._execute_scan(target)
+        assert result is not None
+        assert result.status is ScanStatus.CLEAN
+        assert "History record could not be saved" in caplog.text
+    finally:
+        await orchestrator.close()
+        os.close(root_fd)

@@ -192,8 +192,13 @@ class RealtimeScanOrchestrator:
                 os.close(fd)
 
             if self.history_store is not None:
-                with contextlib.suppress(Exception):
+                try:
                     await self.history_store.record_scan(result, profile=self.profile)
+                except Exception:
+                    logger.exception(
+                        "Realtime scan completed but its History record could not be saved: %s",
+                        path,
+                    )
 
             if on_complete is not None:
                 with contextlib.suppress(Exception):
@@ -208,8 +213,13 @@ class RealtimeScanOrchestrator:
                 engine="realtime-security", error=f"Realtime target rejected: {exc}",
             )
             if self.history_store is not None:
-                with contextlib.suppress(Exception):
+                try:
                     await self.history_store.record_scan(result, profile=self.profile)
+                except Exception:
+                    logger.exception(
+                        "Realtime rejected-target result could not be saved to History: %s",
+                        path,
+                    )
             if on_complete is not None:
                 with contextlib.suppress(Exception):
                     on_complete(result)

@@ -139,3 +139,24 @@ def test_set_schedule_preserves_intelligence_profile_and_other_settings(
     assert updated.autostart_enabled is True
     assert updated.scheduled_scans_enabled is True
     assert (updated.scheduled_hour, updated.scheduled_minute) == (7, 45)
+
+
+@pytest.mark.asyncio
+async def test_scheduled_scan_history_failure_is_logged_without_changing_result(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    class FailingHistoryStore:
+        async def record_scan(self, *_args: object, **_kwargs: object) -> None:
+            raise OSError("history disk unavailable")
+
+    settings = SettingsStore(tmp_path / "settings.json")
+    manager = ScheduledScanManager(
+        ScanTaskRunner(StubEngine()), settings, history_store=FailingHistoryStore(),
+        default_target=tmp_path,
+    )
+    with caplog.at_level(logging.ERROR):
+        result = await manager.trigger_now()
+    assert result.status.value == "clean"
+    assert "History record could not be saved" in caplog.text
