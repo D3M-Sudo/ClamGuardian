@@ -5,7 +5,7 @@
 **Base:** `feature` @ `16792cdf797720eef08c39e71c3016b6161fd3f8`  
 **Investigation branch:** `investigation/process-stability`  
 **Pull request:** [#43 — Draft](https://github.com/D3M-Sudo/ClamGuardian/pull/43)  
-**Scope:** Diagnostic tests and source-level characterization only. No production code or shared workflow files were changed.
+**Scope:** Initial read-only investigation plus isolated Phase 1 subprocess remediation. All implementation changes remain on `investigation/process-stability`; no protected branch or shared workflow file was modified.
 
 ## 1. Executive summary
 
@@ -120,53 +120,51 @@ The first diagnostic commit failed Ruff because its process cleanup used a try/e
 
 **Conclusion:** No runner/scheduler production change is justified by the current evidence. Keep these tests as regression coverage while changing subprocess lifecycle behavior in Phase 1.
 
-## 4. Additional source-level observation
+## 4. Partial output and cancellation semantics
 
-### Partial output on cancellation
+The initial investigation found that cancellation terminated the direct subprocess path but discarded output already emitted. Phase 1 now drains stdout and stderr concurrently, terminates the entire process group, drains the remaining pipe data, attaches bounded `partial_output` to the propagated `CancelledError`, and re-raises cancellation unchanged.
 
-**Status:** Source-level observation; no dedicated partial-output retention test was added in this investigation.
+For command timeouts, the engine returns a `ScanResult` with authoritative `TIMEOUT` status and preserves any detections observed before termination. An incomplete scan is never normalized to `CLEAN`.
 
-When `_run_command()` is cancelled while awaiting `communicate()`, it terminates the process and re-raises `CancelledError`. The method does not return the output already emitted, and the scan caller does not receive a partial `ScanResult`.
-
-This is distinct from the confirmed clamd fallback behavior. Phase 1 should explicitly decide whether partial detections are retained for diagnostics or whether cancellation intentionally discards the incomplete scan result. Do not silently mark an incomplete scan as clean.
-
-## 5. Diagnostic test inventory
+## 5. Diagnostic and regression test inventory
 
 File: `tests/test_process_stability_diagnostics.py`
 
-1. `test_freshclam_progress_does_not_reset_absolute_command_timeout`
-2. `test_cli_command_captures_large_combined_output_in_full`
-3. `test_clamd_failure_falls_back_to_clamscan[timeout]`
-4. `test_clamd_failure_falls_back_to_clamscan[socket_error]`
-5. `test_clamd_failure_falls_back_to_clamscan[protocol_error]`
-6. `test_cancelling_clamd_scan_does_not_start_cli_fallback`
-7. `test_process_group_termination_can_leave_sigterm_ignoring_descendant`
-8. `test_cancelled_runner_waiter_does_not_leak_concurrency_slot`
-9. `test_scheduler_stop_cancels_in_flight_scan`
+1. `test_freshclam_progress_resets_inactivity_timeout`
+2. `test_freshclam_progress_does_not_extend_maximum_execution_timeout`
+3. `test_scan_timeout_preserves_partial_detections`
+4. `test_cli_command_bounds_output_but_preserves_late_detections`
+5. `test_clamd_connection_refused_falls_back_to_clamscan`
+6. `test_clamd_timeout_and_invalid_responses_do_not_fallback` (timeout, protocol error, unrelated socket error)
+7. `test_cancelling_clamd_scan_does_not_start_cli_fallback`
+8. `test_process_group_termination_can_leave_sigterm_ignoring_descendant` (characterizes the original leak)
+9. `test_cancelled_runner_waiter_does_not_leak_concurrency_slot`
+10. `test_scheduler_stop_cancels_in_flight_scan`
 
-All nine passed on Python 3.11, 3.12, 3.13, and the Python 3.14 headless runtime.
+Additional subprocess lifecycle coverage in `tests/test_cancellation.py` verifies cancellation output preservation and termination of a SIGTERM-resistant descendant after the direct parent has already exited. Existing timeout, startup failure, escalation, and already-exited-process cases remain covered.
 
-## 6. Phase 1 recommendations
+## 6. Phase 1 remediation status
 
-Recommended implementation order remains:
+| Item | Implementation |
+|---|---|
+| **BM-03 — clamd fallback policy** | Fallback is limited to missing/refused socket connection. Timeout, protocol/value failure, unrelated socket errors and cancellation do not launch a second scan. |
+| **BM-01 — command timeout model** | Separate inactivity and hard execution deadlines. Defaults: 600 seconds inactivity and 3600 seconds maximum. Stream activity wakes the deadline loop and resets only inactivity. |
+| **BM-02 — bounded progressive output** | stdout/stderr drained independently; ordinary retained output capped at 1 MiB; detection records parsed incrementally and separately bounded; truncation exposed in metadata. |
+| **BM-04 — process lifecycle** | Process-group SIGTERM followed by SIGKILL after the 5-second grace period, including when the session leader has exited. Timeout results and propagated cancellation preserve bounded partial output. |
 
-1. **BM-03 — clamd fallback policy:** distinguish unavailable socket from timeout, protocol failure, and cancellation; prevent an unintended second scan on timeout unless explicitly justified.
-2. **BM-01 — FreshClam timeout model:** implement inactivity timeout plus an independent maximum execution timeout.
-3. **BM-02 — bounded progressive output:** concurrently drain streams, parse detections incrementally, cap retained output, and preserve truncation/partial-result metadata.
-4. **BM-04 — process lifecycle and cancellation:** ensure descendant cleanup, bounded SIGTERM/SIGKILL escalation, output drain, and deterministic reaping.
-
-Keep BM-05 scheduler backend, BM-06 profiles, BM-07/08 history and quarantine, BM-09 battery policy, and BM-10 Nemo integration out of this subprocess remediation sequence. Current scheduler/runner cancellation tests passed; revisit them only if the subprocess changes expose a regression.
+The implementation adds no runtime dependency. The test matrix passed on Python 3.11, 3.12, 3.13 and the Python 3.14 headless runtime at commit `330f96e` (CI #532). A later run includes the detection-retention cap; final verification must use the current PR head, not these earlier results.
 
 ## 7. Limitations and deferred validation
 
 - CI uses GitHub-hosted Linux runners. It does not reproduce every Linux Mint desktop, Flatpak host-spawn configuration, filesystem, process supervisor, or ClamAV daemon deployment.
-- The Release Gate's real ClamAV and clamd tests passed on its ephemeral runner, not on the user's host.
-- Memory use was not profiled at process level. The 4 MiB capture test establishes complete buffering without a configured cap, not a measured peak-RSS value.
-- No very-long-duration FreshClam update was run; the timeout behavior was reproduced with a short deterministic deadline and continuous output.
-- No production code was changed, and no host-level service, socket, USB, or desktop integration was altered.
+- The Release Gate's real ClamAV and clamd tests run on an ephemeral runner, not on the user's host.
+- Memory use has not been profiled at process level. The implementation enforces configured retention limits, but peak RSS has not been measured.
+- No very-long-duration FreshClam update was run; timeout behavior is covered with deterministic short deadlines and continuous output.
+- No production-host service, socket, USB, or desktop integration was altered. No protected branch or shared workflow was changed.
 
-## 8. Final investigation verdict
+## 8. Investigation and remediation verdict
 
-**The subprocess stability investigation has sufficient reproducible evidence to proceed to Phase 1 design/implementation planning.** The strongest confirmed remediation targets are the absolute FreshClam timeout, fully buffered CLI output, broad clamd fallback after timeout, and descendant process survival after parent exit.
+The initial investigation produced reproducible evidence for all four subprocess remediation targets. Phase 1 implementation is present on the isolated investigation branch, with targeted regression tests for fallback classification, timeout semantics, output bounds, partial detections, cancellation, and process-group cleanup.
 
-The runner and scheduler cancellation paths passed their targeted tests and should be preserved. The PR remains Draft and is not ready for review or merge by authorization.
+The work is **not ready for review or merge** until CI and Release Gate complete successfully on the current PR head and the final source review is complete. PR #43 remains Draft by explicit authorization. No merge or transition to Ready for Review is authorized.
+
