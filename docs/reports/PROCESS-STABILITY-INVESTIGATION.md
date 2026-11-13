@@ -179,3 +179,14 @@ At PR head `341e422d9ddf76d45d8abe8d78062700f9a70e2d`, the branch was one commit
 - The comparison `aa76080...341e422` contains exactly one test-file change: the bounded-output test now writes 256 KiB to each stream and verifies the `output_truncated` metadata. Production code is unchanged by that delta.
 
 These results provide strong evidence for the implementation at `aa76080`, but do **not** constitute CI verification of the test-only delta at `341e422`. A fresh CI and Release Gate run on the updated PR head is still required before the branch can be considered ready for review. This PR remains Draft.
+
+
+## 10. Final Phase 1 verification (2026-11-13)
+
+The final verification runs completed successfully on PR head `5d769f780128edd3e65c8886a1d46cdc530c2863`:
+
+- **CI #552 — SUCCESS:** Python 3.11, 3.12 and 3.13 each completed with 636 passed and 9 skipped. The Python 3.14 headless runtime completed with 606 passed and 22 skipped. Ruff, mypy, changelog validation, pinned-runtime dependency audit, and native AppImage and Flatpak packaging for x86_64 and aarch64 all succeeded.
+- **Release Gate #495 — SUCCESS:** preflight, local Flatpak build, real clamscan + clamd checks, GTK smoke test and AppStream validation succeeded. The release-manifest build was skipped as expected for a pull request.
+- The PR remained open and Draft, targeting `feature`. No merge or Ready-for-Review transition was performed.
+
+The final source pass was an author self-review, not an independent reviewer sign-off. CI does not reproduce every Linux Mint deployment or Flatpak host-spawn process-group behavior; peak process RSS was not profiled. These remain explicit validation limitations, not claims of verified behavior.
