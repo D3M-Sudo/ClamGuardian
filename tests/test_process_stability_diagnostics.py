@@ -79,27 +79,25 @@ async def test_freshclam_progress_does_not_extend_maximum_execution_timeout(
 
 
 @pytest.mark.asyncio
-async def test_cli_command_captures_large_combined_output_in_full() -> None:
-    """Characterize full in-memory stdout/stderr capture through communicate()."""
-    size = 2 * 1024 * 1024
+async def test_cli_command_bounds_output_but_preserves_late_detections() -> None:
+    """Output retention is bounded while detections after the cap remain visible."""
+    limit = 1024
+    detection = "/tmp/infected.bin: Eicar-Test-Signature FOUND"
     script = (
-        "import sys\n"
-        f"sys.stdout.write('O' * {size})\n"
-        "sys.stdout.flush()\n"
-        f"sys.stderr.write('E' * {size})\n"
-        "sys.stderr.flush()\n"
+        "import sys\\n"
+        "sys.stdout.write('O' * 4096 + '\\\\n')\\n"
+        "sys.stdout.flush()\\n"
+        f"sys.stderr.write('E' * 4096 + '\\\\n{detection}\\\\n')\\n"
+        "sys.stderr.flush()\\n"
     )
-    engine = ClamAVEngine(command_timeout=10)
+    engine = ClamAVEngine(command_max_output_bytes=limit)
 
     output, exit_code = await engine._run_command([sys.executable, "-S", "-c", script])
 
     assert exit_code == 0
-    assert len(output) == size * 2
-    assert output.count("O") == size
-    assert output.count("E") == size
-
-
-@pytest.mark.asyncio
+    assert len(output.encode("utf-8")) <= limit + len(detection.encode("utf-8")) + 128
+    assert detection in output
+    assert "OUTPUT_TRUNCATED" in output
 @pytest.mark.asyncio
 async def test_clamd_connection_refused_falls_back_to_clamscan(
     monkeypatch: pytest.MonkeyPatch,
