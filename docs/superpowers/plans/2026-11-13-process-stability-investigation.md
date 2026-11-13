@@ -17,18 +17,20 @@
 - The original investigation tasks below were read-only with respect to production code.
 - The separately authorized Phase 1 amendment permits scoped changes to `clamguardian/engines/clamav.py`, regression tests, `CHANGELOG.md`, and the investigation report only.
 - No shared workflow changes, production-host actions, or protected-branch changes.
-- Do not modify shared workflow configuration or any existing branch.
+- Do not modify shared workflow configuration or any branch other than `investigation/process-stability`.
 - Open a Draft PR targeting `feature`; never mark ready, approve, close, or merge it.
 - Use GitHub Actions triggered by the Draft PR to test the investigation head; report any trigger limitations.
 
 ## Review Focus
 
-- A child process emits progress continuously but still reaches the configured absolute timeout.
-- A command emits large stdout and stderr streams; memory capture and stream handling remain bounded or demonstrably unbounded.
-- A clamd timeout or protocol failure triggers or does not trigger a CLI fallback, with cancellation kept distinct.
-- A parent process exits on SIGTERM while a descendant ignores SIGTERM; no descendant should be left running.
-- Cancellation while waiting for the runner concurrency slot does not leak a slot or leave a scan running.
-- Scheduler shutdown while a scan is active propagates cancellation through the runner and engine.
+- Continuous output resets the inactivity deadline, but cannot extend the independent maximum execution deadline.
+- stdout and stderr are drained concurrently; retained output and separately preserved detection records remain bounded.
+- Late detections beyond the ordinary output cap remain visible, with truncation explicitly recorded.
+- clamd fallback occurs only for missing/refused socket connections; timeout, protocol/transport errors and cancellation do not start clamscan.
+- A timeout remains TIMEOUT and retains partial detections; cancellation remains CancelledError and carries bounded partial diagnostics.
+- Process-group cleanup terminates SIGTERM-resistant descendants even after the direct session leader exits, while promptly reaping the parent when no descendants remain.
+- Cancellation while waiting for runner capacity does not leak a slot, and scheduler shutdown still cancels an active scan.
+
 
 ## Phase 1 implementation amendment — authorized 2026-11-13
 
