@@ -1022,12 +1022,12 @@ class ClamAVEngine(BaseAVEngine):
             path, separator, result = line.rpartition(": ")
             if not separator or not path.strip() or not result.strip():
                 raise ValueError(f"clamd returned a malformed result line: {line!r}")
-            if result.endswith(" OK") and result != " OK":
+            if result == "OK":
                 result_count += 1
-            elif result.endswith(" FOUND") and result != " FOUND":
+            elif result.endswith(" FOUND") and result.removesuffix(" FOUND").strip():
                 result_count += 1
                 found_paths.add(path)
-            elif result.endswith(" ERROR") and result != " ERROR":
+            elif result.endswith(" ERROR") and result.removesuffix(" ERROR").strip():
                 result_count += 1
                 has_error = True
             else:
