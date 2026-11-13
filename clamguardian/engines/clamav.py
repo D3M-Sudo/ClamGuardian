@@ -6,6 +6,7 @@ import array
 import asyncio
 import contextlib
 import hashlib
+import math
 import os
 import signal
 import socket
@@ -127,8 +128,13 @@ class ClamAVEngine(BaseAVEngine):
             ("command_inactivity_timeout", command_inactivity_timeout),
             ("command_maximum_timeout", command_maximum_timeout),
         ):
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
-                raise ValueError(f"{name} must be a positive number")
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value <= 0
+            ):
+                raise ValueError(f"{name} must be a finite positive number")
         self.command_inactivity_timeout = float(command_inactivity_timeout)
         self.command_maximum_timeout = float(command_maximum_timeout)
         if (
