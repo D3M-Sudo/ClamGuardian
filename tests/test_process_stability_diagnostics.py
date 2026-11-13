@@ -13,6 +13,7 @@ import os
 import signal
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -114,9 +115,9 @@ async def test_cli_command_bounds_output_but_preserves_late_detections() -> None
     detection = "/tmp/infected.bin: Eicar-Test-Signature FOUND"
     script = (
         "import sys; "
-        "sys.stdout.write('O' * 4096 + chr(10)); "
+        "sys.stdout.write('O' * 262144 + chr(10)); "
         "sys.stdout.flush(); "
-        f"sys.stderr.write('E' * 4096 + chr(10) + {detection!r} + chr(10)); "
+        f"sys.stderr.write('E' * 262144 + chr(10) + {detection!r} + chr(10)); "
         "sys.stderr.flush()"
     )
     engine = ClamAVEngine(command_max_output_bytes=limit)
@@ -127,6 +128,14 @@ async def test_cli_command_bounds_output_but_preserves_late_detections() -> None
     assert len(output.encode("utf-8")) <= limit + len(detection.encode("utf-8")) + 128
     assert detection in output
     assert "OUTPUT_TRUNCATED" in output
+    result = engine._result(
+        Path("/tmp/infected.bin"),
+        datetime.now(UTC),
+        output,
+        exit_code,
+        "clamscan",
+    )
+    assert result.metadata["output_truncated"] == "true"
 
 
 @pytest.mark.asyncio
