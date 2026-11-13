@@ -127,6 +127,22 @@ async def test_terminate_process_on_already_exited_process() -> None:
 
 
 @pytest.mark.asyncio
+async def test_terminate_process_reaps_parent_without_full_grace_delay() -> None:
+    """A process with no descendants should not consume the entire grace period."""
+    process = await asyncio.create_subprocess_exec(
+        *_sleep_command(),
+        start_new_session=True,
+    )
+    started = asyncio.get_running_loop().time()
+
+    await ClamAVEngine._terminate_process(process, grace=1.0)
+
+    elapsed = asyncio.get_running_loop().time() - started
+    assert process.returncode is not None
+    assert elapsed < 0.5
+
+
+@pytest.mark.asyncio
 async def test_terminate_process_escalates_to_kill() -> None:
     """A child ignoring SIGTERM is SIGKILLed after the grace period."""
     # Ignore SIGTERM explicitly, forcing the SIGKILL escalation path.
