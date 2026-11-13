@@ -169,7 +169,7 @@ class ClamAVEngine(BaseAVEngine):
                 if unsupported:
                     result.metadata["profile_unsupported_clamd"] = ",".join(unsupported)
                 return self._finalize(result, target, profile, initial_file_stat)
-            except (FileNotFoundError, ConnectionRefusedError, ConnectionResetError, BrokenPipeError):
+            except (FileNotFoundError, ConnectionRefusedError):
                 # The daemon is genuinely unavailable. A CLI scan is a safe
                 # alternative only for this connection-establishment failure.
                 pass
