@@ -150,30 +150,39 @@ The user approved remediation of the three findings from the independent read-on
 
 ### CG-AUD-01 — bounded per-scan clamd response retention
 
-- [ ] Add regression tests first for a clamd server that sends a complete FOUND line and then stalls, is cancelled, or fails at the transport layer.
-- [ ] Allocate a local bytearray in scan() for each clamd attempt and pass it to _scan_socket(); do not add shared engine-instance response state.
-- [ ] Append response bytes progressively and enforce MAX_RESPONSE_BYTES (8 MiB) without exceeding the cap.
-- [ ] On timeout, return TIMEOUT, engine="clamd", partial output and parsed detections; never return CLEAN.
-- [ ] On cancellation, attach bounded partial output and detections to the original CancelledError, then re-raise it unchanged.
-- [ ] On transport/protocol error, retain the existing ERROR/no-fallback policy and include partial output and detections.
-- [ ] Preserve partial-line semantics: only complete valid FOUND lines become parsed detections; raw trailing bytes remain diagnostic output.
+- [x] Add regression tests first for a clamd server that sends a complete FOUND line and then stalls, is cancelled, or fails at the transport layer.
+- [x] Allocate a local bytearray in scan() for each clamd attempt and pass it to _scan_socket(); do not add shared engine-instance response state.
+- [x] Append response bytes progressively and enforce MAX_RESPONSE_BYTES (8 MiB) without exceeding the cap.
+- [x] On timeout, return TIMEOUT, engine="clamd", partial output and parsed detections; never return CLEAN.
+- [x] On cancellation, attach bounded partial output and detections to the original CancelledError, then re-raise it unchanged.
+- [x] On transport/protocol error, retain the existing ERROR/no-fallback policy and include partial output and detections.
+- [x] Preserve partial-line semantics: only complete valid FOUND lines become parsed detections; raw trailing bytes remain diagnostic output.
 
 ### CG-AUD-02 — constructor API compatibility
 
-- [ ] Restore max_descriptor_workers to the sixth positional argument.
-- [ ] Make the newer inactivity-timeout, maximum-timeout and output-cap parameters keyword-only.
-- [ ] Add a regression test for the original six-positional-argument constructor call.
+- [x] Restore max_descriptor_workers to the sixth positional argument.
+- [x] Make the newer inactivity-timeout, maximum-timeout and output-cap parameters keyword-only.
+- [x] Add a regression test for the original six-positional-argument constructor call.
 
 ### CG-AUD-03 — timeout engine attribution
 
-- [ ] Construct clamd timeout results with engine="clamd".
-- [ ] Assert the engine label in the partial-response timeout regression.
+- [x] Construct clamd timeout results with engine="clamd".
+- [x] Assert the engine label in the partial-response timeout regression.
 
 ### Delivery and closure criteria
 
-- [ ] Update the changelog, investigation report and this plan with the implemented behavior and evidence.
-- [ ] Run focused tests, full test suite, lint, type checks and all existing packaging/dependency gates on the final branch head.
-- [ ] Verify CI and Release Gate results on the exact final SHA.
-- [ ] Perform a second read-only audit of the complete PR diff, focusing on response-buffer bounds, concurrent-scan isolation, cancellation identity/propagation, fallback behavior, positional API compatibility and result-state semantics.
-- [ ] Run AI Delivery Evidence Checker against the approved criteria and final test/CI evidence.
-- [ ] Verify PR #43 remains open, Draft and based on feature; do not approve, promote, close or merge it.
+- [x] Update the changelog, investigation report and this plan with the implemented behavior and evidence.
+- [x] Run focused tests, full test suite, lint, type checks and all existing packaging/dependency gates on the final branch head.
+- [x] Verify CI and Release Gate results on the exact final SHA.
+- [x] Perform a second read-only audit of the complete PR diff, focusing on response-buffer bounds, concurrent-scan isolation, cancellation identity/propagation, fallback behavior, positional API compatibility and result-state semantics.
+- [x] Run AI Delivery Evidence Checker against the approved criteria and final test/CI evidence.
+- [x] Verify PR #43 remains open, Draft and based on feature; do not approve, promote, close or merge it.
+
+
+### Phase 1-B completion record
+
+- Implementation head verified by CI #559 and Release Gate #502: 4493b9272364f9320a9e093444b097e48556d39c.
+- CI matrix, lint, type checks, dependency audit and AppImage/Flatpak packaging passed; exact counts and Release Gate details are recorded in docs/reports/PROCESS-STABILITY-INVESTIGATION.md, Section 12.
+- Second read-only source/PR audit found no remaining Phase 1-B issue.
+- AI Delivery Evidence Checker was run; its NOT_SUPPORTED verdict reflects its inability to inspect code, execute tests or authenticate CI evidence, and is recorded with the direct verification evidence in Section 12 of the report.
+- PR #43 remains open Draft targeting feature. No merge or review-state transition was performed.
