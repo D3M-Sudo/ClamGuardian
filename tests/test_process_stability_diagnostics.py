@@ -151,7 +151,7 @@ async def test_clamd_connection_refused_falls_back_to_clamscan(
     engine = ClamAVEngine(socket_path=socket_path)
     cli_calls = 0
 
-    async def refused_socket(_target: Path, _profile):
+    async def refused_socket(_target: Path, _profile, response_buffer=None):
         raise ConnectionRefusedError("synthetic clamd connection refusal")
 
     async def fake_cli(_target: Path, *, profile):
@@ -184,7 +184,7 @@ async def test_clamd_timeout_and_invalid_responses_do_not_fallback(
     engine = ClamAVEngine(socket_path=socket_path, command_timeout=0.05)
     cli_calls = 0
 
-    async def failing_socket(_target: Path, _profile):
+    async def failing_socket(_target: Path, _profile, response_buffer=None):
         if failure == "timeout":
             await asyncio.sleep(30)
         if failure == "protocol_error":
@@ -203,6 +203,8 @@ async def test_clamd_timeout_and_invalid_responses_do_not_fallback(
 
     assert cli_calls == 0
     assert result.status.name == ("TIMEOUT" if failure == "timeout" else "ERROR")
+    if failure == "timeout":
+        assert result.engine == "clamd"
 
 
 @pytest.mark.asyncio
@@ -220,7 +222,7 @@ async def test_cancelling_clamd_scan_does_not_start_cli_fallback(
     never = asyncio.Event()
     cli_calls = 0
 
-    async def blocked_socket(_target: Path, _profile):
+    async def blocked_socket(_target: Path, _profile, response_buffer=None):
         socket_started.set()
         await never.wait()
         return "unused", 0, ()
@@ -403,3 +405,137 @@ async def test_scheduler_stop_cancels_in_flight_scan(
         if manager.is_running:
             await manager.stop()
         engine.release_first.set()
+
+
+
+class _PartialClamdReader:
+    """Deliver one detection line, then block or raise a transport failure."""
+
+    def __init__(self, payload: bytes, *, fail_after_payload: bool = False) -> None:
+        self.payload = payload
+        self.fail_after_payload = fail_after_payload
+        self.delivered = asyncio.Event()
+        self._sent = False
+
+    async def read(self, _size: int) -> bytes:
+        if not self._sent:
+            self._sent = True
+            self.delivered.set()
+            return self.payload
+        if self.fail_after_payload:
+            raise ConnectionResetError("synthetic clamd transport reset")
+        await asyncio.Event().wait()
+        return b""
+
+
+class _PartialClamdWriter:
+    def write(self, _data: bytes) -> None:
+        pass
+
+    async def drain(self) -> None:
+        return None
+
+    def close(self) -> None:
+        pass
+
+    async def wait_closed(self) -> None:
+        return None
+
+
+def _install_partial_clamd(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    payload: bytes,
+    fail_after_payload: bool = False,
+) -> _PartialClamdReader:
+    reader = _PartialClamdReader(payload, fail_after_payload=fail_after_payload)
+
+    async def open_connection(_path: str):
+        return reader, _PartialClamdWriter()
+
+    monkeypatch.setattr(asyncio, "open_unix_connection", open_connection)
+    return reader
+
+
+@pytest.mark.asyncio
+async def test_clamd_timeout_preserves_partial_detections(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "sample.bin"
+    target.write_bytes(b"sample")
+    detection = f"{target}: Eicar-Test-Signature FOUND"
+    reader = _install_partial_clamd(monkeypatch, payload=(detection + "\\n").encode())
+    socket_path = tmp_path / "clamd.ctl"
+    socket_path.touch()
+    engine = ClamAVEngine(socket_path=socket_path, command_timeout=0.05)
+
+    result = await engine.scan(target)
+
+    assert reader.delivered.is_set()
+    assert result.status.name == "TIMEOUT"
+    assert result.clean is False
+    assert result.engine == "clamd"
+    assert detection in result.threats
+    assert detection in result.metadata["partial_output"]
+
+
+@pytest.mark.asyncio
+async def test_clamd_cancellation_preserves_partial_detections(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "sample.bin"
+    target.write_bytes(b"sample")
+    detection = f"{target}: Eicar-Test-Signature FOUND"
+    reader = _install_partial_clamd(monkeypatch, payload=(detection + "\\n").encode())
+    socket_path = tmp_path / "clamd.ctl"
+    socket_path.touch()
+    engine = ClamAVEngine(socket_path=socket_path, command_timeout=5.0)
+
+    task = asyncio.create_task(engine.scan(target))
+    await asyncio.wait_for(reader.delivered.wait(), timeout=1.0)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError) as cancelled:
+        await task
+
+    assert detection in getattr(cancelled.value, "partial_output", "")
+
+
+@pytest.mark.asyncio
+async def test_clamd_transport_error_preserves_partial_detections(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "sample.bin"
+    target.write_bytes(b"sample")
+    detection = f"{target}: Eicar-Test-Signature FOUND"
+    _install_partial_clamd(
+        monkeypatch,
+        payload=(detection + "\\n").encode(),
+        fail_after_payload=True,
+    )
+    socket_path = tmp_path / "clamd.ctl"
+    socket_path.touch()
+    engine = ClamAVEngine(socket_path=socket_path)
+
+    result = await engine.scan(target)
+
+    assert result.status.name == "ERROR"
+    assert result.clean is False
+    assert result.engine == "clamd"
+    assert detection in result.threats
+    assert detection in result.metadata["partial_output"]
+
+
+def test_clamav_engine_preserves_legacy_sixth_positional_argument() -> None:
+    engine = ClamAVEngine(
+        Path("/nonexistent/clamd.ctl"),
+        "clamscan",
+        "freshclam",
+        False,
+        300.0,
+        8,
+    )
+
+    assert engine.max_descriptor_workers == 8
+    assert engine.command_inactivity_timeout == 600.0
+    assert engine.command_maximum_timeout == 3600.0
