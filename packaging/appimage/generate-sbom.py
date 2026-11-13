@@ -49,7 +49,8 @@ def _component_properties(component: dict[str, Any]) -> list[dict[str, str]]:
     properties: list[dict[str, str]] = []
     for field in (
         "version_status", "license_status", "source", "source_package",
-        "detection_method", "verification_status", "architecture",
+        "binary_package", "apk_revision", "detection_method",
+        "verification_status", "architecture",
     ):
         value = component.get(field)
         if value is not None:

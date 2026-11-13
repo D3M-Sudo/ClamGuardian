@@ -50,7 +50,7 @@ def _valid_inventories() -> tuple[dict[str, Any], dict[str, Any]]:
         ],
     }
     runtime = {
-        "schema_version": 1,
+        "schema_version": 2,
         "runtime": {
             "release": "20251108",
             "upstream_commit": "dd6cebedcbddde9c82f89b011e8e1d40b6e43868",
@@ -70,6 +70,8 @@ def _valid_inventories() -> tuple[dict[str, Any], dict[str, Any]]:
                 "license_status": "declared",
                 "source": "AppImage type2-runtime upstream build recipe",
                 "source_package": None,
+                "binary_package": "mimalloc-dev",
+                "apk_revision": None,
                 "artifact_paths": ["AppImage Type 2 runtime executable"],
                 "source_paths": ["runtime upstream Makefile link inputs"],
                 "evidence_paths": ["runtime upstream Makefile link inputs"],
@@ -86,6 +88,26 @@ def test_valid_appdir_and_runtime_inventories_are_accepted() -> None:
     appdir, runtime = _valid_inventories()
 
     assert validator.validate_inventories(appdir, runtime) == []
+
+
+def test_runtime_inventory_rejects_legacy_schema_version() -> None:
+    validator = _load_validator()
+    appdir, runtime = _valid_inventories()
+    runtime["schema_version"] = 1
+
+    issues = validator.validate_inventories(appdir, runtime)
+
+    assert any(issue.code == "INVALID_INVENTORY_HEADER" for issue in issues)
+
+
+def test_runtime_inventory_requires_binary_package_and_apk_revision_fields() -> None:
+    validator = _load_validator()
+    appdir, runtime = _valid_inventories()
+    del runtime["components"][0]["binary_package"]
+
+    issues = validator.validate_inventories(appdir, runtime)
+
+    assert any(issue.code == "COMPONENT_REQUIRED_FIELD" for issue in issues)
 
 
 def test_component_missing_required_field_is_rejected() -> None:
@@ -552,7 +574,7 @@ def test_native_license_collector_fails_closed_when_copyright_is_missing(tmp_pat
         )
 
 
-def test_native_license_collector_records_embedded_libmpdec_with_unknown_library_version(
+def test_native_license_collector_records_verified_libmpdec_version_and_license(
     tmp_path: Path,
 ) -> None:
     import importlib.util
@@ -579,7 +601,30 @@ def test_native_license_collector_records_embedded_libmpdec_with_unknown_library
     )
     (docs / "libpython3.12-stdlib").mkdir()
     (docs / "libpython3.12-stdlib/copyright").write_text(
-        "Python standard library copyright; libmpdec; Stefan Krah\n", encoding="utf-8"
+        """Files: Modules/_decimal/libmpdec/*
+Copyright: Copyright (c) 2008-2012 Stefan Krah. All rights reserved.
+License: Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are met.
+ .
+ 1. Redistributions of source code must retain the above copyright notice,
+    this list of conditions and the following disclaimer.
+ .
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+    this list of conditions and the following disclaimer in the documentation
+    and/or other materials provided with the distribution.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS "AS IS" AND
+ ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED. IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE FOR ANY
+ DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+""",
+        encoding="utf-8",
     )
 
     result = module.collect_package_provenance(
@@ -595,8 +640,10 @@ def test_native_license_collector_records_embedded_libmpdec_with_unknown_library
     embedded = result["embedded_components"]
     assert len(embedded) == 1
     assert embedded[0]["name"] == "libmpdec"
-    assert embedded[0]["version"] is None
-    assert embedded[0]["license"] == "NOASSERTION"
+    assert embedded[0]["version"] == "2.5.1"
+    assert embedded[0]["version_status"] == "verified"
+    assert embedded[0]["license"] == "BSD-2-Clause"
+    assert embedded[0]["license_status"] == "verified"
     assert embedded[0]["evidence_paths"]
 
 
@@ -681,7 +728,9 @@ def test_runtime_inventory_has_explicit_mimalloc_and_upstream_license_evidence()
     } <= names
     mimalloc = next(item for item in runtime["components"] if item["name"] == "mimalloc")
     assert mimalloc["license"] == "MIT"
-    assert mimalloc["version_status"] == "declared"
+    assert mimalloc["version_status"] == "unknown"
+    assert mimalloc["binary_package"] == "mimalloc-dev"
+    assert mimalloc["apk_revision"] is None
     assert mimalloc["evidence_paths"]
 
 
@@ -769,7 +818,7 @@ def test_runtime_license_sources_are_immutable_and_blob_pinned() -> None:
         "squashfuse-LICENSE.txt": "2c821bbaa662c7e863424b0523f032b77ab75d87",
         "zstd-LICENSE.txt": "75800288cc243f164b9d130f125e2ffae28f8e39",
         "zlib-LICENSE.txt": "ab8ee6f71428c3e4646b12b64ad387cde33462e5",
-        "mimalloc-LICENSE.txt": "53315ebee557ac22f3396ea1781df0440c26bb15",
+        "mimalloc-LICENSE.txt": "670b668a0c928e5c29439d6dbf43091ed8932f56",
     }
     for filename, blob_sha in expected.items():
         assert filename in script
@@ -1489,7 +1538,8 @@ def test_debian_non_spdx_license_identifiers_remain_unasserted() -> None:
     spec.loader.exec_module(module)
     for identifier in ("BSD-3-snowball", "Hylafax"):
         content = (
-            "Files: src/example.c\n"
+            "Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n"
+            "Files: *\n"
             f"License: {identifier}\n"
             " Full license text.\n"
         ).encode()
@@ -1498,7 +1548,8 @@ def test_debian_non_spdx_license_identifiers_remain_unasserted() -> None:
             "unknown",
         )
     assert module._debian_license_expression(
-        b"Files: src/example.c\nLicense: X11\n"
+        b"Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n"
+        b"Files: *\nLicense: X11\n"
     ) == ("X11", "verified")
 
 def test_release_workflow_requires_architecture_sbom_evidence_archives() -> None:
@@ -1532,10 +1583,11 @@ def test_native_license_evidence_ignores_empty_license_fields() -> None:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     content = (
+        b"Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n"
         b"Files: src/empty.c\n"
         b"License:\n"
         b"\n"
-        b"Files: src/mit.c\n"
+        b"Files: *\n"
         b"License: MIT\n"
         b" MIT license text.\n"
     )
@@ -1570,6 +1622,8 @@ def test_release_assembly_script_packages_all_required_evidence(tmp_path: Path) 
             f"schema-validation-{architecture}.json",
             "native-packages.json",
             f"license-evidence-{architecture}.tar.gz",
+            f"runtime-source-bundle-{architecture}.tar.gz",
+            f"runtime-source-bundle-{architecture}.tar.gz.sha256",
         ):
             (sbom / filename).write_text(filename, encoding="utf-8")
 
@@ -1599,6 +1653,8 @@ def test_release_assembly_script_packages_all_required_evidence(tmp_path: Path) 
         assert f"aggregate-{architecture}.cdx.json" in names
         assert "native-packages.json" in names
         assert f"license-evidence-{architecture}.tar.gz" in names
+        assert f"runtime-source-bundle-{architecture}.tar.gz" in names
+        assert f"runtime-source-bundle-{architecture}.tar.gz.sha256" in names
     checksum = subprocess.run(
         ["sha256sum", "--check", "SHA256SUMS"],
         cwd=release,
@@ -1667,3 +1723,68 @@ def test_extracted_appimage_sbom_report_requires_semantic_validation(
     report_path.write_text(json.dumps(invalid), encoding="utf-8")
     with pytest.raises(ValueError, match="semantic license validation"):
         module.validate_report(report_path)
+
+
+def _load_dep5_test_module() -> Any:
+    module_path = ROOT / "packaging" / "appimage" / "collect-licenses.py"
+    spec = importlib.util.spec_from_file_location("appimage_dep5_test_parser", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_dep5_header_license_is_used_as_package_level_declaration() -> None:
+    module = _load_dep5_test_module()
+    content = (
+        b"Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n"
+        b"Upstream-Name: Example\n"
+        b"License: GPL-2+ AND MIT\n"
+        b"\n"
+        b"Files: *\nCopyright: Example\nLicense: GPL-2+\n"
+        b"\n"
+        b"Files: vendor/*\nCopyright: Vendor\nLicense: MIT\n"
+        b"\n"
+        b"License: GPL-2+\n GNU GPL text.\n"
+        b"\n"
+        b"License: MIT\n MIT text.\n"
+    )
+
+    assert module._debian_license_expression(content) == (
+        "GPL-2.0-or-later AND MIT",
+        "verified",
+    )
+
+
+def test_dep5_partial_files_stanza_is_not_promoted_to_package_license() -> None:
+    module = _load_dep5_test_module()
+    content = (
+        b"Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n"
+        b"Upstream-Name: Example\n"
+        b"\n"
+        b"Files: src/specific.c\nCopyright: Example\nLicense: MIT\n"
+        b"\n"
+        b"License: MIT\n MIT text.\n"
+    )
+
+    assert module._debian_license_expression(content) == ("NOASSERTION", "unknown")
+
+
+def test_dep5_license_evidence_excludes_header_and_standalone_license_paragraphs() -> None:
+    module = _load_dep5_test_module()
+    content = (
+        b"Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n"
+        b"Upstream-Name: Example\n"
+        b"License: GPL-2+\n"
+        b"\n"
+        b"Files: src/example.c\nCopyright: Example\nLicense: MIT\n"
+        b"\n"
+        b"License: MIT\n Full MIT license text.\n"
+    )
+
+    evidence = module._debian_license_evidence(content, "third-party/native/example/copyright")
+
+    assert len(evidence) == 1
+    assert evidence[0]["file_patterns"] == ["src/example.c"]
+    assert evidence[0]["license_declaration"] == "MIT"

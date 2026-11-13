@@ -124,4 +124,7 @@ cp "$APPDIR/usr/share/licenses/ClamGuardian/native-packages.json" \
     "$sbom_dir/native-packages.json"
 tar -C "$APPDIR/usr/share/licenses" \
     -czf "$sbom_dir/license-evidence-$APPIMAGE_ARCH.tar.gz" ClamGuardian
+# Preserve upstream Type 2 runtime sources, the applied libfuse patch, static
+# dependency sources and reproducible relink inputs beside the SBOM evidence.
+bash "$ROOT/packaging/appimage/collect-runtime-source-bundle.sh" "$sbom_dir" "$APPIMAGE_ARCH"
 echo "Built native AppImage: $output"
