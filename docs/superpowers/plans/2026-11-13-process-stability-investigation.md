@@ -140,3 +140,40 @@ Timeout values and output cap are constructor-configurable. No new runtime depen
 - [ ] Use AI Delivery Evidence Checker against the recorded criteria, delivery summary, and test/CI evidence.
 - [ ] Deliver a concise evidence-based verdict and Phase 1 implementation recommendations.
 
+
+
+---
+
+## Phase 1-B audit remediation amendment — authorized 2026-11-13
+
+The user approved remediation of the three findings from the independent read-only audit. This amendment is limited to investigation/process-stability; PR #43 remains Draft and targets feature.
+
+### CG-AUD-01 — bounded per-scan clamd response retention
+
+- [ ] Add regression tests first for a clamd server that sends a complete FOUND line and then stalls, is cancelled, or fails at the transport layer.
+- [ ] Allocate a local bytearray in scan() for each clamd attempt and pass it to _scan_socket(); do not add shared engine-instance response state.
+- [ ] Append response bytes progressively and enforce MAX_RESPONSE_BYTES (8 MiB) without exceeding the cap.
+- [ ] On timeout, return TIMEOUT, engine="clamd", partial output and parsed detections; never return CLEAN.
+- [ ] On cancellation, attach bounded partial output and detections to the original CancelledError, then re-raise it unchanged.
+- [ ] On transport/protocol error, retain the existing ERROR/no-fallback policy and include partial output and detections.
+- [ ] Preserve partial-line semantics: only complete valid FOUND lines become parsed detections; raw trailing bytes remain diagnostic output.
+
+### CG-AUD-02 — constructor API compatibility
+
+- [ ] Restore max_descriptor_workers to the sixth positional argument.
+- [ ] Make the newer inactivity-timeout, maximum-timeout and output-cap parameters keyword-only.
+- [ ] Add a regression test for the original six-positional-argument constructor call.
+
+### CG-AUD-03 — timeout engine attribution
+
+- [ ] Construct clamd timeout results with engine="clamd".
+- [ ] Assert the engine label in the partial-response timeout regression.
+
+### Delivery and closure criteria
+
+- [ ] Update the changelog, investigation report and this plan with the implemented behavior and evidence.
+- [ ] Run focused tests, full test suite, lint, type checks and all existing packaging/dependency gates on the final branch head.
+- [ ] Verify CI and Release Gate results on the exact final SHA.
+- [ ] Perform a second read-only audit of the complete PR diff, focusing on response-buffer bounds, concurrent-scan isolation, cancellation identity/propagation, fallback behavior, positional API compatibility and result-state semantics.
+- [ ] Run AI Delivery Evidence Checker against the approved criteria and final test/CI evidence.
+- [ ] Verify PR #43 remains open, Draft and based on feature; do not approve, promote, close or merge it.
