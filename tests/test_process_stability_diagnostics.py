@@ -76,50 +76,71 @@ async def test_cli_command_captures_large_combined_output_in_full() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure", ["timeout", "socket_error", "protocol_error"])
-async def test_clamd_failure_falls_back_to_clamscan(
+@pytest.mark.asyncio
+async def test_clamd_connection_refused_falls_back_to_clamscan(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """An unavailable clamd socket may safely select the CLI backend."""
+    target = tmp_path / "sample.bin"
+    target.write_bytes(b"sample")
+    socket_path = tmp_path / "clamd.ctl"
+    socket_path.touch()
+    engine = ClamAVEngine(socket_path=socket_path)
+    cli_calls = 0
+
+    async def refused_socket(_target: Path, _profile):
+        raise ConnectionRefusedError("synthetic clamd connection refusal")
+
+    async def fake_cli(_target: Path, *, profile):
+        nonlocal cli_calls
+        cli_calls += 1
+        return f"{target}: OK\\n", 0
+
+    monkeypatch.setattr(engine, "_scan_socket", refused_socket)
+    monkeypatch.setattr(engine, "_run_cli_scan", fake_cli)
+
+    result = await engine.scan(target)
+
+    assert cli_calls == 1
+    assert result.engine == "clamscan"
+    assert result.status.name == "CLEAN"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["timeout", "protocol_error", "other_os_error"])
+async def test_clamd_timeout_and_invalid_responses_do_not_fallback(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     failure: str,
 ) -> None:
-    """Characterize the automatic CLI fallback for clamd timeout/errors."""
+    """An incomplete or invalid clamd attempt must not launch a second scan."""
     target = tmp_path / "sample.bin"
     target.write_bytes(b"sample")
     socket_path = tmp_path / "clamd.ctl"
     socket_path.touch()
     engine = ClamAVEngine(socket_path=socket_path, command_timeout=0.05)
-    socket_started = asyncio.Event()
-    socket_cancelled = asyncio.Event()
     cli_calls = 0
 
-    async def fake_socket(_target: Path, _profile):
-        socket_started.set()
+    async def failing_socket(_target: Path, _profile):
         if failure == "timeout":
-            try:
-                await asyncio.sleep(30)
-            finally:
-                socket_cancelled.set()
-        if failure == "socket_error":
-            raise OSError("synthetic clamd connection failure")
+            await asyncio.sleep(30)
         if failure == "protocol_error":
             raise ValueError("synthetic invalid clamd response")
-        return "unused", 0, ()
+        raise OSError("synthetic unrelated socket error")
 
     async def fake_cli(_target: Path, *, profile):
         nonlocal cli_calls
         cli_calls += 1
-        return f"{target}: OK\n", 0
+        return f"{target}: OK\\n", 0
 
-    monkeypatch.setattr(engine, "_scan_socket", fake_socket)
+    monkeypatch.setattr(engine, "_scan_socket", failing_socket)
     monkeypatch.setattr(engine, "_run_cli_scan", fake_cli)
 
     result = await engine.scan(target)
 
-    assert socket_started.is_set()
-    assert cli_calls == 1
-    assert result.engine == "clamscan"
-    if failure == "timeout":
-        assert socket_cancelled.is_set()
+    assert cli_calls == 0
+    assert result.status.name == ("TIMEOUT" if failure == "timeout" else "ERROR")
 
 
 @pytest.mark.asyncio
