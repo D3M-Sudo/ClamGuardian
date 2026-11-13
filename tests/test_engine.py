@@ -10,6 +10,22 @@ from clamguardian.core.profiles import DEFAULT_PROFILE
 from clamguardian.engines.clamav import ClamAVEngine
 
 
+@pytest.mark.parametrize(
+    ("setting", "value"),
+    [
+        ("command_inactivity_timeout", 0),
+        ("command_inactivity_timeout", float("inf")),
+        ("command_maximum_timeout", float("nan")),
+        ("command_maximum_timeout", -1),
+    ],
+)
+def test_command_timeout_settings_must_be_finite_and_positive(
+    setting: str, value: float
+) -> None:
+    with pytest.raises(ValueError, match="finite positive"):
+        ClamAVEngine(**{setting: value})
+
+
 @pytest.mark.asyncio
 async def test_cli_fallback_scans_and_normalizes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
