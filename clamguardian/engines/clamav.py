@@ -872,6 +872,12 @@ class ClamAVEngine(BaseAVEngine):
                 retained, detections, truncated
             )
             raise
+        except BaseException:
+            # Reader/transport failures must not leave a live child or helper
+            # process behind; preserve the original exception after teardown.
+            await self._terminate_process(process)
+            await asyncio.gather(*readers, return_exceptions=True)
+            raise
 
         output = self._format_command_output(retained, detections, truncated)
         return output, int(process.returncode or 0)
