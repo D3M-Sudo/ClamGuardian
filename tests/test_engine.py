@@ -189,7 +189,7 @@ async def test_clamd_branch_records_single_file_sha256(
     socket_path.touch()  # only ``exists()`` gates the socket branch
     engine = ClamAVEngine(socket_path=socket_path)
 
-    async def fake_socket(target, profile):
+    async def fake_socket(target, profile, response_buffer=None):
         return f"{target}: OK\n", 0, ()
 
     monkeypatch.setattr(engine, "_scan_socket", fake_socket)
@@ -212,7 +212,7 @@ async def test_clamd_branch_has_no_sha256_for_directories(
     socket_path.touch()
     engine = ClamAVEngine(socket_path=socket_path)
 
-    async def fake_socket(target, profile):
+    async def fake_socket(target, profile, response_buffer=None):
         return f"{target}: OK\n", 0, ()
 
     monkeypatch.setattr(engine, "_scan_socket", fake_socket)
