@@ -908,6 +908,10 @@ class ClamAVEngine(BaseAVEngine):
         except PermissionError as exc:
             raise EngineError(f"cannot signal subprocess group {process.pid}: {exc}") from exc
 
+        # Reap the direct child concurrently with group polling. Otherwise
+        # its zombie entry can keep killpg(pgid, 0) successful for the entire
+        # grace period even when no descendant remains.
+        wait_task = asyncio.create_task(process.wait())
         deadline = asyncio.get_running_loop().time() + grace
         while asyncio.get_running_loop().time() < deadline:
             try:
@@ -924,7 +928,7 @@ class ClamAVEngine(BaseAVEngine):
             with contextlib.suppress(ProcessLookupError):
                 os.killpg(process.pid, signal.SIGKILL)
 
-        await process.wait()
+        await wait_task
 
 
     @staticmethod
