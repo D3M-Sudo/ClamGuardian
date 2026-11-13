@@ -438,6 +438,7 @@ def test_finalize_rejects_file_changed_during_digest(
     assert "changed during scan" in (finalized.error or "")
     assert "sha256" not in finalized.metadata
 
+
 @pytest.mark.parametrize(
     ("response_lines", "expected_status", "expected_threats"),
     [
