@@ -172,8 +172,8 @@ The user approved remediation of the three findings from the independent read-on
 ### Delivery and closure criteria
 
 - [x] Update the changelog, investigation report and this plan with the implemented behavior and evidence.
-- [x] Run focused tests, full test suite, lint, type checks and all existing packaging/dependency gates on the final branch head.
-- [x] Verify CI and Release Gate results on the exact final SHA.
+- [x] Run focused tests, full test suite, lint, type checks and all existing packaging/dependency gates on the final implementation commit (`4493b9272364f9320a9e093444b097e48556d39c`). The later `5783dec` commit changes only this plan's checklist and does not alter tested code, tests, workflows or packaging inputs.
+- [x] Verify CI and Release Gate results on the exact final implementation SHA (`4493b9272364f9320a9e093444b097e48556d39c`); record the documentation-only follow-up separately.
 - [x] Perform a second read-only audit of the complete PR diff, focusing on response-buffer bounds, concurrent-scan isolation, cancellation identity/propagation, fallback behavior, positional API compatibility and result-state semantics.
 - [x] Run AI Delivery Evidence Checker against the approved criteria and final test/CI evidence.
 - [x] Verify PR #43 remains open, Draft and based on feature; do not approve, promote, close or merge it.
