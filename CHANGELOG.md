@@ -33,6 +33,7 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 ### Fixed
 
 - **ClamAV subprocess and clamd stability (Phase 1 / Phase 1-B):** restrict clamd-to-clamscan fallback to unavailable sockets; separate command inactivity and hard execution deadlines; concurrently drain stdout/stderr with bounded output and incremental detection retention; preserve bounded partial diagnostics from clamd on timeout, cancellation and transport failure; keep cancellation propagation unchanged; preserve the legacy positional max_descriptor_workers constructor argument while making new timeout/output options keyword-only; label clamd timeouts correctly; terminate surviving subprocess-group descendants with SIGTERM/SIGKILL escalation.
+- **ClamD response validation (PR #45):** validate every pathname result and the complete scan-summary trailer; reject empty or malformed pathname records, truncated/unknown/duplicate summary lines, and infected-file count mismatches so malformed or inconsistent responses fail closed instead of being reported as clean.
 
 - **History detail feedback (F-08):** surface safe notifications when a scan detail lookup fails; distinguish deleted/missing records from storage errors and refresh the list when a record is no longer available.
 - **History UI error feedback:** log failed initial loads, refreshes, status/limit changes and purge operations; show non-intrusive GTK feedback while retaining the last successfully loaded records after read failures.
