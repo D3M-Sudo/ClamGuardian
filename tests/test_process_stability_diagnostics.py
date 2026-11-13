@@ -84,11 +84,11 @@ async def test_cli_command_bounds_output_but_preserves_late_detections() -> None
     limit = 1024
     detection = "/tmp/infected.bin: Eicar-Test-Signature FOUND"
     script = (
-        "import sys\\n"
-        "sys.stdout.write('O' * 4096 + '\\\\n')\\n"
-        "sys.stdout.flush()\\n"
-        f"sys.stderr.write('E' * 4096 + '\\\\n{detection}\\\\n')\\n"
-        "sys.stderr.flush()\\n"
+        "import sys\n"
+        "sys.stdout.write('O' * 4096 + '\\\n')\n"
+        "sys.stdout.flush()\n"
+        f"sys.stderr.write('E' * 4096 + '\\\n{detection}\\\n')\n"
+        "sys.stderr.flush()\n"
     )
     engine = ClamAVEngine(command_max_output_bytes=limit)
 
