@@ -64,6 +64,26 @@ async def test_cancellation_terminates_subprocess(
 
 
 @pytest.mark.asyncio
+async def test_cancellation_preserves_partial_subprocess_output() -> None:
+    """Cancellation propagates while retaining bounded diagnostics on the exception."""
+    detection = "/tmp/infected.bin: Eicar-Test-Signature FOUND"
+    script = f"import time; print({detection!r}, flush=True); time.sleep(30)"
+    engine = ClamAVEngine(
+        socket_path=Path("/nonexistent"),
+        command_inactivity_timeout=2.0,
+        command_maximum_timeout=5.0,
+    )
+    task = asyncio.create_task(engine._run_command([sys.executable, "-c", script]))
+    await asyncio.sleep(0.2)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError) as cancelled:
+        await task
+
+    assert detection in getattr(cancelled.value, "partial_output", "")
+
+
+@pytest.mark.asyncio
 async def test_timeout_kills_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
     """command_timeout terminates the child and surfaces TimeoutError."""
     recorder = _ProcessRecorder(asyncio.create_subprocess_exec)
