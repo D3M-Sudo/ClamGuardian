@@ -31,6 +31,9 @@ _OUTPUT_TRUNCATED_MARKER = "\n[OUTPUT_TRUNCATED]\n"
 #: Upper bound for a partial line held while incrementally parsing output.
 MAX_OUTPUT_LINE_BYTES = 65536
 
+#: Bound separately retained detections so pathological output cannot grow memory.
+MAX_DETECTION_RECORDS = 10000
+
 #: Upper bound for a clamd response buffered in memory (8 MiB).
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 
@@ -762,16 +765,26 @@ class ClamAVEngine(BaseAVEngine):
         retained = bytearray()
         detections: list[str] = []
         detection_set: set[str] = set()
+        detection_bytes = 0
         truncated = False
         loop = asyncio.get_running_loop()
         last_activity = loop.time()
         activity_event = asyncio.Event()
 
         def parse_line(line: bytes) -> None:
+            nonlocal detection_bytes, truncated
             decoded = line.decode("utf-8", errors="replace").strip()
             if decoded.endswith("FOUND") and ": " in decoded and decoded not in detection_set:
+                encoded_size = len(decoded.encode("utf-8"))
+                if (
+                    len(detections) >= MAX_DETECTION_RECORDS
+                    or detection_bytes + encoded_size > self.command_max_output_bytes
+                ):
+                    truncated = True
+                    return
                 detection_set.add(decoded)
                 detections.append(decoded)
+                detection_bytes += encoded_size
 
         async def drain(reader: asyncio.StreamReader) -> None:
             nonlocal last_activity, truncated
@@ -873,12 +886,11 @@ class ClamAVEngine(BaseAVEngine):
     async def _terminate_process(
         process: asyncio.subprocess.Process, grace: float = TERMINATE_GRACE_SECONDS
     ) -> None:
-        """Deterministically reap *process*: terminate, kill, then wait.
+        """Terminate the whole subprocess session and reap its direct child.
 
-        Safe to call on an already-exited process and never kills twice.
-        Because subprocesses run in their own session (``start_new_session``),
-        the signal targets the whole process group so ClamAV helper children
-        cannot survive as orphans.
+        Safe after the session leader exits: descendants may still hold pipes
+        or ignore SIGTERM. The process group receives SIGTERM, then SIGKILL
+        after the grace period if any member remains.
         """
         # The direct child may have exited while descendants remain in its
         # session. Signal the process group by the original session leader PID
