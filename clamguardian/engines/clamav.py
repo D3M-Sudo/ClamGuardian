@@ -765,6 +765,7 @@ class ClamAVEngine(BaseAVEngine):
         truncated = False
         loop = asyncio.get_running_loop()
         last_activity = loop.time()
+        activity_event = asyncio.Event()
 
         def parse_line(line: bytes) -> None:
             decoded = line.decode("utf-8", errors="replace").strip()
@@ -777,6 +778,7 @@ class ClamAVEngine(BaseAVEngine):
             pending = bytearray()
             while chunk := await reader.read(65536):
                 last_activity = loop.time()
+                activity_event.set()
                 remaining = self.command_max_output_bytes - len(retained)
                 if remaining > 0:
                     retained.extend(chunk[:remaining])
@@ -807,6 +809,7 @@ class ClamAVEngine(BaseAVEngine):
         started = loop.time()
         try:
             while not completion.done():
+                activity_event.clear()
                 elapsed = loop.time() - started
                 inactive = loop.time() - last_activity
                 remaining = min(
@@ -817,12 +820,24 @@ class ClamAVEngine(BaseAVEngine):
                     raise TimeoutError(
                         "command exceeded its maximum execution or inactivity timeout"
                     )
+                activity_waiter = asyncio.create_task(activity_event.wait())
                 try:
-                    await asyncio.wait_for(asyncio.shield(completion), timeout=remaining)
-                except TimeoutError:
+                    done, _ = await asyncio.wait(
+                        (completion, activity_waiter),
+                        timeout=remaining,
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    if completion in done:
+                        break
+                    if activity_waiter in done:
+                        continue
                     raise TimeoutError(
                         "command exceeded its maximum execution or inactivity timeout"
-                    ) from None
+                    )
+                finally:
+                    if not activity_waiter.done():
+                        activity_waiter.cancel()
+                    await asyncio.gather(activity_waiter, return_exceptions=True)
             await completion
         except TimeoutError as exc:
             await self._terminate_process(process)
@@ -891,10 +906,8 @@ class ClamAVEngine(BaseAVEngine):
         except ProcessLookupError:
             pass
         else:
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
 
         await process.wait()
 
