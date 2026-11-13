@@ -24,6 +24,13 @@ from ..core.profiles import DEFAULT_PROFILE, ScanProfile
 #: Grace period given to a subprocess after ``SIGTERM`` before ``SIGKILL``.
 TERMINATE_GRACE_SECONDS = 5.0
 
+#: Upper bound for ordinary subprocess output retained in memory (1 MiB).
+DEFAULT_MAX_COMMAND_OUTPUT_BYTES = 1024 * 1024
+_OUTPUT_TRUNCATED_MARKER = "\\n[OUTPUT_TRUNCATED]\\n"
+
+#: Upper bound for a partial line held while incrementally parsing output.
+MAX_OUTPUT_LINE_BYTES = 65536
+
 #: Upper bound for a clamd response buffered in memory (8 MiB).
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 
@@ -91,6 +98,7 @@ class ClamAVEngine(BaseAVEngine):
         command_timeout: float = 300.0,
         command_inactivity_timeout: float = 600.0,
         command_maximum_timeout: float = 3600.0,
+        command_max_output_bytes: int = DEFAULT_MAX_COMMAND_OUTPUT_BYTES,
         max_descriptor_workers: int = 4,
     ) -> None:
         if (
@@ -112,6 +120,13 @@ class ClamAVEngine(BaseAVEngine):
                 raise ValueError(f"{name} must be a positive number")
         self.command_inactivity_timeout = float(command_inactivity_timeout)
         self.command_maximum_timeout = float(command_maximum_timeout)
+        if (
+            isinstance(command_max_output_bytes, bool)
+            or not isinstance(command_max_output_bytes, int)
+            or command_max_output_bytes < 1
+        ):
+            raise ValueError("command_max_output_bytes must be a positive integer")
+        self.command_max_output_bytes = command_max_output_bytes
         self.max_descriptor_workers = max_descriptor_workers
         self._descriptor_worker_count = 0
         self._descriptor_workers: set[asyncio.Task[tuple[str, int, str]]] = set()
@@ -721,15 +736,45 @@ class ClamAVEngine(BaseAVEngine):
 
         assert process.stdout is not None
         assert process.stderr is not None
-        output_chunks: list[bytes] = []
+        retained = bytearray()
+        detections: list[str] = []
+        detection_set: set[str] = set()
+        truncated = False
         loop = asyncio.get_running_loop()
         last_activity = loop.time()
 
+        def parse_line(line: bytes) -> None:
+            decoded = line.decode("utf-8", errors="replace").strip()
+            if decoded.endswith("FOUND") and ": " in decoded and decoded not in detection_set:
+                detection_set.add(decoded)
+                detections.append(decoded)
+
         async def drain(reader: asyncio.StreamReader) -> None:
-            nonlocal last_activity
+            nonlocal last_activity, truncated
+            pending = bytearray()
             while chunk := await reader.read(65536):
-                output_chunks.append(chunk)
                 last_activity = loop.time()
+                remaining = self.command_max_output_bytes - len(retained)
+                if remaining > 0:
+                    retained.extend(chunk[:remaining])
+                if len(chunk) > max(remaining, 0):
+                    truncated = True
+
+                pending.extend(chunk)
+                while True:
+                    newline = pending.find(b"\\n")
+                    if newline < 0:
+                        break
+                    parse_line(bytes(pending[:newline]))
+                    del pending[: newline + 1]
+                if len(pending) > MAX_OUTPUT_LINE_BYTES:
+                    # ClamAV detection records are short (bounded by filesystem
+                    # path and signature lengths); discard oversized non-record
+                    # fragments rather than retaining an attacker-controlled line.
+                    del pending[: len(pending) - MAX_OUTPUT_LINE_BYTES]
+                    truncated = True
+            if pending:
+                parse_line(bytes(pending))
 
         readers = [
             asyncio.create_task(drain(process.stdout)),
@@ -767,7 +812,15 @@ class ClamAVEngine(BaseAVEngine):
             await asyncio.gather(*readers, return_exceptions=True)
             raise
 
-        output = b"".join(output_chunks).decode("utf-8", errors="replace")
+        output = bytes(retained).decode("utf-8", errors="replace")
+        retained_lines = set(output.splitlines())
+        missing_detections = [line for line in detections if line not in retained_lines]
+        if missing_detections:
+            output += ("\\n" if output and not output.endswith("\\n") else "") + "\\n".join(
+                missing_detections
+            )
+        if truncated:
+            output += _OUTPUT_TRUNCATED_MARKER
         return output, int(process.returncode or 0)
 
     @staticmethod
@@ -831,7 +884,7 @@ class ClamAVEngine(BaseAVEngine):
             if status in (ScanStatus.CLEAN, ScanStatus.INFECTED)
             else output.strip() or f"{engine} exited with code {exit_code}"
         )
-        return ScanResult(
+        result = ScanResult(
             target=str(target),
             clean=status is ScanStatus.CLEAN,
             status=status,
@@ -841,3 +894,6 @@ class ClamAVEngine(BaseAVEngine):
             started_at=started,
             finished_at=datetime.now(UTC),
         )
+        if _OUTPUT_TRUNCATED_MARKER in output:
+            result.metadata["output_truncated"] = True
+        return result
