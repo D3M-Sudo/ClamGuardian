@@ -109,3 +109,86 @@ async def test_history_detail_loads_full_record_instead_of_list_summary() -> Non
 
     assert detail is full_record
     assert detail["threats"] == ["Eicar-Test-Signature"]
+
+
+
+@pytest.mark.parametrize(
+    ("action", "expected_fragment"),
+    [
+        ("initial load", "could not be loaded"),
+        ("refresh", "Previously loaded records are still shown"),
+        ("status filter", "could not be filtered"),
+        ("limit change", "could not be updated"),
+        ("purge", "Existing records were kept"),
+    ],
+)
+def test_history_error_message_is_action_specific(
+    action: str, expected_fragment: str
+) -> None:
+    from clamguardian.ui.history_page import _history_error_message
+
+    assert expected_fragment in _history_error_message(action)
+
+
+@pytest.mark.parametrize(
+    "action",
+    ["initial load", "refresh", "status filter", "limit change"],
+)
+def test_failed_history_load_preserves_last_good_records_and_reports_error(
+    action: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    from clamguardian.ui.history_page import (
+        _history_error_message,
+        _report_history_error,
+        _resolve_history_load,
+    )
+
+    existing = [_record(target="/tmp/last-good.txt")]
+    failure = OSError("database unavailable")
+    notifications: list[str] = []
+
+    def report_error(operation: str, error: Exception) -> None:
+        _report_history_error(operation, error, notifications.append)
+
+    records, succeeded = _resolve_history_load(
+        existing, None, failure, action, report_error
+    )
+
+    assert succeeded is False
+    assert records is existing
+    assert records[0]["target"] == "/tmp/last-good.txt"
+    assert notifications == [_history_error_message(action)]
+    assert f"History {action} failed" in caplog.text
+    assert "database unavailable" in caplog.text
+
+
+def test_successful_history_load_replaces_last_good_records() -> None:
+    from clamguardian.ui.history_page import _resolve_history_load
+
+    existing = [_record(target="/tmp/old.txt")]
+    replacement = [_record(target="/tmp/new.txt")]
+
+    records, succeeded = _resolve_history_load(
+        existing, replacement, None, "refresh",
+        lambda *_args: pytest.fail("unexpected error"),
+    )
+
+    assert succeeded is True
+    assert records == replacement
+    assert records is not existing
+
+
+def test_purge_failure_is_logged_and_notifies_without_exposing_error_details(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from clamguardian.ui.history_page import _report_history_error
+
+    notifications: list[str] = []
+    failure = OSError("/home/user/private/history.sqlite: permission denied")
+
+    _report_history_error("purge", failure, notifications.append)
+
+    assert len(notifications) == 1
+    assert "could not be deleted" in notifications[0]
+    assert "/home/user/private" not in notifications[0]
+    assert "/home/user/private" in caplog.text

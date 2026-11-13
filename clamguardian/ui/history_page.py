@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -91,6 +91,53 @@ def _as_records(result: object) -> list:
     return list(result) if isinstance(result, (list, tuple)) else []
 
 
+def _history_error_message(action: str) -> str:
+    """Return concise, non-sensitive feedback for a failed History operation."""
+    messages = {
+        "initial load": "History could not be loaded.",
+        "refresh": "History could not be refreshed. Previously loaded records are still shown.",
+        "status filter": (
+            "History could not be filtered. Previously loaded records are still shown."
+        ),
+        "limit change": "History could not be updated. Previously loaded records are still shown.",
+        "purge": "History could not be deleted. Existing records were kept.",
+    }
+    return messages.get(
+        action,
+        "A History operation failed. Previously loaded records were kept.",
+    )
+
+
+def _report_history_error(
+    action: str,
+    error: Exception,
+    notify: Callable[[str], None] | None = None,
+) -> None:
+    """Log the full failure and optionally surface safe feedback to the user."""
+    logger.error(
+        "History %s failed: %s",
+        action,
+        error,
+        exc_info=(type(error), error, error.__traceback__),
+    )
+    if notify is not None:
+        notify(_history_error_message(action))
+
+
+def _resolve_history_load(
+    current: Sequence,
+    result: object,
+    error: Exception | None,
+    action: str,
+    on_error: Callable[[str, Exception], None],
+) -> tuple[Sequence, bool]:
+    """Keep the last good rows when a list operation fails."""
+    if error is not None:
+        on_error(action, error)
+        return current, False
+    return _as_records(result), True
+
+
 if TYPE_CHECKING:
     pass
 
@@ -153,8 +200,11 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             from .database_pages import run_async
 
             def _done(result: object, error: Exception | None) -> None:
-                if error is None:
-                    self._records = _as_records(result)
+                records, succeeded = _resolve_history_load(
+                    self._records, result, error, "initial load", self._report_error
+                )
+                if succeeded:
+                    self._records = records
                     self._render()
 
             run_async(self._load_records(), _done)
@@ -171,13 +221,28 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             from .database_pages import run_async
 
             def _done(result: object, error: Exception | None) -> None:
-                if error is None:
-                    self._records = _as_records(result)
+                records, succeeded = _resolve_history_load(
+                    self._records, result, error, "refresh", self._report_error
+                )
+                if succeeded:
+                    self._records = records
                     self._render()
 
             run_async(self._load_records(), _done)
 
         # -- internals -----------------------------------------------------
+
+        def _report_error(self, action: str, error: Exception) -> None:
+            """Log a History failure and show a non-intrusive GTK toast."""
+            _report_history_error(action, error, self._show_error_toast)
+
+        def _show_error_toast(self, message: str) -> None:
+            root = self._root.get_root()
+            overlay = getattr(root, "toast_overlay", None)
+            if overlay is not None:
+                overlay.add_toast(Adw.Toast.new(message))
+            else:
+                logger.warning("History UI feedback unavailable: %s", message)
 
         def _build_status_combo(self) -> Adw.ComboRow:
             model = Gtk.StringList.new([label for label, _status in FILTER_OPTIONS])
@@ -246,8 +311,11 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             from .database_pages import run_async
 
             def _done(result: object, error: Exception | None) -> None:
-                if error is None:
-                    self._records = _as_records(result)
+                records, succeeded = _resolve_history_load(
+                    self._records, result, error, "status filter", self._report_error
+                )
+                if succeeded:
+                    self._records = records
                     self._render()
 
             run_async(self._load_records(), _done)
@@ -262,8 +330,11 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             from .database_pages import run_async
 
             def _done(result: object, error: Exception | None) -> None:
-                if error is None:
-                    self._records = _as_records(result)
+                records, succeeded = _resolve_history_load(
+                    self._records, result, error, "limit change", self._report_error
+                )
+                if succeeded:
+                    self._records = records
                     self._render()
 
             run_async(self._load_records(), _done)
@@ -384,6 +455,8 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
                 self._detail_dialog = None
                 if error is None:
                     self.refresh()
+                else:
+                    self._report_error("purge", error)
 
             run_async(self._history_store.clear_history(), _done)
 
