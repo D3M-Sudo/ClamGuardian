@@ -195,6 +195,7 @@ def test_purge_failure_is_logged_and_notifies_without_exposing_error_details(
 
 
 @pytest.mark.parametrize("error_type", [HistoryError, OSError])
+@pytest.mark.parametrize("error_type", [HistoryError, OSError])
 def test_history_detail_failure_reports_safe_feedback_and_logs_exception(
     error_type: type[Exception],
     caplog: pytest.LogCaptureFixture,
@@ -213,11 +214,15 @@ def test_history_detail_failure_reports_safe_feedback_and_logs_exception(
         errors.append((action, error))
         _report_history_error(action, error, notifications.append)
 
-    resolved = _resolve_history_detail(
-        None, failure, report_error, notifications.append
+    _resolve_history_detail(
+        None,
+        failure,
+        report_error,
+        notifications.append,
+        lambda: pytest.fail("missing-record refresh must not run on lookup error"),
+        lambda _record: pytest.fail("detail dialog must not open on lookup error"),
     )
 
-    assert resolved is False
     assert errors == [("detail", failure)]
     assert notifications == [_history_error_message("detail")]
     assert "/home/user/private" not in notifications[0]
@@ -225,40 +230,44 @@ def test_history_detail_failure_reports_safe_feedback_and_logs_exception(
     assert "History detail failed" in caplog.text
 
 
-def test_history_detail_missing_record_notifies_without_error_logging(
+def test_history_detail_missing_record_notifies_and_refreshes_without_error_log(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     from clamguardian.ui.history_page import _resolve_history_detail
 
     notifications: list[str] = []
     errors: list[tuple[str, Exception]] = []
+    refreshed: list[bool] = []
 
-    resolved = _resolve_history_detail(
+    _resolve_history_detail(
         None,
         None,
         lambda action, error: errors.append((action, error)),
         notifications.append,
+        lambda: refreshed.append(True),
+        lambda _record: pytest.fail("detail dialog must not open for a missing record"),
     )
 
-    assert resolved is False
     assert notifications == ["This scan record is no longer available."]
     assert errors == []
+    assert refreshed == [True]
     assert "no longer exists" in caplog.text
     assert "ERROR" not in caplog.text
 
 
-def test_history_detail_success_returns_record_without_notifications() -> None:
+def test_history_detail_success_opens_detail_without_notifications() -> None:
     from clamguardian.ui.history_page import _resolve_history_detail
 
     record = _record()
-    notifications: list[str] = []
+    displayed: list[object] = []
 
-    resolved = _resolve_history_detail(
+    _resolve_history_detail(
         record,
         None,
         lambda *_args: pytest.fail("unexpected error callback"),
-        notifications.append,
+        lambda _message: pytest.fail("unexpected missing-record notification"),
+        lambda: pytest.fail("unexpected History refresh"),
+        displayed.append,
     )
 
-    assert resolved is True
-    assert notifications == []
+    assert displayed == [record]
