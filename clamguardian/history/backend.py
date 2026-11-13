@@ -14,11 +14,11 @@ import os
 import re
 import sqlite3
 import threading
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime
-from collections.abc import Callable
-from typing import TypeVar
 from pathlib import Path
+from typing import TypeVar
 
 from ..core.base import ScanResult
 from ..core.profiles import ScanProfile
@@ -478,9 +478,13 @@ class SqliteHistoryStore:
             try:
                 return operation(conn)
             except sqlite3.Error as exc:
-                raise HistoryError(f"history database operation failed: {exc}") from exc
+                raise HistoryError(
+                    f"history database operation failed: {exc}"
+                ) from exc
 
-    async def record_scan(self, result: ScanResult, profile: ScanProfile | None = None) -> HistoryRecord:
+    async def record_scan(
+        self, result: ScanResult, profile: ScanProfile | None = None
+    ) -> HistoryRecord:
         """Persist a scan atomically without blocking the caller's event loop."""
         intelligence = _parse_intelligence_evidence(
             result.metadata.get("threat_intelligence") if result.metadata else None,
@@ -490,7 +494,9 @@ class SqliteHistoryStore:
         await asyncio.to_thread(self._record_scan_sync, record, intelligence)
         return record
 
-    def _record_scan_sync(self, record: HistoryRecord, intelligence: dict[str, object] | None) -> None:
+    def _record_scan_sync(
+        self, record: HistoryRecord, intelligence: dict[str, object] | None
+    ) -> None:
         """Perform the atomic scan write in a worker thread."""
         def persist(conn: sqlite3.Connection) -> None:
             conn.execute("BEGIN IMMEDIATE")
@@ -501,7 +507,11 @@ class SqliteHistoryStore:
                     (
                         record.id, record.target, record.status, record.engine,
                         record.files_scanned, record.error, record.profile_id,
-                        json.dumps(dict(record.profile_snapshot), sort_keys=True, separators=(",", ":"))
+                        json.dumps(
+                            dict(record.profile_snapshot),
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        )
                         if record.profile_snapshot is not None else None,
                         json.dumps(dict(record.metadata), sort_keys=True, separators=(",", ":")),
                         encode_timestamp(record.started_at), encode_timestamp(record.finished_at),
@@ -533,7 +543,9 @@ class SqliteHistoryStore:
     async def get_scan_intelligence(self, scan_id: str) -> ThreatIntelligenceRecord | None:
         """Return the separate VirusTotal assessment associated with a scan."""
         def query(conn: sqlite3.Connection) -> ThreatIntelligenceRecord | None:
-            row = conn.execute("SELECT * FROM scan_intelligence WHERE scan_id = ?", (scan_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM scan_intelligence WHERE scan_id = ?", (scan_id,)
+            ).fetchone()
             return _row_to_intelligence_record(row) if row is not None else None
         return await asyncio.to_thread(self._execute_db, query)
 
