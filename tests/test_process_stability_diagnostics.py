@@ -301,7 +301,7 @@ async def test_scheduler_stop_cancels_in_flight_scan(
     manager = ScheduledScanManager(
         ScanTaskRunner(engine),
         settings,
-        default_target=tmp_path / "scheduled-target",
+        default_target=tmp_path / "first",
     )
 
     await manager.start()
