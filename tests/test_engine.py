@@ -465,6 +465,51 @@ def test_finalize_rejects_file_changed_during_digest(
             ("sample.txt: Eicar-Test-Signature FOUND",),
         ),
         ([b"sample.txt: Permission denied ERROR\n"], ScanStatus.ERROR, ()),
+        ([b": OK\n"], ScanStatus.ERROR, ()),
+        ([b": FOUND\n"], ScanStatus.ERROR, ()),
+        (
+            [
+                b"sample.txt: OK\n",
+                b"----------- SCAN SUMMARY -----------\n",
+                b"Infected files: 1\n",
+            ],
+            ScanStatus.ERROR,
+            (),
+        ),
+        (
+            [b"sample.txt: OK\n", b"----------- SCAN SUMMARY -----------\n"],
+            ScanStatus.ERROR,
+            (),
+        ),
+        (
+            [
+                b"sample.txt: OK\n",
+                b"----------- SCAN SUMMARY -----------\n",
+                b"Infected files: 0\n",
+                b"unexpected trailer text\n",
+            ],
+            ScanStatus.ERROR,
+            (),
+        ),
+        (
+            [
+                b"clean.txt: OK\n",
+                b"infected.txt: Eicar-Test-Signature FOUND\n",
+                b"----------- SCAN SUMMARY -----------\n",
+                b"Infected files: 1\n",
+            ],
+            ScanStatus.INFECTED,
+            ("infected.txt: Eicar-Test-Signature FOUND",),
+        ),
+        (
+            [
+                b"clean.txt: OK\n",
+                b"----------- SCAN SUMMARY -----------\n",
+                b"Infected files: 0\n",
+            ],
+            ScanStatus.CLEAN,
+            (),
+        ),
         ([b"sample.txt: OK\n"], ScanStatus.CLEAN, ()),
         (
             [b"sample.txt: Eicar-Test-Signature FOUND\n"],
