@@ -137,11 +137,11 @@ File: `tests/test_process_stability_diagnostics.py`
 5. `test_clamd_connection_refused_falls_back_to_clamscan`
 6. `test_clamd_timeout_and_invalid_responses_do_not_fallback` (timeout, protocol error, unrelated socket error)
 7. `test_cancelling_clamd_scan_does_not_start_cli_fallback`
-8. `test_process_group_termination_can_leave_sigterm_ignoring_descendant` (characterizes the original leak)
+8. `test_process_group_termination_kills_sigterm_ignoring_descendant`
 9. `test_cancelled_runner_waiter_does_not_leak_concurrency_slot`
 10. `test_scheduler_stop_cancels_in_flight_scan`
 
-Additional subprocess lifecycle coverage in `tests/test_cancellation.py` verifies cancellation output preservation and termination of a SIGTERM-resistant descendant after the direct parent has already exited. Existing timeout, startup failure, escalation, and already-exited-process cases remain covered.
+Additional subprocess lifecycle coverage in `tests/test_cancellation.py` verifies cancellation output preservation, cleanup after stream-reader failure, prompt parent reaping, and termination of a SIGTERM-resistant descendant after the direct parent has already exited. `tests/test_engine.py` also validates finite positive timeout configuration. Existing timeout, startup failure, escalation, and already-exited-process cases remain covered.
 
 ## 6. Phase 1 remediation status
 
