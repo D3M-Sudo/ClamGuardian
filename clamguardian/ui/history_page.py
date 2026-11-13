@@ -96,7 +96,9 @@ def _history_error_message(action: str) -> str:
     messages = {
         "initial load": "History could not be loaded.",
         "refresh": "History could not be refreshed. Previously loaded records are still shown.",
-        "status filter": "History could not be filtered. Previously loaded records are still shown.",
+        "status filter": (
+            "History could not be filtered. Previously loaded records are still shown."
+        ),
         "limit change": "History could not be updated. Previously loaded records are still shown.",
         "purge": "History could not be deleted. Existing records were kept.",
     }
