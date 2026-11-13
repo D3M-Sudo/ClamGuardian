@@ -293,6 +293,11 @@ async def test_process_group_termination_kills_sigterm_ignoring_descendant(
 
         await ClamAVEngine._terminate_process(parent, grace=0.2)
         child_state = _linux_process_state(child_pid)
+        for _ in range(50):
+            if child_state in (None, "Z"):
+                break
+            await asyncio.sleep(0.02)
+            child_state = _linux_process_state(child_pid)
 
         assert child_state in (None, "Z"), (
             f"descendant survived process-group termination: pid={child_pid}, "
