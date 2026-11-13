@@ -15,7 +15,7 @@ This document evaluates the publicly observable capabilities of [linx-systems/cl
 | Feature Area | ClamUI Capability | ClamGuardian Status | Evaluation Decision | Technical Reasoning |
 |---|---|---|---|---|
 | **Scan Workflows** | Manual file/directory scans, preset scan targets | Implemented | Already implemented & verified | ClamGuardian implements `quick`, `home`, `full`, and `custom` profiles driven by `ScanTaskRunner` and shared across UI/CLI. |
-| **ClamAV Backend** | clamd / clamscan integration | Implemented | Already implemented & verified | ClamGuardian automatically prefers `clamd` UNIX sockets and seamlessly falls back to `clamscan`. |
+| **ClamAV Backend** | clamd / clamscan integration | Implemented | Already implemented & verified | ClamGuardian directly uses the configured clamd UNIX socket when available. It falls back to `clamscan` only if the socket is absent or the initial daemon connection is unavailable/refused; a timeout or protocol/transport failure after connection does not trigger a second scan. Descriptor scans prefer FILDES and use INSTREAM when FILDES is unavailable, without falling back to a pathname scan. |
 | **Quarantine Vault** | File isolation and restore | Implemented | Already implemented & verified | ClamGuardian provides AES-256-GCM authenticated encryption with 96-bit fresh nonces and tamper-evident associated data metadata. |
 | **Databases** | Freshclam official + extra signatures | Implemented | Already implemented & verified | ClamGuardian includes official detection diagnostics and third-party database management with HTTPS enforcement and mandatory SHA-256 integrity verification. |
 | **Removable Media** | USB auto-detection and scanning | Implemented on `feature` | Implemented; real-host validation pending | PR #18 is merged. `USBDeviceScanner` / `USBMountMonitor` require removable-device mount identity beneath an allowed root, track scans and cancel on unmount/shutdown. CI coverage is present; real-host mount/unmount validation remains a separate evidence gate. |
@@ -26,3 +26,13 @@ This document evaluates the publicly observable capabilities of [linx-systems/cl
 | **Privileged IPC Daemon** | Root-dependent background daemon | Rejected | Rejected | Violates unprivileged security model. Excluded scope (2.x-C). |
 | **On-Access Blocking** | fanotify/clamonacc blocking | Deferred | Deferred | Requires root privileges and system-level intervention. Excluded scope (2.x-B). |
 | **System Tray Icon** | Background tray/AppIndicator | Deferred | Deferred | GNOME/Libadwaita desktop standard prefers background portal notifications over legacy StatusNotifier/XEmbed system tray icons. Desktop notifications are fully integrated. |
+
+---
+
+## Follow-up research
+
+The detailed pinned-source comparison, ClamAV backend analysis, file-manager integration proposal, evidence matrix and roadmap recommendations are maintained in [the ClamAV benchmark research dossier](../research/clamav-benchmark/README.md).
+
+## P1 ClamD response-validation finding
+
+The pinned baseline finding below remains historically valid. Its correction was implemented and merged into `feature` by PR #45 (merge commit `c1da5c8974c8148ac60b23f507a5deec2816b52c`). The current branch therefore contains fail-closed pathname-response validation and regression tests; this historical finding is resolved in the current implementation. It remains separate from the ClamUI comparison and from this documentation dossier. See the [detailed research finding](../research/clamav-benchmark/clamav-integration-study.md#8-p1-finding--pathname-clamd-response-can-be-classified-clean-without-a-valid-reply).
