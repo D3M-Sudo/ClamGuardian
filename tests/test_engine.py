@@ -97,8 +97,17 @@ async def test_engine_flatpak_host_command_construction(
         captured_command.extend(cmd)
         class FakeProcess:
             returncode = 0
-            async def communicate(self):
-                return b"OK\n", b""
+
+            def __init__(self) -> None:
+                self.stdout = asyncio.StreamReader()
+                self.stderr = asyncio.StreamReader()
+                self.stdout.feed_data(b"OK\n")
+                self.stdout.feed_eof()
+                self.stderr.feed_eof()
+
+            async def wait(self) -> int:
+                return 0
+
         return FakeProcess()
 
     monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
