@@ -11,8 +11,9 @@ the shim pattern of :mod:`clamguardian.ui.database_pages`.
 
 from __future__ import annotations
 
+import logging
 import os
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -63,6 +64,16 @@ FILTER_OPTIONS: tuple[tuple[str, str | None], ...] = (
 
 #: Maximum records shown per page.
 DEFAULT_LIMIT = 25
+
+logger = logging.getLogger(__name__)
+
+async def load_history_detail(history_store: HistoryStore, summary: object) -> object | None:
+    """Resolve a list summary into its full record, including threat rows."""
+    scan_id = summary.get("id") if isinstance(summary, Mapping) else getattr(summary, "id", None)
+    if not isinstance(scan_id, str) or not scan_id:
+        return None
+    return await history_store.get_scan(scan_id)
+
 
 
 def status_icon(status: ScanStatus) -> str:
@@ -260,7 +271,18 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
         def _on_record_activated(
             self, _row: Adw.ActionRow, record: object
         ) -> None:
-            self._show_detail(record)
+            from .database_pages import run_async
+
+            def _done(full_record: object, error: Exception | None) -> None:
+                if error is not None:
+                    logger.error("Could not load full scan history record: %s", error)
+                    return
+                if full_record is None:
+                    logger.warning("History detail record no longer exists")
+                    return
+                self._show_detail(full_record)
+
+            run_async(load_history_detail(self._history_store, record), _done)
 
         def _show_detail(self, record) -> None:
             if self._detail_dialog is not None:
