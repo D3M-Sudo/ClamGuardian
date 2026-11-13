@@ -862,10 +862,8 @@ class ClamAVEngine(BaseAVEngine):
             # group, finish draining both pipes, and preserve cancellation.
             await self._terminate_process(process)
             await asyncio.gather(*readers, return_exceptions=True)
-            setattr(
-                exc,
-                "partial_output",
-                self._format_command_output(retained, detections, truncated),
+            exc.partial_output = self._format_command_output(  # type: ignore[attr-defined]
+                retained, detections, truncated
             )
             raise
 
