@@ -32,6 +32,7 @@ within the release numbering defined in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ### Fixed
 
+- **History detail feedback (F-08):** surface safe notifications when a scan detail lookup fails; distinguish deleted/missing records from storage errors and refresh the list when a record is no longer available.
 - **History UI error feedback:** log failed initial loads, refreshes, status/limit changes and purge operations; show non-intrusive GTK feedback while retaining the last successfully loaded records after read failures.
 - **History reliability and lifecycle:** hydrate full scan details before rendering threat findings; report best-effort persistence failures from GTK, USB, scheduled and realtime scans without changing the antivirus verdict; normalize SQLite failures to `HistoryError`; serialize and offload SQLite connection operations; close the shared History store during GTK shutdown.
 - **AppImage license/SBOM verification:** pin Syft output to SPDX 2.3 and CycloneDX 1.6, verify and hash the `ca-certificates` post-install hook, preserve native package ownership across flattened ELF libraries, reconcile Python wheel declarations, and stage the pinned GFDL-1.2 fallback when Ubuntu lacks the common-license file.
