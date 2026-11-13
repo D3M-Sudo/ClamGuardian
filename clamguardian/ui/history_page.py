@@ -144,16 +144,19 @@ def _resolve_history_detail(
     error: Exception | None,
     on_error: Callable[[str, Exception], None],
     on_missing: Callable[[str], None],
-) -> bool:
-    """Report detail lookup failures and distinguish missing records from errors."""
+    on_refresh: Callable[[], None],
+    on_success: Callable[[object], None],
+) -> None:
+    """Dispatch detail lookup outcomes without conflating errors and missing rows."""
     if error is not None:
         on_error("detail", error)
-        return False
+        return
     if full_record is None:
         logger.warning("History detail record no longer exists")
         on_missing("This scan record is no longer available.")
-        return False
-    return True
+        on_refresh()
+        return
+    on_success(full_record)
 
 
 if TYPE_CHECKING:
@@ -371,16 +374,14 @@ if GTK_AVAILABLE:  # pragma: no cover - exercised only on systems with PyGObject
             from .database_pages import run_async
 
             def _done(full_record: object, error: Exception | None) -> None:
-                resolved = _resolve_history_detail(
+                _resolve_history_detail(
                     full_record,
                     error,
                     self._report_error,
                     self._show_info_toast,
+                    self.refresh,
+                    self._show_detail,
                 )
-                if resolved:
-                    self._show_detail(full_record)
-                elif error is None:
-                    self.refresh()
 
             run_async(load_history_detail(self._history_store, record), _done)
 
