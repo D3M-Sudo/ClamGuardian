@@ -25,32 +25,56 @@ from clamguardian.engines.clamav import ClamAVEngine
 
 
 @pytest.mark.asyncio
-async def test_freshclam_progress_does_not_reset_absolute_command_timeout(
-    tmp_path: Path,
-) -> None:
-    """Characterize that ongoing output does not extend command_timeout."""
+async def test_freshclam_progress_resets_inactivity_timeout(tmp_path: Path) -> None:
+    """Continuous progress prevents inactivity timeout but not the hard deadline."""
     executable = tmp_path / "freshclam-progress"
     executable.write_text(
-        "#!/usr/bin/env python3\n"
-        "import time\n"
-        "while True:\n"
-        "    print('Downloading database: progress', flush=True)\n"
-        "    time.sleep(0.02)\n",
+        "#!/usr/bin/env python3\\n"
+        "import time\\n"
+        "for _ in range(12):\\n"
+        "    print('Downloading database: progress', flush=True)\\n"
+        "    time.sleep(0.03)\\n",
         encoding="utf-8",
     )
     executable.chmod(0o755)
     engine = ClamAVEngine(
         freshclam_binary=str(executable),
-        command_timeout=0.25,
+        command_inactivity_timeout=0.12,
+        command_maximum_timeout=2.0,
+    )
+
+    output, exit_code = await engine._run_command([str(executable)])
+
+    assert exit_code == 0
+    assert "Downloading database" in output
+
+
+@pytest.mark.asyncio
+async def test_freshclam_progress_does_not_extend_maximum_execution_timeout(
+    tmp_path: Path,
+) -> None:
+    """Continuous output cannot keep FreshClam alive beyond the hard deadline."""
+    executable = tmp_path / "freshclam-progress"
+    executable.write_text(
+        "#!/usr/bin/env python3\\n"
+        "import time\\n"
+        "while True:\\n"
+        "    print('Downloading database: progress', flush=True)\\n"
+        "    time.sleep(0.02)\\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    engine = ClamAVEngine(
+        freshclam_binary=str(executable),
+        command_inactivity_timeout=1.0,
+        command_maximum_timeout=0.25,
     )
 
     started = time.monotonic()
     with pytest.raises(TimeoutError):
-        await engine.update_signatures()
+        await engine._run_command([str(executable)])
     elapsed = time.monotonic() - started
 
-    # Allow runner scheduling/process teardown overhead, but ensure the
-    # continuously active process did not keep the absolute timeout alive.
     assert 0.20 <= elapsed < 3.0
 
 
