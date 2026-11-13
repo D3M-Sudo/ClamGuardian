@@ -1,6 +1,6 @@
 # ClamGuardian Implementation Roadmap
 
-*Last updated: 2026-11-12 — PR #18 and subsequent remediation/integration PRs are merged into `feature`. USB, VirusTotal, realtime monitoring, scheduled scans, autostart and scan-linked VirusTotal evidence are implemented on this branch. This is implementation status, not a claim of release promotion or real-host validation. VirusTotal Public API requests remain administratively blocked pending written eligibility authorization. PR #30 (final feature hardening) was merged into this branch on 2026-11-12. Future versions are planning targets, not promised releases or dates.*
+*Last updated: 2026-11-13 — PR #18 and subsequent remediation/integration PRs are merged into `feature`. USB, VirusTotal, realtime monitoring, scheduled scans, autostart and scan-linked VirusTotal evidence are implemented on this branch. This is implementation status, not a claim of release promotion or real-host validation. VirusTotal Public API requests remain administratively blocked pending written eligibility authorization. PR #30 (final feature hardening) was merged into this branch on 2026-11-12. Future versions are planning targets, not promised releases or dates.*
 
 This document outlines the authoritative development roadmap for ClamGuardian, tracking completed milestones, in-progress targets, and future architectural phases.
 
@@ -34,6 +34,9 @@ Phase 12: 2.x-A Event-Driven Monitoring [IMPLEMENTED ON feature — host validat
 Phase 13: Shared scan enrichment + scan-linked VT evidence [IMPLEMENTED — PRs #25, #28, #29]
     ↓
 2.x-B / 2.x-C [DEFERRED]
+    ↓
+Cross-cutting workstreams: reliability · scan semantics · FreshClam · batch integrations · persistent scheduling
+Deferred desktop: System Tray / minimize-to-tray / minimized startup [P3]
 ```
 
 ---
@@ -53,6 +56,8 @@ Future versions are planning targets, not implemented releases or promised dates
 | **Implemented / host validation pending** | `v2.0.0` | Realtime inotify monitoring, bounded orchestration, descriptor-based scanning, lifecycle integration and final feature hardening (PR #30) are integrated on `feature`; real-host validation remains a separate evidence gate. |
 | **2.x extension** | `v2.1.x` | `fanotify`/`clamonacc` access-prevention evaluation, privileges and threat model |
 | **2.x extension** | `v2.2.x` | Privileged service/IPC/Polkit only if justified by a use case |
+| **Planned workstream** | Core / Engine / Desktop reliability | Realtime coverage-loss handling, quarantine key custody, scan completeness, ClamD/FreshClam investigations, multi-path contract, file-manager first wave and persistent user scheduling; release assignment remains open |
+| **Deferred desktop feature** | System Tray integration (P3) | Full tray lifecycle, minimize-to-tray and minimized startup; no current release commitment |
 
 ---
 
@@ -180,6 +185,74 @@ Future versions are planning targets, not implemented releases or promised dates
 
 ---
 
+## Cross-Cutting Technical Workstreams
+
+These workstreams are planning records, not claims that the corresponding functionality is already implemented. Unless explicitly stated otherwise, release assignment and dates remain undecided. Work must follow the repository's review, CI and authorization rules.
+
+### WS-RT-REC: Realtime Coverage-Loss Handling
+- **Priority / status:** P1 — PLANNED; extension of 2.x-A, not a new realtime subsystem.
+- **Decision:** CONSERVATIVE recovery.
+- **Scope:** retain and expose inotify kernel overflow and internal queue-saturation evidence; mark affected monitoring coverage as degraded/uncertain; identify affected roots or coverage intervals where possible; require an explicit user-initiated scan when automatic recovery cannot be proven safe and complete.
+- **Non-goal:** do not introduce automatic root reconciliation/rescanning as a requirement for the current 2.x-A closure.
+- **Acceptance:** event loss cannot be presented as fully covered monitoring; degraded state survives the relevant lifecycle transitions; repeated overflow, shutdown and restart behaviour is tested; UI/diagnostics explain the manual recovery path; real-host evidence is recorded separately from CI.
+
+### WS-SEC-KEY: Quarantine Key Custody
+- **Priority / status:** P1 — PLANNED security design gate.
+- **Scope:** assess Secret Service availability, local fallback behaviour, keyring loss, reinstall, backup/restore, missing or corrupt keys and the recoverability of quarantined content.
+- **Constraint:** do not remove the existing local fallback or change the AES-256-GCM quarantine model before a documented security and recovery assessment.
+- **Acceptance:** key lifecycle and failure semantics are documented; recovery and irrecoverable-data cases are explicit; tests cover the selected contract.
+
+### WS-CORE-COMP: Scan Completeness Semantics
+- **Priority / status:** P2 — PLANNED.
+- **Scope:** separate antivirus verdict from scan coverage; define explicit `COMPLETE`, `PARTIAL` and `UNKNOWN` coverage states; retain structured skip reasons, warnings, backend/profile metadata and consistent semantics across GUI, CLI and history.
+- **Acceptance:** a scan with skipped or unexamined content cannot be represented as a fully complete clean scan; persisted and presented results preserve the distinction.
+
+### WS-ENG-CLAMD: ClamD Command Framing Investigation
+- **Priority / status:** P2 — INVESTIGATION.
+- **Scope:** verify explicit command framing and compatibility across supported ClamAV versions, including paths with spaces/special characters and the relevant SCAN/CONTSCAN behaviour.
+- **Constraints:** preserve PR #45 fail-closed pathname-response validation; preserve descriptor-based FILDES/INSTREAM transport and the narrow fallback rule. Do not fall back to clamscan after a protocol failure on an established ClamD connection.
+- **Acceptance:** compatibility findings and regression tests are documented before any protocol change is proposed.
+
+### WS-ENG-FRESH: FreshClam Compatibility Investigation
+- **Priority / status:** P2 — INVESTIGATE.
+- **Scope:** investigate updater conflicts and distro/service differences; distinguish FreshClam failures, database state and external updater conflicts; assess database-update timing relative to scans; define actionable diagnostics.
+- **Constraint:** ClamGuardian must not stop, disable, reconfigure or take ownership of host FreshClam services or official database update responsibilities.
+- **Acceptance:** findings cover supported installation/service variants and diagnostics are based on observable evidence; no host service-management behaviour is introduced by this investigation.
+
+### WS-DESK-BATCH: Multi-Path Scan Contract
+- **Priority / status:** P2 — PLANNED prerequisite for file-manager integration.
+- **Scope:** define a bounded multi-path request contract, per-path results, aggregate summary, cancellation, duplicate/overlapping path semantics, error propagation and single-instance request forwarding.
+- **Acceptance:** batch requests preserve existing scan validation/security boundaries; partial failures and cancellation are represented unambiguously; API and UI/CLI behaviour are tested and documented.
+
+### WS-DESK-FM: File-Manager Integration — First Wave
+- **Priority / status:** P2 — PLANNED; first wave includes Nemo, Nautilus and Dolphin in the same phase.
+- **Dependency:** WS-DESK-BATCH contract.
+- **Scope:** shared integration contract and user-scoped adapters for the three file managers; verify multi-selection and batch handoff; validate on real Cinnamon, GNOME and KDE environments as applicable.
+- **Constraints:** do not grant Flatpak generic host write access for adapter installation; installation/removal must be explicit and narrowly scoped to the user; do not introduce a privileged helper solely for these integrations.
+- **Acceptance:** each first-wave integration has documented install/uninstall, multi-selection, error and scan-result behaviour; host evidence is recorded per desktop. Caja and Thunar remain a later P3 candidate, not part of this first wave.
+
+### WS-SCHED-SD: Persistent systemd User Timer
+- **Priority / status:** P2 — PLANNED.
+- **Decision:** plan this after the current in-application scheduler's reliability contract is closed; it is not an immediate replacement.
+- **Scope:** evaluate persistent execution while the GUI is closed, login/logout behaviour, missed runs, duplicate prevention, environment/PATH, logs, native and Flatpak constraints.
+- **Acceptance:** one coherent scheduling contract prevents duplicate execution between the app scheduler and any systemd user timer; supported lifecycle and failure behaviour are tested and documented.
+
+## Deferred Desktop Features
+
+### WS-DESK-TRAY: System Tray, Minimize-to-Tray and Minimized Startup
+- **Priority / status:** P3 — DEFERRED; no current release commitment.
+- **Benchmark reference:** `docs/reports/CLAMUI-BENCHMARK-EVALUATION.md`, row **System Tray Icon**, which classifies ClamGuardian's tray capability as Deferred.
+- **Decision:** the eventual scope is the complete option C confirmed by the maintainer: (1) a System Tray icon and accessible menu; (2) minimize-to-tray with a clear distinction between hiding the window and quitting the application; and (3) optional minimized startup integrated with the existing XDG Autostart capability.
+- **Lifecycle requirements:** restoring the window must not duplicate background services; quitting must stop the application cleanly; logout/shutdown and tray-host disappearance must have defined behaviour.
+- **Compatibility evaluation:** assess Cinnamon, GNOME and KDE separately. Do not assume that a traditional tray is natively available in every GNOME configuration. Evaluate StatusNotifierItem (SNI)/DBusMenu or a desktop-supported alternative only when implementation is scheduled.
+- **Security / packaging constraints:** retain the unprivileged model; do not add a root daemon or broaden Flatpak permissions merely to support the tray.
+- **Acceptance:** tray visibility/menu, minimize/restore, optional minimized startup, explicit quit, service lifecycle and desktop compatibility are tested on real hosts and documented.
+- **Dependency:** existing GTK application lifecycle and XDG Autostart. This is separate from WS-DESK-FM file-manager context-menu integration.
+
+### WS-DESK-SECOND: Caja and Thunar
+- **Priority / status:** P3 — DEFERRED candidate.
+- **Scope:** consider only after the Nemo/Nautilus/Dolphin first wave has a stable shared contract and real-host evidence.
+
 ## Deferred Phases (Out of Scope for 2.x-A)
 
 ### 2.x-B: Access Prevention (fanotify / clamonacc)
@@ -200,11 +273,15 @@ Future versions are planning targets, not implemented releases or promised dates
 
 ## Recommended Work Order
 
-1. **Host validation on `feature`:** complete and record the real-desktop checks for the GTK application, Flatpak quarantine restore, USB mount/unmount lifecycle and realtime watch/event behaviour. CI smoke tests do not replace these host-side checks. Use `docs/validation/DESKTOP-TEST-1.0.md` and the relevant subsystem checklists; preserve explicit PASS/FAIL evidence.
-2. **VirusTotal policy gate:** keep Public API requests disabled until written eligibility authorization is recorded. Enable no Public network path merely because the implementation is present. Premium use remains conditional on valid entitlement.
-3. **Release promotion:** when host validation and the applicable release criteria are satisfied, promote the intended `feature` snapshot through `testing` → `development` → `main` using separate reviewed PRs and the release gate. Do not treat implementation on `feature` as a published release.
-4. **2.x-B evaluation:** assess `fanotify` / `clamonacc` access prevention only after 2.x-A stability evidence and a dedicated privilege/threat-model review.
-5. **2.x-C decision:** consider privileged IPC / Polkit only if a concrete use case justifies the added attack surface; otherwise keep it deferred.
+1. **Close existing host-validation gates:** record real-desktop GTK behaviour, Flatpak quarantine restore, USB mount/unmount lifecycle and realtime watch/event behaviour. CI/Xvfb is not host evidence.
+2. **Close P1 reliability/security design gates:** define conservative realtime coverage-loss handling and complete the quarantine key-custody assessment before changing key behaviour.
+3. **Consolidate Core / Engine semantics:** implement scan-completeness semantics; conduct ClamD framing and FreshClam compatibility investigations while preserving the existing fail-closed and host-service ownership constraints.
+4. **Define the multi-path contract:** complete WS-DESK-BATCH before starting file-manager adapters.
+5. **Deliver the first file-manager wave:** Nemo, Nautilus and Dolphin together, with user-scoped integration and per-desktop host validation.
+6. **Persistent scheduling:** plan the systemd user timer after the current scheduler reliability contract is closed; prevent duplicate schedules and preserve one coherent execution model.
+7. **Deferred desktop work:** keep full System Tray / minimize-to-tray / minimized startup at P3 Deferred. Caja and Thunar remain later candidates.
+8. **2.x-B / 2.x-C architecture decisions:** assess fanotify/clamonacc only after 2.x-A stability evidence; consider privileged IPC/Polkit only for a concrete use case and a dedicated threat-model review.
+9. **Release promotion:** promote only an explicitly selected, validated snapshot through the reviewed branch flow and applicable release gate. Workstream implementation on `feature` is not release promotion.
 
 `v1.0.1` is already published (2026-10-24). USB Auto-Scan, Threat Intelligence integration, realtime monitoring and scan-linked VirusTotal evidence are implemented on `feature`; their implementation status does not imply release promotion, host validation, or permission to use policy-gated external APIs. This order keeps the project sustainable for a single maintainer and avoids prematurely turning ClamGuardian into an overly broad EDR.
 
