@@ -243,13 +243,13 @@ def _linux_process_state(pid: int) -> str | None:
 
 
 @pytest.mark.asyncio
-async def test_process_group_termination_can_leave_sigterm_ignoring_descendant(
+async def test_process_group_termination_kills_sigterm_ignoring_descendant(
     tmp_path: Path,
 ) -> None:
-    """Characterize whether waiting for the parent also reaps its descendants.
+    """The process-group helper must kill descendants even after parent exit.
 
-    The child deliberately ignores SIGTERM. The test always SIGKILLs it in
-    cleanup so a confirmed orphan cannot leak into the CI runner.
+    The child deliberately ignores SIGTERM. The test always SIGKILLs any
+    survivor in cleanup so a regression cannot leak into the CI runner.
     """
     if not Path("/proc").is_dir():
         pytest.skip("requires Linux /proc process state")
@@ -290,12 +290,8 @@ async def test_process_group_termination_can_leave_sigterm_ignoring_descendant(
         await ClamAVEngine._terminate_process(parent, grace=0.2)
         child_state = _linux_process_state(child_pid)
 
-        # This is a characterization assertion, not an endorsement: the
-        # current implementation waits for the direct child only. If this
-        # assertion holds, the report must record a surviving descendant.
-        assert child_state not in (None, "Z"), (
-            "the descendant was terminated; update this diagnostic if the "
-            "production lifecycle has changed"
+        assert child_state in (None, "Z"), (
+            "the descendant survived process-group termination"
         )
     finally:
         if child_pid is not None:
