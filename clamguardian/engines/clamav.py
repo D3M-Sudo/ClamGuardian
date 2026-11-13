@@ -108,10 +108,11 @@ class ClamAVEngine(BaseAVEngine):
         freshclam_binary: str = "freshclam",
         flatpak_host: bool = False,
         command_timeout: float = 300.0,
+        max_descriptor_workers: int = 4,
+        *,
         command_inactivity_timeout: float = 600.0,
         command_maximum_timeout: float = 3600.0,
         command_max_output_bytes: int = DEFAULT_MAX_COMMAND_OUTPUT_BYTES,
-        max_descriptor_workers: int = 4,
     ) -> None:
         if (
             isinstance(max_descriptor_workers, bool)
@@ -200,9 +201,10 @@ class ClamAVEngine(BaseAVEngine):
         except OSError:
             initial_file_stat = None
         if self.socket_path.exists():
+            response_buffer = bytearray()
             try:
                 output, exit_code, unsupported = await asyncio.wait_for(
-                    self._scan_socket(target, profile), self.command_timeout
+                    self._scan_socket(target, profile, response_buffer), self.command_timeout
                 )
                 result = self._result(target, started, output, exit_code, "clamd")
                 # Explicit policy for options clamd cannot honour per
@@ -216,10 +218,27 @@ class ClamAVEngine(BaseAVEngine):
                 # alternative only for this connection-establishment failure.
                 pass
             except TimeoutError:
-                return self._annotate_profile(
-                    ScanResult.timed_out(str(target), started), profile
+                output = bytes(response_buffer).decode("utf-8", errors="replace")
+                result = ScanResult(
+                    target=str(target),
+                    clean=False,
+                    status=ScanStatus.TIMEOUT,
+                    threats=self._detection_lines(output),
+                    engine="clamd",
+                    error="clamd scan timed out",
+                    started_at=started,
+                    finished_at=datetime.now(UTC),
                 )
+                if output:
+                    result.metadata["partial_output"] = output
+                return self._annotate_profile(result, profile)
+            except asyncio.CancelledError as exc:
+                output = bytes(response_buffer).decode("utf-8", errors="replace")
+                exc.partial_output = output  # type: ignore[attr-defined]
+                exc.partial_threats = self._detection_lines(output)  # type: ignore[attr-defined]
+                raise
             except (OSError, ValueError) as exc:
+                output = bytes(response_buffer).decode("utf-8", errors="replace")
                 # A protocol/transport failure after connecting is not proof
                 # that clamd is unavailable. Do not silently start a second
                 # potentially expensive scan of the same target.
@@ -232,6 +251,9 @@ class ClamAVEngine(BaseAVEngine):
                     started_at=started,
                     finished_at=datetime.now(UTC),
                 )
+                if output:
+                    result.threats = self._detection_lines(output)
+                    result.metadata["partial_output"] = output
                 return self._annotate_profile(result, profile)
         try:
             output, exit_code = await self._run_cli_scan(target, profile=profile)
@@ -649,7 +671,10 @@ class ClamAVEngine(BaseAVEngine):
         return output.strip()
 
     async def _scan_socket(
-        self, target: Path, profile: ScanProfile
+        self,
+        target: Path,
+        profile: ScanProfile,
+        response_buffer: bytearray | None = None,
     ) -> tuple[str, int, tuple[str, ...]]:
         """Run a clamd scan; return (output, code, unsupported-profile-options)."""
         if self._has_control_bytes(target):
@@ -669,14 +694,16 @@ class ClamAVEngine(BaseAVEngine):
             # when the whole command has been served. Reading must therefore
             # continue until EOF: stopping at the first "OK"/"FOUND" line
             # silently discarded every later result of a directory scan.
-            response = bytearray()
+            response = response_buffer if response_buffer is not None else bytearray()
             while True:
                 chunk = await reader.read(65536)
                 if not chunk:
                     break
-                response.extend(chunk)
-                if len(response) > MAX_RESPONSE_BYTES:
+                remaining = MAX_RESPONSE_BYTES - len(response)
+                if len(chunk) > remaining:
+                    response.extend(chunk[:remaining])
                     raise ValueError("clamd response exceeded the size limit")
+                response.extend(chunk)
             output = bytes(response).decode("utf-8", errors="replace")
             code = (
                 1
