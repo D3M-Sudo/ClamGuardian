@@ -9,7 +9,7 @@
 
 ## 1. Executive summary
 
-The investigation confirmed four material subprocess behaviors:
+The initial investigation confirmed four material subprocess behaviors:
 
 1. FreshClam progress output does not reset the configured command timeout. The current implementation uses an absolute timeout.
 2. CLI subprocess stdout and stderr are merged, then fully captured by `communicate()`. There is no application-level output-size bound in this path.
@@ -18,7 +18,7 @@ The investigation confirmed four material subprocess behaviors:
 
 The investigation also verified that cancellation while waiting for the scan-runner concurrency slot does not consume the slot, and that stopping the scheduler propagates cancellation to an active scan.
 
-No production remediation was performed. Findings below are inputs to Phase 1.
+At the initial investigation stage no production remediation was performed. The findings below informed the separately authorized Phase 1 implementation recorded in Sections 4–8.
 
 ## 2. Evidence and CI
 
