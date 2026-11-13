@@ -226,3 +226,44 @@ Regression tests use a synthetic clamd reader that sends a complete FOUND line a
 No workflow file, dependency, protected branch, or production host was changed. The implementation remains confined to the existing investigation branch and the approved engine, regression-test, changelog, report and plan files. The clamd response buffer is per scan and bounded to 8 MiB. The existing socket timeout policy and descriptor-scan transport are unchanged.
 
 The three regressions are covered by deterministic tests in tests/test_process_stability_diagnostics.py. CI and Release Gate must be rerun on the final Phase 1-B head; earlier Phase 1 run identifiers do not verify this amendment. A second read-only audit and delivery-evidence assessment remain required before any review-state change. PR #43 remains Draft.
+
+
+## 12. Phase 1-B final verification checkpoint (2026-11-13)
+
+**Implementation commit verified:** 4493b9272364f9320a9e093444b097e48556d39c.
+
+### CI #559 — SUCCESS
+
+All jobs completed successfully on the implementation commit:
+
+| Job | Result |
+|---|---:|
+| Python 3.11 | 641 passed, 9 skipped |
+| Python 3.12 | 641 passed, 9 skipped |
+| Python 3.13 | 641 passed, 9 skipped |
+| Python 3.14 headless | 611 passed, 22 skipped |
+| Ruff and mypy | Passed |
+| Pinned runtime dependency audit | Passed |
+| Native AppImage x86_64 / aarch64 | Passed |
+| Native Flatpak x86_64 / aarch64 | Passed |
+
+### Release Gate #502 — SUCCESS
+
+Preflight, AppStream validation, local GNOME 51 Flatpak build and bundle, real clamscan/clamd checks (including descriptor-bound clean/EICAR scans), and GTK smoke test all passed. The release-manifest Flatpak build was skipped as expected for a pull request.
+
+### Second read-only audit
+
+The final source and PR-diff pass rechecked the per-scan buffer boundary, 8 MiB cap, cancellation propagation, no-fallback behavior, timeout/error status construction, immutable ScanResult construction, constructor compatibility, test fixtures, changed-file list and PR state. No remaining Phase 1-B finding was identified. During this pass, the clamd transport-error result was verified to construct its threats tuple at initialization because ScanResult is frozen.
+
+The first CI attempt exposed stale two-argument test mocks and one Ruff import-order issue. Both were corrected; CI #559 passed on the corrected implementation commit. No workflow file was changed.
+
+### AI Delivery Evidence Checker
+
+The requested evidence assessment was run. Its combined verdict was NOT_SUPPORTED because the checker evaluates only supplied materials and does not inspect repository code, execute tests, or authenticate GitHub Actions evidence; it also reported missing test evidence for non-test constraints. This tool verdict is not a CI failure and does not override the independently inspected successful CI #559 and Release Gate #502 runs or the direct source/PR audit recorded above. The tool's verification limitations remain explicit.
+
+### Final repository state at implementation verification
+
+- PR #43 is open and Draft, with base feature and head 4493b9272364f9320a9e093444b097e48556d39c.
+- The branch is 61 commits ahead of feature and 0 behind.
+- The complete PR changed-file list contains seven files; no shared workflow or protected-branch file is included.
+- No merge, approval, or Ready-for-Review transition was performed.
