@@ -857,11 +857,16 @@ class ClamAVEngine(BaseAVEngine):
             await asyncio.gather(*readers, return_exceptions=True)
             partial_output = self._format_command_output(retained, detections, truncated)
             raise CommandTimeoutError(str(exc), partial_output) from exc
-        except asyncio.CancelledError:
+        except asyncio.CancelledError as exc:
             # Cancellation must reach the subprocess: terminate the process
             # group, finish draining both pipes, and preserve cancellation.
             await self._terminate_process(process)
             await asyncio.gather(*readers, return_exceptions=True)
+            setattr(
+                exc,
+                "partial_output",
+                self._format_command_output(retained, detections, truncated),
+            )
             raise
 
         output = self._format_command_output(retained, detections, truncated)
