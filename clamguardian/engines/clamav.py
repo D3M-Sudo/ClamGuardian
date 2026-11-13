@@ -26,7 +26,7 @@ TERMINATE_GRACE_SECONDS = 5.0
 
 #: Upper bound for ordinary subprocess output retained in memory (1 MiB).
 DEFAULT_MAX_COMMAND_OUTPUT_BYTES = 1024 * 1024
-_OUTPUT_TRUNCATED_MARKER = "\\n[OUTPUT_TRUNCATED]\\n"
+_OUTPUT_TRUNCATED_MARKER = "\n[OUTPUT_TRUNCATED]\n"
 
 #: Upper bound for a partial line held while incrementally parsing output.
 MAX_OUTPUT_LINE_BYTES = 65536
@@ -762,7 +762,7 @@ class ClamAVEngine(BaseAVEngine):
 
                 pending.extend(chunk)
                 while True:
-                    newline = pending.find(b"\\n")
+                    newline = pending.find(b"\n")
                     if newline < 0:
                         break
                     parse_line(bytes(pending[:newline]))
@@ -816,7 +816,7 @@ class ClamAVEngine(BaseAVEngine):
         retained_lines = set(output.splitlines())
         missing_detections = [line for line in detections if line not in retained_lines]
         if missing_detections:
-            output += ("\\n" if output and not output.endswith("\\n") else "") + "\\n".join(
+            output += ("\n" if output and not output.endswith("\n") else "") + "\n".join(
                 missing_detections
             )
         if truncated:
