@@ -84,6 +84,40 @@ async def test_cancellation_preserves_partial_subprocess_output() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stream_reader_failure_terminates_subprocess(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stdout reader failure must not leave its subprocess running."""
+    process = await asyncio.create_subprocess_exec(
+        *_sleep_command(),
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,
+    )
+    assert process.stdout is not None
+
+    async def fail_read(_size: int = -1) -> bytes:
+        raise RuntimeError("synthetic stdout reader failure")
+
+    process.stdout.read = fail_read  # type: ignore[method-assign]
+
+    async def return_existing_process(*_args, **_kwargs):
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", return_existing_process)
+    engine = ClamAVEngine(socket_path=Path("/nonexistent"))
+
+    try:
+        with pytest.raises(RuntimeError, match="synthetic stdout reader failure"):
+            await asyncio.wait_for(engine._run_command(["synthetic-command"]), timeout=1.0)
+        assert process.returncode is not None
+    finally:
+        if process.returncode is None:
+            await ClamAVEngine._terminate_process(process, grace=0.1)
+
+
+@pytest.mark.asyncio
 async def test_timeout_kills_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
     """command_timeout terminates the child and surfaces TimeoutError."""
     recorder = _ProcessRecorder(asyncio.create_subprocess_exec)
