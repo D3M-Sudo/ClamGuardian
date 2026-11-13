@@ -195,7 +195,6 @@ def test_purge_failure_is_logged_and_notifies_without_exposing_error_details(
 
 
 @pytest.mark.parametrize("error_type", [HistoryError, OSError])
-@pytest.mark.parametrize("error_type", [HistoryError, OSError])
 def test_history_detail_failure_reports_safe_feedback_and_logs_exception(
     error_type: type[Exception],
     caplog: pytest.LogCaptureFixture,
