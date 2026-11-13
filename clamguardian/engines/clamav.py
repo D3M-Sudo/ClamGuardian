@@ -246,13 +246,13 @@ class ClamAVEngine(BaseAVEngine):
                     target=str(target),
                     clean=False,
                     status=ScanStatus.ERROR,
+                    threats=self._detection_lines(output),
                     engine="clamd",
                     error=f"clamd scan failed: {exc}",
                     started_at=started,
                     finished_at=datetime.now(UTC),
                 )
                 if output:
-                    result.threats = self._detection_lines(output)
                     result.metadata["partial_output"] = output
                 return self._annotate_profile(result, profile)
         try:
