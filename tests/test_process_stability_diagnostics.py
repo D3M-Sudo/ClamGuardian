@@ -22,7 +22,7 @@ from clamguardian.core.profiles import DEFAULT_PROFILE
 from clamguardian.core.runner import ScanTaskRunner
 from clamguardian.core.scheduler import ScheduledScanManager
 from clamguardian.core.settings import AppSettings, SettingsStore
-from clamguardian.engines.clamav import ClamAVEngine, MAX_RESPONSE_BYTES
+from clamguardian.engines.clamav import MAX_RESPONSE_BYTES, ClamAVEngine
 
 
 @pytest.mark.asyncio
