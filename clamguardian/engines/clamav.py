@@ -895,5 +895,5 @@ class ClamAVEngine(BaseAVEngine):
             finished_at=datetime.now(UTC),
         )
         if _OUTPUT_TRUNCATED_MARKER in output:
-            result.metadata["output_truncated"] = True
+            result.metadata["output_truncated"] = "true"
         return result
