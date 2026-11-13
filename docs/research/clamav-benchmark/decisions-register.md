@@ -26,3 +26,5 @@ Research recommendations only; this is not implementation approval.
 | D-20 | Direct cherry-pick | None recommended or performed | EXCLUDE | Different language/architecture/trust boundaries |
 
 All PROPOSE/INVESTIGATE/DEFER items require separate maintainer approval. This register does not authorize code, dependency, permission, package, service or roadmap changes.
+
+| D-21 | Pathname ClamD response validation | Require non-empty, fully recognized responses; malformed/empty/error replies must never be CLEAN | FIX — separate implementation PR | P1; regression matrix required; no fallback after established connection |
