@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "runtime": {
     "release": "20251108",
     "upstream_commit": "dd6cebedcbddde9c82f89b011e8e1d40b6e43868",
@@ -14,7 +14,14 @@
       "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/common/install-dependencies.sh",
       "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/chroot/build.sh",
       "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/docker/Dockerfile"
-    ]
+    ],
+    "inventory_semantics": {
+      "binary_package": "Requested or identified binary package name in the upstream build environment",
+      "source_package": "Source package name when established from upstream packaging metadata",
+      "upstream_version": "The component's upstream version, separate from the Alpine APK revision",
+      "apk_revision": "Exact installed APK revision; null when not retained by the upstream build",
+      "evidence": "Version, package and license confidence are independent; unavailable values remain null/unknown"
+    }
   },
   "components": [
     {
@@ -37,7 +44,9 @@
         "usr/share/licenses/ClamGuardian/third-party/runtime/AppImage-type2-runtime-MIT.txt"
       ],
       "detection_method": "upstream-release-and-source",
-      "verification_status": "verified"
+      "verification_status": "verified",
+      "binary_package": null,
+      "apk_revision": null
     },
     {
       "id": "runtime-musl",
@@ -47,8 +56,8 @@
       "architecture": "both",
       "license": "MIT",
       "license_status": "verified",
-      "source": "Alpine 3.21 musl APKBUILD declares 1.2.5-r21 at f2036bfe000ab05e1f300c6fce57be3da9db426e; exact installed package record unavailable",
-      "source_package": "musl-dev",
+      "source": "Alpine 3.21 musl APKBUILD at f2036bfe000ab05e1f300c6fce57be3da9db426e declares upstream 1.2.5-r21; exact installed APK record is unavailable.",
+      "source_package": "musl",
       "artifact_paths": [
         "AppImage Type 2 runtime executable"
       ],
@@ -60,7 +69,9 @@
       "source_paths": [
         "https://github.com/alpinelinux/aports/blob/f2036bfe000ab05e1f300c6fce57be3da9db426e/main/musl/APKBUILD",
         "https://github.com/ifduyue/musl/tree/v1.2.5"
-      ]
+      ],
+      "binary_package": "musl-dev",
+      "apk_revision": null
     },
     {
       "id": "runtime-libfuse",
@@ -71,7 +82,7 @@
       "license": "LGPL-2.1-only",
       "license_status": "verified",
       "source": "libfuse 3.15.0 source archive SHA-256 70589cfd5e1cff7ccd6ac91c86c01be340b227285c5e200baa284e401eea2ca0; patched mount.c from the pinned runtime source commit",
-      "source_package": null,
+      "source_package": "libfuse",
       "artifact_paths": [
         "AppImage Type 2 runtime executable"
       ],
@@ -83,7 +94,9 @@
       "source_paths": [
         "https://github.com/libfuse/libfuse/releases/tag/fuse-3.15.0",
         "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/common/install-dependencies.sh"
-      ]
+      ],
+      "binary_package": null,
+      "apk_revision": null
     },
     {
       "id": "runtime-squashfuse",
@@ -94,7 +107,7 @@
       "license": "BSD-2-Clause",
       "license_status": "verified",
       "source": "squashfuse 0.5.2 source archive SHA-256 db0238c5981dabbd80ee09ae15387f390091668ca060a7bc38047912491443d3",
-      "source_package": null,
+      "source_package": "squashfuse",
       "artifact_paths": [
         "AppImage Type 2 runtime executable"
       ],
@@ -106,18 +119,20 @@
       "source_paths": [
         "https://github.com/vasi/squashfuse/tree/0.5.2",
         "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/common/install-dependencies.sh"
-      ]
+      ],
+      "binary_package": null,
+      "apk_revision": null
     },
     {
       "id": "runtime-zstd",
       "name": "zstd",
-      "version": "1.5.7",
-      "version_status": "declared",
+      "version": "1.5.6",
+      "version_status": "verified",
       "architecture": "both",
       "license": "BSD-3-Clause",
       "license_status": "verified",
-      "source": "Alpine 3.21 zstd APKBUILD declares 1.5.7-r2 at 3c6e2ee2b16f403d53eab39c4426eb61f003c322; exact installed package record unavailable; BSD-3-Clause option selected",
-      "source_package": "zstd-static",
+      "source": "The packaged Type 2 runtime binary evidence identifies zstd 1.5.6. Alpine 3.21 APKBUILD at v3.21.0 declares zstd 1.5.6-r1; exact installed APK record is unavailable.",
+      "source_package": "zstd",
       "artifact_paths": [
         "AppImage Type 2 runtime executable"
       ],
@@ -127,10 +142,11 @@
       "detection_method": "upstream-build-recipe",
       "verification_status": "partial",
       "source_paths": [
-        "https://github.com/alpinelinux/aports/blob/3c6e2ee2b16f403d53eab39c4426eb61f003c322/main/zstd/APKBUILD",
-        "https://github.com/meta/zstd/tree/v1.5.7",
-        "https://github.com/facebook/zstd/tree/v1.5.7"
-      ]
+        "https://github.com/facebook/zstd/tree/v1.5.6",
+        "https://github.com/alpinelinux/aports/tree/v3.21.0/main/zstd"
+      ],
+      "binary_package": "zstd-static",
+      "apk_revision": null
     },
     {
       "id": "runtime-zlib",
@@ -140,8 +156,8 @@
       "architecture": "both",
       "license": "Zlib",
       "license_status": "verified",
-      "source": "Alpine 3.21 zlib APKBUILD declares 1.3.1-r2 at 4c2722e7ecc1c5e3ba882429044a101497121223; exact installed package record unavailable",
-      "source_package": "zlib-static",
+      "source": "Alpine 3.21 zlib APKBUILD at v3.21.0 declares upstream 1.3.1 and APK revision 2; exact installed APK record is unavailable.",
+      "source_package": "zlib",
       "artifact_paths": [
         "AppImage Type 2 runtime executable"
       ],
@@ -151,20 +167,22 @@
       "detection_method": "upstream-build-recipe",
       "verification_status": "partial",
       "source_paths": [
-        "https://github.com/alpinelinux/aports/blob/4c2722e7ecc1c5e3ba882429044a101497121223/main/zlib/APKBUILD",
+        "https://github.com/alpinelinux/aports/blob/v3.21.0/main/zlib/APKBUILD",
         "https://github.com/madler/zlib/tree/v1.3.1"
-      ]
+      ],
+      "binary_package": "zlib-static",
+      "apk_revision": null
     },
     {
       "id": "runtime-mimalloc",
       "name": "mimalloc",
-      "version": "2.2.3",
-      "version_status": "declared",
+      "version": null,
+      "version_status": "unknown",
       "architecture": "both",
       "license": "MIT",
       "license_status": "verified",
-      "source": "Alpine 3.21 mimalloc2 APKBUILD declares 2.2.3-r2 at 254024f3b0572339fd24fae8865a4e313239ba71; exact installed package record unavailable; statically linked by src/runtime/Makefile but omitted from upstream LICENSE list",
-      "source_package": "mimalloc2-dev",
+      "source": "The pinned Type 2 runtime Dockerfile requests mimalloc-dev and the runtime Makefile statically links -lmimalloc. Alpine v3.21 has a mimalloc2-dev provider, but the exact provider selected and installed APK revision are not retained; no upstream version is asserted.",
+      "source_package": null,
       "artifact_paths": [
         "AppImage Type 2 runtime executable"
       ],
@@ -174,10 +192,12 @@
       "detection_method": "upstream-build-recipe",
       "verification_status": "partial",
       "source_paths": [
-        "https://github.com/alpinelinux/aports/blob/254024f3b0572339fd24fae8865a4e313239ba71/community/mimalloc2/APKBUILD",
-        "https://github.com/microsoft/mimalloc/tree/v2.2.3",
-        "https://github.com/microsoft/mimalloc/tree/v2.2.3"
-      ]
+        "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/scripts/docker/Dockerfile",
+        "https://github.com/AppImage/type2-runtime/blob/dd6cebedcbddde9c82f89b011e8e1d40b6e43868/src/runtime/Makefile",
+        "https://github.com/alpinelinux/aports/blob/v3.21.0/community/mimalloc2/APKBUILD"
+      ],
+      "binary_package": "mimalloc-dev",
+      "apk_revision": null
     }
   ]
 }

@@ -15,6 +15,8 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from license_expression import load_catalog, normalize_expression
 
+_RUNTIME_COMPONENT_FIELDS = {"binary_package", "apk_revision"}
+
 _COMPONENT_FIELDS = {
     "id",
     "name",
@@ -206,11 +208,15 @@ def validate_inventories(appdir: Any, runtime: Any) -> list[ValidationIssue]:
     """Return all structural and cross-inventory issues without mutating inputs."""
     issues: list[ValidationIssue] = []
     for label, inventory in (("AppDir", appdir), ("runtime", runtime)):
-        if not isinstance(inventory, dict) or inventory.get("schema_version") != 1:
+        expected_schema_version = 1 if label == "AppDir" else 2
+        if (
+            not isinstance(inventory, dict)
+            or inventory.get("schema_version") != expected_schema_version
+        ):
             issues.append(
                 ValidationIssue(
                     "INVALID_INVENTORY_HEADER",
-                    f"{label} inventory requires schema_version=1",
+                    f"{label} inventory requires schema_version={expected_schema_version}",
                 )
             )
         if not isinstance(inventory, dict) or not isinstance(inventory.get("components"), list):
@@ -229,6 +235,29 @@ def validate_inventories(appdir: Any, runtime: Any) -> list[ValidationIssue]:
     seen: set[str] = set()
     for label, component in all_components:
         issues.extend(_validate_component(component, label))
+        if label == "runtime" and isinstance(component, dict):
+            missing_runtime_fields = sorted(_RUNTIME_COMPONENT_FIELDS - component.keys())
+            if missing_runtime_fields:
+                issues.append(
+                    ValidationIssue(
+                        "COMPONENT_REQUIRED_FIELD",
+                        "Missing runtime provenance fields: "
+                        + ", ".join(missing_runtime_fields),
+                        component.get("id") if isinstance(component.get("id"), str) else None,
+                    )
+                )
+            for field in ("binary_package", "apk_revision"):
+                value = component.get(field)
+                if value is not None and (
+                    not isinstance(value, str) or not value.strip()
+                ):
+                    issues.append(
+                        ValidationIssue(
+                            "INVALID_RUNTIME_PROVENANCE_FIELD",
+                            f"{field} must be a non-empty string or null",
+                            component.get("id") if isinstance(component.get("id"), str) else None,
+                        )
+                    )
         if isinstance(component, dict) and isinstance(component.get("id"), str):
             component_id = component["id"]
             if component_id in seen:
