@@ -63,3 +63,24 @@ ClamGuardian inotify reacts to filesystem events and scans afterward; it does no
 4. Test malformed/partial protocol replies, timeout, refusal, missing capabilities, FILDES failure, INSTREAM limits and partial detections.
 5. Add FreshClam service/update conflict diagnostics without taking ownership of system services.
 6. Keep fanotify/clamonacc a separate research gate.
+
+## 8. P1 finding — pathname ClamD response can be classified CLEAN without a valid reply
+
+**VERIFIED at pinned ClamGuardian baseline `b42c01612d34ef20b980518aa9b3845f48ea4210`:**
+
+- `_scan_socket()` reads the response until EOF, then sets the returned code to failure only when a line matches its current broad `ERROR` substring/suffix check.
+- An empty response, whitespace-only response or unrecognized response line therefore leaves the returned code at zero.
+- `_result()` maps `exit_code == 0` with no recognized detection lines to `ScanStatus.CLEAN`.
+
+This creates a fail-open classification path: a connected daemon socket that closes without a valid scan result, or returns unrecognized output, can be represented as CLEAN. This finding concerns the pathname SCAN/CONTSCAN response path; the descriptor-response parser has separate explicit response validation. It is not a claim that a healthy ClamD normally returns an empty response. It is a correctness defect in how the client interprets missing or invalid protocol evidence.
+
+Immutable source anchors:
+- [_scan_socket() and response-code construction](https://github.com/D3M-Sudo/ClamGuardian/blob/b42c01612d34ef20b980518aa9b3845f48ea4210/clamguardian/engines/clamav.py#L673-L721)
+- [_result() status classification](https://github.com/D3M-Sudo/ClamGuardian/blob/b42c01612d34ef20b980518aa9b3845f48ea4210/clamguardian/engines/clamav.py#L989-L1015)
+- [Existing engine tests](https://github.com/D3M-Sudo/ClamGuardian/blob/b42c01612d34ef20b980518aa9b3845f48ea4210/tests/test_engine.py)
+
+**Required fix contract:** only a non-empty response in which every line is recognized as a valid ClamD result may produce CLEAN or INFECTED. Empty, whitespace-only, malformed, truncated, mixed valid/unknown, or explicit ERROR responses must produce ERROR (or another non-clean failure status), never CLEAN. Preserve any parsed detections as diagnostic evidence, but do not report a successful complete scan when the protocol response is invalid.
+
+**Regression matrix:** empty response; whitespace-only response; unknown command/protocol text; truncated result line; valid clean line; valid FOUND line; valid multi-line directory result; ERROR-only response; valid result mixed with an unknown line; response-size overflow. Assert no CLI fallback after a connection has been established, and assert that every invalid/error case is non-CLEAN.
+
+**Disposition:** P1 correctness fix is being handled on a separate implementation branch/PR. It is not folded into this research/documentation PR.
