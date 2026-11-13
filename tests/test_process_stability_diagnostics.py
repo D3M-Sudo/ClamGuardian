@@ -1,8 +1,7 @@
-"""Diagnostic characterization tests for subprocess and scan orchestration.
+"""Regression tests for subprocess stability and scan orchestration.
 
-These tests intentionally describe current behavior; they do not change or
-prescribe production behavior. They use synthetic child processes and mocked
-clamd endpoints, so no ClamAV installation is required.
+Synthetic child processes and mocked clamd endpoints keep the tests
+independent of a ClamAV installation on the test host.
 """
 
 from __future__ import annotations
@@ -19,10 +18,11 @@ from pathlib import Path
 import pytest
 
 from clamguardian.core.base import BaseAVEngine, ScanResult
+from clamguardian.core.profiles import DEFAULT_PROFILE
 from clamguardian.core.runner import ScanTaskRunner
 from clamguardian.core.scheduler import ScheduledScanManager
 from clamguardian.core.settings import AppSettings, SettingsStore
-from clamguardian.engines.clamav import ClamAVEngine
+from clamguardian.engines.clamav import ClamAVEngine, MAX_RESPONSE_BYTES
 
 
 @pytest.mark.asyncio
@@ -539,3 +539,24 @@ def test_clamav_engine_preserves_legacy_sixth_positional_argument() -> None:
     assert engine.max_descriptor_workers == 8
     assert engine.command_inactivity_timeout == 600.0
     assert engine.command_maximum_timeout == 3600.0
+
+
+@pytest.mark.asyncio
+async def test_clamd_response_buffer_never_exceeds_protocol_limit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An oversized clamd response retains no more than the configured cap."""
+    target = tmp_path / "sample.bin"
+    target.write_bytes(b"sample")
+    reader = _install_partial_clamd(monkeypatch, payload=b"XYZ")
+    socket_path = tmp_path / "clamd.ctl"
+    socket_path.touch()
+    engine = ClamAVEngine(socket_path=socket_path)
+    response_buffer = bytearray(b"A" * (MAX_RESPONSE_BYTES - 2))
+
+    with pytest.raises(ValueError, match="size limit"):
+        await engine._scan_socket(target, DEFAULT_PROFILE, response_buffer)
+
+    assert reader.delivered.is_set()
+    assert len(response_buffer) == MAX_RESPONSE_BYTES
+    assert response_buffer[-2:] == b"XY"
