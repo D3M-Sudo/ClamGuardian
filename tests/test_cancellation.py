@@ -67,7 +67,11 @@ async def test_timeout_kills_subprocess(monkeypatch: pytest.MonkeyPatch) -> None
     """command_timeout terminates the child and surfaces TimeoutError."""
     recorder = _ProcessRecorder(asyncio.create_subprocess_exec)
     monkeypatch.setattr(asyncio, "create_subprocess_exec", recorder)
-    engine = ClamAVEngine(\n        socket_path=Path("/nonexistent"),\n        command_inactivity_timeout=0.2,\n        command_maximum_timeout=1.0,\n    )
+    engine = ClamAVEngine(
+        socket_path=Path("/nonexistent"),
+        command_inactivity_timeout=0.2,
+        command_maximum_timeout=1.0,
+    )
 
     with pytest.raises(TimeoutError):
         await engine._run_command(_sleep_command())
