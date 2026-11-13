@@ -270,3 +270,68 @@ def test_history_detail_success_opens_detail_without_notifications() -> None:
     )
 
     assert displayed == [record]
+
+
+
+@pytest.mark.parametrize(
+    ("outcome", "expected_message"),
+    [
+        ("error", "Scan details could not be loaded. Please try again."),
+        ("missing", "This scan record is no longer available."),
+    ],
+)
+def test_history_detail_callback_delivers_toast_and_refreshes_missing_record(
+    outcome: str,
+    expected_message: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise row activation through the async callback into GTK toast delivery."""
+    if not gtk_works():
+        pytest.skip("GTK not usable in this environment")
+
+    from clamguardian.ui import database_pages
+
+    pending_callbacks = []
+
+    def capture_async(coro, on_done=None) -> None:
+        coro.close()
+        if on_done is not None:
+            pending_callbacks.append(on_done)
+
+    monkeypatch.setattr(database_pages, "run_async", capture_async)
+
+    class RecordingToastOverlay:
+        def __init__(self) -> None:
+            self.toasts = []
+
+        def add_toast(self, toast) -> None:
+            self.toasts.append(toast)
+
+    store = _StubStore()
+    page = history_page_module.HistoryPage(store)
+    window = history_page_module.Gtk.Window()
+    overlay = RecordingToastOverlay()
+    window.toast_overlay = overlay
+    window.set_child(page.root)
+
+    summary = _record()
+    page._on_record_activated(None, summary)
+
+    # The first callback belongs to HistoryPage's constructor load; the
+    # second is the detail lookup initiated by row activation.
+    assert len(pending_callbacks) == 2
+    if outcome == "error":
+        pending_callbacks[1](None, OSError("private database path"))
+    else:
+        pending_callbacks[1](None, None)
+
+    assert len(overlay.toasts) == 1
+    assert overlay.toasts[0].get_title() == expected_message
+
+    if outcome == "missing":
+        # Missing rows trigger a real refresh request after the toast.
+        assert len(pending_callbacks) == 3
+    else:
+        assert len(pending_callbacks) == 2
+
+    window.destroy()
