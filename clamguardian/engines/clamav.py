@@ -6,6 +6,7 @@ import array
 import asyncio
 import contextlib
 import hashlib
+import math
 import os
 import signal
 import socket
@@ -23,6 +24,16 @@ from ..core.profiles import DEFAULT_PROFILE, ScanProfile
 
 #: Grace period given to a subprocess after ``SIGTERM`` before ``SIGKILL``.
 TERMINATE_GRACE_SECONDS = 5.0
+
+#: Upper bound for ordinary subprocess output retained in memory (1 MiB).
+DEFAULT_MAX_COMMAND_OUTPUT_BYTES = 1024 * 1024
+_OUTPUT_TRUNCATED_MARKER = "\n[OUTPUT_TRUNCATED]\n"
+
+#: Upper bound for a partial line held while incrementally parsing output.
+MAX_OUTPUT_LINE_BYTES = 65536
+
+#: Bound separately retained detections so pathological output cannot grow memory.
+MAX_DETECTION_RECORDS = 10000
 
 #: Upper bound for a clamd response buffered in memory (8 MiB).
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
@@ -73,6 +84,14 @@ class _DescriptorSocketControl:
             sock.close()
 
 
+class CommandTimeoutError(TimeoutError):
+    """Command deadline exceeded, with bounded output collected before teardown."""
+
+    def __init__(self, message: str, output: str) -> None:
+        super().__init__(message)
+        self.output = output
+
+
 class ClamAVEngine(BaseAVEngine):
     """Use clamd over UNIX socket when available, otherwise clamscan/freshclam.
 
@@ -90,6 +109,10 @@ class ClamAVEngine(BaseAVEngine):
         flatpak_host: bool = False,
         command_timeout: float = 300.0,
         max_descriptor_workers: int = 4,
+        *,
+        command_inactivity_timeout: float = 600.0,
+        command_maximum_timeout: float = 3600.0,
+        command_max_output_bytes: int = DEFAULT_MAX_COMMAND_OUTPUT_BYTES,
     ) -> None:
         if (
             isinstance(max_descriptor_workers, bool)
@@ -102,6 +125,26 @@ class ClamAVEngine(BaseAVEngine):
         self.freshclam_binary = freshclam_binary
         self.flatpak_host = flatpak_host
         self.command_timeout = command_timeout
+        for name, value in (
+            ("command_inactivity_timeout", command_inactivity_timeout),
+            ("command_maximum_timeout", command_maximum_timeout),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value <= 0
+            ):
+                raise ValueError(f"{name} must be a finite positive number")
+        self.command_inactivity_timeout = float(command_inactivity_timeout)
+        self.command_maximum_timeout = float(command_maximum_timeout)
+        if (
+            isinstance(command_max_output_bytes, bool)
+            or not isinstance(command_max_output_bytes, int)
+            or command_max_output_bytes < 1
+        ):
+            raise ValueError("command_max_output_bytes must be a positive integer")
+        self.command_max_output_bytes = command_max_output_bytes
         self.max_descriptor_workers = max_descriptor_workers
         self._descriptor_worker_count = 0
         self._descriptor_workers: set[asyncio.Task[tuple[str, int, str]]] = set()
@@ -158,9 +201,10 @@ class ClamAVEngine(BaseAVEngine):
         except OSError:
             initial_file_stat = None
         if self.socket_path.exists():
+            response_buffer = bytearray()
             try:
                 output, exit_code, unsupported = await asyncio.wait_for(
-                    self._scan_socket(target, profile), self.command_timeout
+                    self._scan_socket(target, profile, response_buffer), self.command_timeout
                 )
                 result = self._result(target, started, output, exit_code, "clamd")
                 # Explicit policy for options clamd cannot honour per
@@ -169,15 +213,70 @@ class ClamAVEngine(BaseAVEngine):
                 if unsupported:
                     result.metadata["profile_unsupported_clamd"] = ",".join(unsupported)
                 return self._finalize(result, target, profile, initial_file_stat)
-            except (TimeoutError, OSError, ValueError):
+            except (FileNotFoundError, ConnectionRefusedError):
+                # The daemon is genuinely unavailable. A CLI scan is a safe
+                # alternative only for this connection-establishment failure.
                 pass
+            except TimeoutError:
+                output = bytes(response_buffer).decode("utf-8", errors="replace")
+                result = ScanResult(
+                    target=str(target),
+                    clean=False,
+                    status=ScanStatus.TIMEOUT,
+                    threats=self._detection_lines(output),
+                    engine="clamd",
+                    error="clamd scan timed out",
+                    started_at=started,
+                    finished_at=datetime.now(UTC),
+                )
+                if output:
+                    result.metadata["partial_output"] = output
+                return self._annotate_profile(result, profile)
+            except asyncio.CancelledError as exc:
+                output = bytes(response_buffer).decode("utf-8", errors="replace")
+                exc.partial_output = output  # type: ignore[attr-defined]
+                exc.partial_threats = self._detection_lines(output)  # type: ignore[attr-defined]
+                raise
+            except (OSError, ValueError) as exc:
+                output = bytes(response_buffer).decode("utf-8", errors="replace")
+                # A protocol/transport failure after connecting is not proof
+                # that clamd is unavailable. Do not silently start a second
+                # potentially expensive scan of the same target.
+                result = ScanResult(
+                    target=str(target),
+                    clean=False,
+                    status=ScanStatus.ERROR,
+                    threats=self._detection_lines(output),
+                    engine="clamd",
+                    error=f"clamd scan failed: {exc}",
+                    started_at=started,
+                    finished_at=datetime.now(UTC),
+                )
+                if output:
+                    result.metadata["partial_output"] = output
+                return self._annotate_profile(result, profile)
         try:
             output, exit_code = await self._run_cli_scan(target, profile=profile)
-        except TimeoutError:
-            # No digest in this case: the engine already gave up on this target,
-            # and hashing it afterwards would repeat the very work that timed
-            # out (typically a very large or very slow file).
-            return self._annotate_profile(ScanResult.timed_out(str(target), started), profile)
+        except TimeoutError as exc:
+            # A timeout is never CLEAN. Preserve bounded diagnostics and any
+            # detections observed before teardown, while retaining TIMEOUT as
+            # the authoritative terminal status.
+            output = getattr(exc, "output", "")
+            result = ScanResult(
+                target=str(target),
+                clean=False,
+                status=ScanStatus.TIMEOUT,
+                threats=self._detection_lines(output),
+                engine="clamscan",
+                error=str(exc) or "scan timed out",
+                started_at=started,
+                finished_at=datetime.now(UTC),
+            )
+            if output:
+                result.metadata["partial_output"] = output
+            if _OUTPUT_TRUNCATED_MARKER in output:
+                result.metadata["output_truncated"] = "true"
+            return self._annotate_profile(result, profile)
         result = self._result(target, started, output, exit_code, "clamscan")
         return self._finalize(result, target, profile, initial_file_stat)
 
@@ -572,7 +671,10 @@ class ClamAVEngine(BaseAVEngine):
         return output.strip()
 
     async def _scan_socket(
-        self, target: Path, profile: ScanProfile
+        self,
+        target: Path,
+        profile: ScanProfile,
+        response_buffer: bytearray | None = None,
     ) -> tuple[str, int, tuple[str, ...]]:
         """Run a clamd scan; return (output, code, unsupported-profile-options)."""
         if self._has_control_bytes(target):
@@ -592,14 +694,16 @@ class ClamAVEngine(BaseAVEngine):
             # when the whole command has been served. Reading must therefore
             # continue until EOF: stopping at the first "OK"/"FOUND" line
             # silently discarded every later result of a directory scan.
-            response = bytearray()
+            response = response_buffer if response_buffer is not None else bytearray()
             while True:
                 chunk = await reader.read(65536)
                 if not chunk:
                     break
-                response.extend(chunk)
-                if len(response) > MAX_RESPONSE_BYTES:
+                remaining = MAX_RESPONSE_BYTES - len(response)
+                if len(chunk) > remaining:
+                    response.extend(chunk[:remaining])
                     raise ValueError("clamd response exceeded the size limit")
+                response.extend(chunk)
             output = bytes(response).decode("utf-8", errors="replace")
             code = (
                 1
@@ -683,53 +787,187 @@ class ClamAVEngine(BaseAVEngine):
                 *command,
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
+                stderr=asyncio.subprocess.PIPE,
                 start_new_session=True,
             )
         except OSError as exc:
             raise EngineError(f"failed to start {command[0]!r}: {exc}") from exc
+
+        assert process.stdout is not None
+        assert process.stderr is not None
+        retained = bytearray()
+        detections: list[str] = []
+        detection_set: set[str] = set()
+        detection_bytes = 0
+        truncated = False
+        loop = asyncio.get_running_loop()
+        last_activity = loop.time()
+        activity_event = asyncio.Event()
+
+        def parse_line(line: bytes) -> None:
+            nonlocal detection_bytes, truncated
+            decoded = line.decode("utf-8", errors="replace").strip()
+            if decoded.endswith("FOUND") and ": " in decoded and decoded not in detection_set:
+                encoded_size = len(decoded.encode("utf-8"))
+                if (
+                    len(detections) >= MAX_DETECTION_RECORDS
+                    or detection_bytes + encoded_size > self.command_max_output_bytes
+                ):
+                    truncated = True
+                    return
+                detection_set.add(decoded)
+                detections.append(decoded)
+                detection_bytes += encoded_size
+
+        async def drain(reader: asyncio.StreamReader) -> None:
+            nonlocal last_activity, truncated
+            pending = bytearray()
+            while chunk := await reader.read(65536):
+                last_activity = loop.time()
+                activity_event.set()
+                remaining = self.command_max_output_bytes - len(retained)
+                if remaining > 0:
+                    retained.extend(chunk[:remaining])
+                if len(chunk) > max(remaining, 0):
+                    truncated = True
+
+                pending.extend(chunk)
+                while True:
+                    newline = pending.find(b"\n")
+                    if newline < 0:
+                        break
+                    parse_line(bytes(pending[:newline]))
+                    del pending[: newline + 1]
+                if len(pending) > MAX_OUTPUT_LINE_BYTES:
+                    # ClamAV detection records are short (bounded by filesystem
+                    # path and signature lengths); discard oversized non-record
+                    # fragments rather than retaining an attacker-controlled line.
+                    del pending[: len(pending) - MAX_OUTPUT_LINE_BYTES]
+                    truncated = True
+            if pending:
+                parse_line(bytes(pending))
+
+        readers = [
+            asyncio.create_task(drain(process.stdout)),
+            asyncio.create_task(drain(process.stderr)),
+        ]
+        completion = asyncio.gather(process.wait(), *readers)
+        started = loop.time()
         try:
-            stdout, _ = await asyncio.wait_for(process.communicate(), self.command_timeout)
-        except TimeoutError:
+            while not completion.done():
+                activity_event.clear()
+                elapsed = loop.time() - started
+                inactive = loop.time() - last_activity
+                remaining = min(
+                    self.command_maximum_timeout - elapsed,
+                    self.command_inactivity_timeout - inactive,
+                )
+                if remaining <= 0:
+                    raise TimeoutError(
+                        "command exceeded its maximum execution or inactivity timeout"
+                    )
+                activity_waiter = asyncio.create_task(activity_event.wait())
+                try:
+                    done, _ = await asyncio.wait(
+                        (completion, activity_waiter),
+                        timeout=remaining,
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    if completion in done:
+                        break
+                    if activity_waiter in done:
+                        continue
+                    raise TimeoutError(
+                        "command exceeded its maximum execution or inactivity timeout"
+                    )
+                finally:
+                    if not activity_waiter.done():
+                        activity_waiter.cancel()
+                    await asyncio.gather(activity_waiter, return_exceptions=True)
+            await completion
+        except TimeoutError as exc:
             await self._terminate_process(process)
-            raise
-        except asyncio.CancelledError:
-            # Cancellation must reach the subprocess: terminate the whole
-            # process group started with ``start_new_session=True``, wait for
-            # it to die, then re-raise so the caller still observes the
-            # CancelledError (never a generic failure).
+            await asyncio.gather(*readers, return_exceptions=True)
+            partial_output = self._format_command_output(retained, detections, truncated)
+            raise CommandTimeoutError(str(exc), partial_output) from exc
+        except asyncio.CancelledError as exc:
+            # Cancellation must reach the subprocess: terminate the process
+            # group, finish draining both pipes, and preserve cancellation.
             await self._terminate_process(process)
+            await asyncio.gather(*readers, return_exceptions=True)
+            exc.partial_output = self._format_command_output(  # type: ignore[attr-defined]
+                retained, detections, truncated
+            )
             raise
-        return stdout.decode("utf-8", errors="replace"), int(process.returncode or 0)
+        except BaseException:
+            # Reader/transport failures must not leave a live child or helper
+            # process behind; preserve the original exception after teardown.
+            await self._terminate_process(process)
+            await asyncio.gather(*readers, return_exceptions=True)
+            raise
+
+        output = self._format_command_output(retained, detections, truncated)
+        return output, int(process.returncode or 0)
+
+    @staticmethod
+    def _format_command_output(
+        retained: bytearray, detections: list[str], truncated: bool
+    ) -> str:
+        output = bytes(retained).decode("utf-8", errors="replace")
+        retained_lines = set(output.splitlines())
+        missing_detections = [line for line in detections if line not in retained_lines]
+        if missing_detections:
+            output += ("\n" if output and not output.endswith("\n") else "") + "\n".join(
+                missing_detections
+            )
+        if truncated:
+            output += _OUTPUT_TRUNCATED_MARKER
+        return output
 
     @staticmethod
     async def _terminate_process(
         process: asyncio.subprocess.Process, grace: float = TERMINATE_GRACE_SECONDS
     ) -> None:
-        """Deterministically reap *process*: terminate, kill, then wait.
+        """Terminate the whole subprocess session and reap its direct child.
 
-        Safe to call on an already-exited process and never kills twice.
-        Because subprocesses run in their own session (``start_new_session``),
-        the signal targets the whole process group so ClamAV helper children
-        cannot survive as orphans.
+        Safe after the session leader exits: descendants may still hold pipes
+        or ignore SIGTERM. The process group receives SIGTERM, then SIGKILL
+        after the grace period if any member remains.
         """
-        if process.returncode is not None:
-            return  # already exited: nothing to reap
+        # The direct child may have exited while descendants remain in its
+        # session. Signal the process group by the original session leader PID
+        # regardless of process.returncode; checking the leader alone leaks
+        # helpers that inherited the subprocess pipes.
         try:
-            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            if process.returncode is None:
+                await process.wait()
+            return
+        except PermissionError as exc:
+            raise EngineError(f"cannot signal subprocess group {process.pid}: {exc}") from exc
+
+        # Reap the direct child concurrently with group polling. Otherwise
+        # its zombie entry can keep killpg(pgid, 0) successful for the entire
+        # grace period even when no descendant remains.
+        wait_task = asyncio.create_task(process.wait())
+        deadline = asyncio.get_running_loop().time() + grace
+        while asyncio.get_running_loop().time() < deadline:
             try:
-                process.terminate()
+                os.killpg(process.pid, 0)
             except ProcessLookupError:
-                return
+                break
+            await asyncio.sleep(min(0.05, max(0.0, deadline - asyncio.get_running_loop().time())))
+
         try:
-            await asyncio.wait_for(process.wait(), grace)
-        except TimeoutError:
-            try:
-                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                process.kill()
-            await process.wait()
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            pass
+        else:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+
+        await wait_task
 
 
     @staticmethod
@@ -763,7 +1001,7 @@ class ClamAVEngine(BaseAVEngine):
             if status in (ScanStatus.CLEAN, ScanStatus.INFECTED)
             else output.strip() or f"{engine} exited with code {exit_code}"
         )
-        return ScanResult(
+        result = ScanResult(
             target=str(target),
             clean=status is ScanStatus.CLEAN,
             status=status,
@@ -773,3 +1011,6 @@ class ClamAVEngine(BaseAVEngine):
             started_at=started,
             finished_at=datetime.now(UTC),
         )
+        if _OUTPUT_TRUNCATED_MARKER in output:
+            result.metadata["output_truncated"] = "true"
+        return result

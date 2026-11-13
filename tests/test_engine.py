@@ -10,6 +10,22 @@ from clamguardian.core.profiles import DEFAULT_PROFILE
 from clamguardian.engines.clamav import ClamAVEngine
 
 
+@pytest.mark.parametrize(
+    ("setting", "value"),
+    [
+        ("command_inactivity_timeout", 0),
+        ("command_inactivity_timeout", float("inf")),
+        ("command_maximum_timeout", float("nan")),
+        ("command_maximum_timeout", -1),
+    ],
+)
+def test_command_timeout_settings_must_be_finite_and_positive(
+    setting: str, value: float
+) -> None:
+    with pytest.raises(ValueError, match="finite positive"):
+        ClamAVEngine(**{setting: value})
+
+
 @pytest.mark.asyncio
 async def test_cli_fallback_scans_and_normalizes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -97,8 +113,17 @@ async def test_engine_flatpak_host_command_construction(
         captured_command.extend(cmd)
         class FakeProcess:
             returncode = 0
-            async def communicate(self):
-                return b"OK\n", b""
+
+            def __init__(self) -> None:
+                self.stdout = asyncio.StreamReader()
+                self.stderr = asyncio.StreamReader()
+                self.stdout.feed_data(b"OK\n")
+                self.stdout.feed_eof()
+                self.stderr.feed_eof()
+
+            async def wait(self) -> int:
+                return 0
+
         return FakeProcess()
 
     monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
@@ -164,7 +189,7 @@ async def test_clamd_branch_records_single_file_sha256(
     socket_path.touch()  # only ``exists()`` gates the socket branch
     engine = ClamAVEngine(socket_path=socket_path)
 
-    async def fake_socket(target, profile):
+    async def fake_socket(target, profile, response_buffer=None):
         return f"{target}: OK\n", 0, ()
 
     monkeypatch.setattr(engine, "_scan_socket", fake_socket)
@@ -187,7 +212,7 @@ async def test_clamd_branch_has_no_sha256_for_directories(
     socket_path.touch()
     engine = ClamAVEngine(socket_path=socket_path)
 
-    async def fake_socket(target, profile):
+    async def fake_socket(target, profile, response_buffer=None):
         return f"{target}: OK\n", 0, ()
 
     monkeypatch.setattr(engine, "_scan_socket", fake_socket)
