@@ -286,12 +286,18 @@ async def test_process_group_termination_kills_sigterm_ignoring_descendant(
             await asyncio.sleep(0.01)
         assert pid_file.is_file(), "child did not publish its PID"
         child_pid = int(pid_file.read_text(encoding="ascii"))
+        child_group = os.getpgid(child_pid)
+        child_session = os.getsid(child_pid)
+        assert child_group == parent.pid
+        assert child_session == parent.pid
 
         await ClamAVEngine._terminate_process(parent, grace=0.2)
         child_state = _linux_process_state(child_pid)
 
         assert child_state in (None, "Z"), (
-            "the descendant survived process-group termination"
+            f"descendant survived process-group termination: pid={child_pid}, "
+            f"state={child_state}, pgrp={child_group}, session={child_session}, "
+            f"leader={parent.pid}"
         )
     finally:
         if child_pid is not None:
