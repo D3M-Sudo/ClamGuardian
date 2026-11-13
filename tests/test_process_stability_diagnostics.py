@@ -84,11 +84,11 @@ async def test_cli_command_bounds_output_but_preserves_late_detections() -> None
     limit = 1024
     detection = "/tmp/infected.bin: Eicar-Test-Signature FOUND"
     script = (
-        "import sys\n"
-        "sys.stdout.write('O' * 4096 + '\\\n')\n"
-        "sys.stdout.flush()\n"
-        f"sys.stderr.write('E' * 4096 + '\\\n{detection}\\\n')\n"
-        "sys.stderr.flush()\n"
+        "import sys\\n"
+        "sys.stdout.write('O' * 4096 + chr(10))\\n"
+        "sys.stdout.flush()\\n"
+        f"sys.stderr.write('E' * 4096 + chr(10) + {detection!r} + chr(10))\\n"
+        "sys.stderr.flush()\\n"
     )
     engine = ClamAVEngine(command_max_output_bytes=limit)
 
@@ -98,6 +98,8 @@ async def test_cli_command_bounds_output_but_preserves_late_detections() -> None
     assert len(output.encode("utf-8")) <= limit + len(detection.encode("utf-8")) + 128
     assert detection in output
     assert "OUTPUT_TRUNCATED" in output
+
+
 @pytest.mark.asyncio
 async def test_clamd_connection_refused_falls_back_to_clamscan(
     monkeypatch: pytest.MonkeyPatch,
